@@ -10,6 +10,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "dir_size_calc.h"
+#include "hashmap.h"
 #include "utils.h"
 
 #define MAX_PATH_LENGTH 256
@@ -95,6 +97,7 @@ void browse_files(const char *directory) {
 void display_files(const char *directory) {
     DIR *dir;
     struct dirent *entry;
+    HashMap *hash_map = create_hash_map();
 
     if ((dir = opendir(directory)) == NULL) {
         die(1, "Couldn't open directory %s", directory);
@@ -103,6 +106,9 @@ void display_files(const char *directory) {
 
     while ((entry = readdir(dir)) != NULL) {
         printf("%s\n", entry->d_name);
+        if (is_directory(directory, entry->d_name)) {
+            display_directory_size(entry->d_name, hash_map);
+        }
     }
 
     closedir(dir);

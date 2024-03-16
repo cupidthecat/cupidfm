@@ -12,7 +12,9 @@
 #include <utils.h>
 #include <files.h>
 #include <curses.h>
-
+#include <pthread.h>
+#include <hashmap.h>
+#include "dir_size_calc.h"
 #define MAX_PATH_LENGTH 1024
 
 struct FileAttributes {
@@ -20,6 +22,33 @@ struct FileAttributes {
     ino_t inode;
     bool is_dir;
 };
+
+// Structure to pass arguments to the thread function
+typedef struct {
+    const char *dir_path;
+    WINDOW *window;
+    int max_x;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    bool done;
+} ThreadArg;
+
+// Thread function to calculate and display directory size
+void *calculate_and_display_dir_size(void *arg) {
+    ThreadArg *thread_arg = (ThreadArg *)arg;
+    long dir_size = get_directory_size(thread_arg->dir_path, 5);  // Added second argument
+    char fileSizeStr[20];
+    mvwprintw(thread_arg->window, 5, 1, "Directory Size: %.*s", thread_arg->max_x - 4, format_file_size(fileSizeStr, dir_size));
+
+    // Signal that the directory size calculation is done
+    pthread_mutex_lock(&thread_arg->mutex);
+    thread_arg->done = true;
+    pthread_cond_signal(&thread_arg->cond);
+    pthread_mutex_unlock(&thread_arg->mutex);
+
+    free(arg);
+    return NULL;
+}
 
 const char *FileAttr_get_name(FileAttr fa) {
     if (fa != NULL) {
@@ -29,7 +58,6 @@ const char *FileAttr_get_name(FileAttr fa) {
         return "Unknown";
     }
 }
-
 
 bool FileAttr_is_dir(FileAttr fa) {
     return fa->is_dir;
@@ -90,6 +118,8 @@ void append_files_to_vec(Vector *v, const char *name) {
     }
 }
 
+
+// TODO: FIX WRONG CALCULATION OF DIRECTORY SIZE ON SYMBOLIC LINKS
 // Recursive function to calculate directory size
 // NOTE: this function may take long, it might be better to have the size of
 //       the directories displayed as "-" until we have a value. Use of "du" or
@@ -98,7 +128,7 @@ void append_files_to_vec(Vector *v, const char *name) {
 //       fork() -> exec() (if using du)
 //       fork() -> calculate directory size and return it somehow (maybe print
 //       as binary to the stdout)
-long get_directory_size(const char *dir_path) {
+/* long get_directory_size(const char *dir_path) {
     DIR *dir;
     struct dirent *entry;
     struct stat statbuf;
@@ -120,16 +150,19 @@ long get_directory_size(const char *dir_path) {
         if (lstat(path, &statbuf) == -1)
             continue;
         // If entry is a directory, recursively calculate its size
-        if (S_ISDIR(statbuf.st_mode))
-            // This recursion may cause a stack overflow
+        if (S_ISDIR(statbuf.st_mode) && !S_ISLNK(statbuf.st_mode))
             total_size += get_directory_size(path);
         else
-            total_size += statbuf.st_size; // Add size of regular file
+            total_size += statbuf.st_size; // Add size of regular file or symbolic link
     }
 
     closedir(dir);
     return total_size;
 }
+*/
+
+// get dir size using du
+
 
 char* format_file_size(char *buffer, size_t size) {
     // iB for multiples of 1024, B for multiples of 1000
@@ -156,12 +189,25 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
 
     // Display file information
     if (S_ISDIR(file_stat.st_mode)) {
-        // If it's a directory, calculate its size using get_directory_size
-        long dir_size = get_directory_size(file_path);
-        // Check if this array is big enough, greater than needed is better
-        // than smaller
-        char fileSizeStr[20];
-        mvwprintw(window, 5, 1, "Directory Size: %.*s", max_x - 4, format_file_size(fileSizeStr, dir_size));
+        // If it's a directory, calculate its size in a separate thread
+        ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
+        thread_arg->dir_path = file_path;
+        thread_arg->window = window;
+        thread_arg->max_x = max_x;
+        thread_arg->done = false;
+        pthread_mutex_init(&thread_arg->mutex, NULL);
+        pthread_cond_init(&thread_arg->cond, NULL);
+        pthread_t thread;
+        pthread_create(&thread, NULL, calculate_and_display_dir_size, thread_arg);
+
+        // Wait for the directory size calculation to complete
+        pthread_mutex_lock(&thread_arg->mutex);
+        while (!thread_arg->done) {
+            pthread_cond_wait(&thread_arg->cond, &thread_arg->mutex);
+        }
+        pthread_mutex_unlock(&thread_arg->mutex);
+
+        pthread_detach(thread);
     } else {
         // If it's a regular file, display its size directly
         char fileSizeStr[20];
