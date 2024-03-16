@@ -67,11 +67,13 @@ long *calculate_directory_size(void *arg) {
 }
 
 void display_directory_size(const char *dir_path, HashMap *hash_map) {
+    (void)hash_map;  // Suppress unused parameter warning
     long dir_size = get_directory_size(dir_path, 5);  // Added second argument
     printf("Directory: %s, Size: %ld\n", dir_path, dir_size);
 }
 
 void periodically_update_ui(HashMap *hash_map) {
+    (void)hash_map;  // Suppress unused parameter warning
     while (1) {
         // Iterate over the hash_map and update the UI for each directory
         sleep(1); // Sleep for a while to not hog the CPU

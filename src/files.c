@@ -46,7 +46,7 @@ void *calculate_and_display_dir_size(void *arg) {
     pthread_cond_signal(&thread_arg->cond);
     pthread_mutex_unlock(&thread_arg->mutex);
 
-    free(arg);
+    // Do not free arg here
     return NULL;
 }
 
