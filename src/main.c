@@ -8,9 +8,9 @@
 #include <string.h>
 
 #include <utils.h>
-#include <vector.h>
+#include "data_struct/vector.h"
 #include <files.h>
-#include <vecstack.h>
+#include "data_struct/vecstack.h"
 
 #define MAX_PATH_LENGTH 256
 

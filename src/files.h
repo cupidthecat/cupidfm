@@ -1,4 +1,4 @@
-#include <vector.h>
+#include "data_struct/vector.h"
 #include <curses.h>
 
 // 256 in most systems

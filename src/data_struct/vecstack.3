@@ -1,0 +1,72 @@
+.TH CUPID_VECSTACK 3 2024-01-20 "Cupid Common Library Documentation"
+.SH NAME
+VecStack \- stack implemented with a
+.BR cupid_vector (3)
+.SH LIBRARY
+Cupid Common Library
+.SH SYNOPSIS
+.EX
+#include <cupid/vector.h>
+#include <cupid/vecstack.h>
+
+typedef struct {
+    Vector v;
+} VecStack;
+
+VecStack VecStack_empty();
+void VecStack_push(VecStack *v, void *el);
+void *VecStack_pop(VecStack *v);
+void *VecStack_peek(VecStack *v);
+void VecStack_bye(VecStack *v);
+.EE
+.SH DESCRIPTION
+This header includes an implementation of a stack data structure using
+.I Vector
+from
+.BR cupid_vector (3).
+The functions accept void pointers to push or pop into or from the stack, but
+no freeing nor any other memory management is performed with them. It should be
+fine to pass non-heap pointers to it (despite not being recommended), as long
+as the return value of pop isn't freed. If the user prefers to use dynamic
+allocation, the value given to push must already be allocated and the return of
+pop must be freed manually. If reducing the size of the stack is wanted, the
+underlying vector can be accessed directly.
+.SS "VecStack VecStack_empty();"
+This function should be used to create a new empty
+.IR VecStack .
+.SS "void VecStack_push(VecStack *v, void *el);"
+Pushes
+.I el
+into the
+.I VecStack
+pointed by
+.IR v .
+.SS "void *VecStack_pop(VecStack *v);"
+Pops the last pushed element out of the stack pointed by
+.IR v ,
+returning a null pointer if the stack is empty.
+.SS "void *VecStack_peek(VecStack *v);"
+Similar to
+.IR "VecStack_pop()" ,
+except that the value isn't removed from the stack and therefore no destructive
+operations shall be performed on it.
+.SS "void VecStack_bye(VecStack *v);"
+Frees all the elements of the stack and then frees the stack vector.
+.B "It's really important to never free a non-empty stack if the values of it"
+.BI "can't be freed normally" .
+If the void pointers are static or using a custom allocator: please do the
+following instead:
+.EX
+void *p;
+
+/* If a custom allocator is used */
+while ((p = VecStack_pop(&v)))
+    myfree(p);
+
+/* If the values aren't dynamic */
+while ((p = VecStack_pop(&v));
+
+VecStack_bye(&v);
+.EE
+
+

@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 
 #include "dir_size_calc.h"
-#include "hashmap.h"
+#include "data_struct/hashmap.h"
 #include "utils.h"
 
 #define MAX_PATH_LENGTH 256

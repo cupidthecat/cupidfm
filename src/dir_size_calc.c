@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
-#include "hashmap.h"
+#include "data_struct/hashmap.h"
 #include "dir_size_calc.h"
 
 #define MAX_PATH_LENGTH 1024
