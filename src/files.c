@@ -128,41 +128,9 @@ void append_files_to_vec(Vector *v, const char *name) {
 //       fork() -> exec() (if using du)
 //       fork() -> calculate directory size and return it somehow (maybe print
 //       as binary to the stdout)
-/* long get_directory_size(const char *dir_path) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat statbuf;
-    long total_size = 0;
-
-    // Open directory
-    if (!(dir = opendir(dir_path)))
-        return -1;
-
-    // Iterate over directory entries
-    while ((entry = readdir(dir)) != NULL) {
-        char path[MAX_PATH_LENGTH];
-        // Skip "." and ".." entries
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-        // Construct full path to entry
-        snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
-        // Get entry's information
-        if (lstat(path, &statbuf) == -1)
-            continue;
-        // If entry is a directory, recursively calculate its size
-        if (S_ISDIR(statbuf.st_mode) && !S_ISLNK(statbuf.st_mode))
-            total_size += get_directory_size(path);
-        else
-            total_size += statbuf.st_size; // Add size of regular file or symbolic link
-    }
-
-    closedir(dir);
-    return total_size;
-}
+/*
+dead function
 */
-
-// get dir size using du
-
 
 char* format_file_size(char *buffer, size_t size) {
     // iB for multiples of 1024, B for multiples of 1000
