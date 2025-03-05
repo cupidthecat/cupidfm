@@ -36,10 +36,6 @@ typedef struct {
     int info_label_width;
 } KeyBindings;
 
-/**
- * Loads default keybindings into the provided KeyBindings structure.
- */
-void load_default_keybindings(KeyBindings *kb);
 
 /**
  * Loads user configuration from a file, overriding defaults.
@@ -51,6 +47,11 @@ void load_default_keybindings(KeyBindings *kb);
  * @return             Number of errors encountered. 0 indicates success.
  */
 int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, size_t buffer_size);
+
+/**
+ * Loads default keybindings into the provided KeyBindings structure.
+ */
+void load_default_keybindings(KeyBindings *kb);
 
 // The macro stringifies the field name and, if it matches, assigns the parsed value.
 #define CUPID_CFGCMP(x) else if (strcasecmp(name, #x) == 0) { kb->x = parsed; }
