@@ -253,6 +253,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
+- [ ] Optimize scrolling
 
 ### Edit Mode Issues
 - [ ] Banner marquee not rotating correctly when rotating in edit mode
