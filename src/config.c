@@ -1,6 +1,5 @@
 // config.c
 #include "config.h"
-#include "../lib/cupidconf.h"
 #include <strings.h>
 #include <string.h>
 #include <stdio.h>
@@ -8,145 +7,203 @@
 #include <ctype.h>
 #include <ncurses.h>
 
+// Helper function to trim leading whitespace
+static char* ltrim(char *s) {
+    while(isspace((unsigned char)*s)) s++;
+    return s;
+}
+
+// Helper function to trim trailing whitespace
+static void rtrim(char *s) {
+    char *back = s + strlen(s);
+    while(back > s && isspace((unsigned char)*(back-1))) back--;
+    *back = '\0';
+}
+
+// Helper function to trim both leading and trailing whitespace
+static char* trim(char *s) {
+    rtrim(s);
+    return ltrim(s);
+}
+
 /**
  * Parses the key value from the configuration file.
  * Returns the corresponding key code or -1 on failure.
  */
 static int parse_key(const char *val);
 
+/**
+ * Loads default keybindings into the provided KeyBindings structure.
+ */
 void load_default_keybindings(KeyBindings *kb) {
-    // Navigation keys
-    kb->key_up = KEY_UP;
-    kb->key_down = KEY_DOWN;
-    kb->key_left = KEY_LEFT;
-    kb->key_right = KEY_RIGHT;
-    kb->key_tab = '\t';
-    kb->key_exit = KEY_F(1);
+    kb->key_up      = KEY_UP;
+    kb->key_down    = KEY_DOWN;
+    kb->key_left    = KEY_LEFT;
+    kb->key_right   = KEY_RIGHT;
+    kb->key_tab     = '\t';       // Tab
+    kb->key_exit    = KEY_F(1);   // F1
 
-    // File operations
-    kb->key_edit = 5;    // Ctrl+E
-    kb->key_copy = 3;    // Ctrl+C
-    kb->key_paste = 22;  // Ctrl+V
-    kb->key_cut = 24;    // Ctrl+X
-    kb->key_delete = 4;  // Ctrl+D
-    kb->key_rename = 18; // Ctrl+R
-    kb->key_new = 14;    // Ctrl+N
-    kb->key_save = 19;   // Ctrl+S
-    kb->key_new_dir = 'N'; // Shift+N
+    kb->key_edit    = 5;    // Ctrl+E (ASCII 5)
+    kb->key_copy    = 3;    // Ctrl+C (ASCII 3)
+    kb->key_paste   = 22;   // Ctrl+V (ASCII 22)
+    kb->key_cut     = 24;   // Ctrl+X (ASCII 24)
+    kb->key_delete  = 4;    // Ctrl+D (ASCII 4)
+    kb->key_rename  = 18;   // Ctrl+R (ASCII 18)
+    kb->key_new     = 14;   // Ctrl+N (ASCII 14)
+    kb->key_save    = 19;   // Ctrl+S (ASCII 19)
+    kb->key_new_dir = 14;
+    // Dedicated editing keys
+    kb->edit_up        = KEY_UP;
+    kb->edit_down      = KEY_DOWN;
+    kb->edit_left      = KEY_LEFT;
+    kb->edit_right     = KEY_RIGHT;
+    kb->edit_save      = 19;  // Ctrl+S
+    kb->edit_quit      = 17;  // Ctrl+Q
+    kb->edit_backspace = KEY_BACKSPACE; // ASCII Backspace
 
-    // Editing keys
-    kb->edit_up = KEY_UP;
-    kb->edit_down = KEY_DOWN;
-    kb->edit_left = KEY_LEFT;
-    kb->edit_right = KEY_RIGHT;
-    kb->edit_save = 7;   // Ctrl+G
-    kb->edit_quit = 17;  // Ctrl+Q
-    kb->edit_backspace = KEY_BACKSPACE;
-
-    // Default label width
-    kb->info_label_width = 20;
+    // file 
+    kb->info_label_width = 20; 
 }
 
+/**
+ * Loads user configuration from a file, overriding defaults.
+ * Returns the number of errors encountered. 0 means success.
+ */
 int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, size_t buffer_size) {
-    // Clear error_buffer
-    if (error_buffer && buffer_size > 0) {
-        error_buffer[0] = '\0';
-    }
-    
-    // 1) Load config via CupidConf
-    cupidconf_t *conf = cupidconf_load(filepath);
-    if (!conf) {
-        // If file not found or parse error, set an error message (non-fatal).
+    FILE *fp = fopen(filepath, "r");
+    if (!fp) {
+        // No config file found; keep defaults
         snprintf(error_buffer, buffer_size, 
-                 "Configuration file not found or parse error at: %s\nUsing defaults.\n",
-                 filepath);
-        return 1; // Non-fatal, we still have defaults
+                "Configuration file not found. Using default settings.\n");
+        return 1; // Indicate one "non-fatal" error
     }
 
-    // 2) For each known key in KeyBindings, retrieve from config
-    //    We read them as strings, then parse them with parse_key.
-    struct {
-        const char *cfg_key_name; // name in the config file
-        int        *kb_field;     // pointer to the KeyBindings field
-    } table[] = {
-        {"key_up",      &kb->key_up},
-        {"key_down",    &kb->key_down},
-        {"key_left",    &kb->key_left},
-        {"key_right",   &kb->key_right},
-        {"key_tab",     &kb->key_tab},
-        {"key_exit",    &kb->key_exit},
-        {"key_edit",    &kb->key_edit},
-        {"key_copy",    &kb->key_copy},
-        {"key_paste",   &kb->key_paste},
-        {"key_cut",     &kb->key_cut},
-        {"key_delete",  &kb->key_delete},
-        {"key_rename",  &kb->key_rename},
-        {"key_new",     &kb->key_new},
-        {"key_save",    &kb->key_save},
-        {"key_new_dir", &kb->key_new_dir},
+    char line[256];
+    size_t error_count = 0;
+    size_t line_number = 0;
 
-        {"edit_up",        &kb->edit_up},
-        {"edit_down",      &kb->edit_down},
-        {"edit_left",      &kb->edit_left},
-        {"edit_right",     &kb->edit_right},
-        {"edit_save",      &kb->edit_save},
-        {"edit_quit",      &kb->edit_quit},
-        {"edit_backspace", &kb->edit_backspace},
-        {NULL, NULL} // sentinel
-    };
+    while (fgets(line, sizeof(line), fp)) {
+        line_number++;
 
-    int errors = 0;
+        // Remove trailing newline if present
+        char *p = strchr(line, '\n');
+        if (p) *p = '\0';
 
-    // 3) Loop table[] & parse the user's config
-    for (int i = 0; table[i].cfg_key_name != NULL; i++) {
-        const char *val = cupidconf_get(conf, table[i].cfg_key_name);
-        if (!val) {
-            // Not present in config, skip. (We keep default.)
+        // Remove inline comments by truncating at the first '#'
+        p = strchr(line, '#');
+        if (p) *p = '\0';
+
+        // Trim the line
+        char *trimmed_line = trim(line);
+
+        // Skip empty lines
+        if (strlen(trimmed_line) == 0)
+            continue;
+
+        // Must have key_name=VALUE
+        char *eq = strchr(trimmed_line, '=');
+        if (!eq) {
+            // Malformed line
+            if (error_count < buffer_size - 1) {
+                snprintf(error_buffer + strlen(error_buffer),
+                        buffer_size - strlen(error_buffer) - 1,
+                        "Line %zu: Malformed line (no '='): %s\n",
+                        line_number, trimmed_line);
+            }
+            error_count++;
             continue;
         }
 
+        *eq = '\0'; // split at '='
+        char *name = trim(trimmed_line);
+        char *val  = trim(eq + 1);
+
+        // Skip if name or val are empty
+        if (strlen(name) == 0 || strlen(val) == 0) {
+            if (error_count < buffer_size - 1) {
+                snprintf(error_buffer + strlen(error_buffer),
+                        buffer_size - strlen(error_buffer) - 1,
+                        "Line %zu: Malformed line (empty key or value): %s=%s\n",
+                        line_number, name, val);
+            }
+            error_count++;
+            continue;
+        }
+
+        // Check for label_width config first (which requires integer parsing)
+        if (strcasecmp(name, "info_label_width") == 0 ||
+            strcasecmp(name, "label_width") == 0)
+        {
+            char *endptr;
+            int user_val = strtol(val, &endptr, 10);
+            if (*endptr != '\0') {
+                // Not a clean integer
+                if (error_count < buffer_size - 1) {
+                    snprintf(error_buffer + strlen(error_buffer),
+                            buffer_size - strlen(error_buffer) - 1,
+                            "Line %zu: Invalid label width: %s\n",
+                            line_number, val);
+                }
+                error_count++;
+            } else {
+                kb->info_label_width = user_val;
+            }
+            continue; // we handled this line
+        }
+
+        // Else parse as a "key" using parse_key()
         int parsed = parse_key(val);
         if (parsed == -1) {
-            // If you track line numbers or want an error
-            errors++;
-            if (error_buffer && (strlen(error_buffer) + 128 < buffer_size)) {
+            // Invalid key value
+            if (error_count < buffer_size - 1) {
                 snprintf(error_buffer + strlen(error_buffer),
-                         buffer_size - strlen(error_buffer),
-                         "Invalid value for %s: %s\n",
-                         table[i].cfg_key_name, val);
+                        buffer_size - strlen(error_buffer) - 1,
+                        "Line %zu: Invalid key value for '%s': %s\n",
+                        line_number, name, val);
             }
+            error_count++;
             continue;
         }
 
-        // Otherwise store it
-        *(table[i].kb_field) = parsed;
-    }
-
-    // 4) If user wants to override label_width
-    const char *label_val = cupidconf_get(conf, "info_label_width");
-    if (!label_val) {
-        // Maybe fallback to 'label_width' wildcard or synonyms
-        label_val = cupidconf_get(conf, "label_width");
-    }
-    if (label_val) {
-        char *endptr;
-        int user_val = strtol(label_val, &endptr, 10);
-        if (*endptr == '\0') {
-            kb->info_label_width = user_val;
-        } else {
-            errors++;
-            if (error_buffer && (strlen(error_buffer) + 128 < buffer_size)) {
+        // Map the parsed key to the struct field using the macro
+        if (false) { }  // Dummy if to allow chaining the else if’s
+        CUPID_CFGCMP(key_up)
+        CUPID_CFGCMP(key_down)
+        CUPID_CFGCMP(key_left)
+        CUPID_CFGCMP(key_right)
+        CUPID_CFGCMP(key_tab)
+        CUPID_CFGCMP(key_exit)
+        CUPID_CFGCMP(key_edit)
+        CUPID_CFGCMP(key_copy)
+        CUPID_CFGCMP(key_paste)
+        CUPID_CFGCMP(key_cut)
+        CUPID_CFGCMP(key_delete)
+        CUPID_CFGCMP(key_rename)
+        CUPID_CFGCMP(key_new)
+        CUPID_CFGCMP(key_save)
+        CUPID_CFGCMP(key_new_dir)
+        // Editing mode keys
+        CUPID_CFGCMP(edit_up)
+        CUPID_CFGCMP(edit_down)
+        CUPID_CFGCMP(edit_left)
+        CUPID_CFGCMP(edit_right)
+        CUPID_CFGCMP(edit_save)
+        CUPID_CFGCMP(edit_quit)
+        CUPID_CFGCMP(edit_backspace)
+        else {
+            // Unknown configuration key; you can add error handling here.
+            if (error_count < buffer_size - 1) {
                 snprintf(error_buffer + strlen(error_buffer),
-                         buffer_size - strlen(error_buffer),
-                         "Invalid label_width: %s\n", label_val);
+                        buffer_size - strlen(error_buffer) - 1,
+                        "Line %zu: Unknown configuration key: %s\n", line_number, name);
             }
+            error_count++;
         }
+
     }
 
-    // 5) Free conf
-    cupidconf_free(conf);
-
-    return errors; // 0 means no errors
+    fclose(fp);
+    return error_count;
 }
 
 /**

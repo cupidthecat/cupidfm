@@ -235,14 +235,15 @@ long get_directory_size(const char *dir_path) {
     closedir(dir);
     return total_size;
 }
-/**
- * Function to display file information in a window
- *
- * @param window the window to display the file information
- * @param file_path the path to the file
- * @param max_x the maximum width of the window
- */
+
+// Add forward declaration for render_text_buffer
+void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int cursor_line, int cursor_col);
+
 void display_file_info(WINDOW *window, const char *file_path, int max_x) {
+    // Clear the entire window first to remove ghost characters
+    werase(window);
+    box(window, 0, 0);  // Redraw border after erase
+    
     struct stat file_stat;
 
     // Attempt to retrieve file statistics
@@ -296,7 +297,77 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
         }
     }
     magic_close(magic_cookie);
+
+    // Add window dimension variables
+    int max_y, content_height;
+    getmaxyx(window, max_y, max_x);
+    content_height = max_y - 2;  // Subtract 2 for borders
+
+    // Initialize text buffer and scroll position
+    static int start_line = 0;
+    static char last_file[MAX_PATH_LENGTH] = {0};
+    TextBuffer text_buffer;
+    init_text_buffer(&text_buffer);
+
+    // Reset scroll position when viewing new file
+    if(strcmp(file_path, last_file) != 0) {
+        start_line = 0;
+        strncpy(last_file, file_path, MAX_PATH_LENGTH-1);
+    }
+
+    // Read file content into buffer
+    FILE *fp = fopen(file_path, "r");
+    if (fp) {
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            // Handle buffer expansion
+            if (text_buffer.num_lines >= text_buffer.capacity) {
+                text_buffer.capacity *= 2;
+                text_buffer.lines = realloc(text_buffer.lines, 
+                    text_buffer.capacity * sizeof(char*));
+            }
+            text_buffer.lines[text_buffer.num_lines++] = strdup(line);
+        }
+        fclose(fp);
+    }
+
+    // Add scroll position tracking
+    int ch;
+    
+    // Enable non-blocking input for preview
+    wtimeout(window, 10);
+    keypad(window, TRUE);
+    
+    do {
+        // Handle scrolling input
+        ch = wgetch(window);
+        switch(ch) {
+            case KEY_DOWN:
+                if (start_line < text_buffer.num_lines - content_height)
+                    start_line++;
+                break;
+            case KEY_UP:
+                if (start_line > 0)
+                    start_line--;
+                break;
+            case KEY_NPAGE:  // Page down
+                start_line += content_height;
+                if (start_line > text_buffer.num_lines - content_height)
+                    start_line = text_buffer.num_lines - content_height;
+                break;
+            case KEY_PPAGE:  // Page up
+                start_line -= content_height;
+                if (start_line < 0)
+                    start_line = 0;
+                break;
+        }
+        
+        // Render text buffer with updated start_line
+        render_text_buffer(window, &text_buffer, &start_line, 0, 0);
+        
+    } while (ch != 27 && ch != '\t');  // Exit on ESC (ASCII 27) or Tab
 }
+
 /**
  * Function to render and manage scrolling within the text buffer
  *
@@ -329,8 +400,9 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
 
     // Ensure start_line doesn't go out of bounds
     if (*start_line < 0) *start_line = 0;
-    if (buffer->num_lines > content_height) {
-        *start_line = MIN(*start_line, buffer->num_lines - content_height);
+    int max_possible_start = buffer->num_lines - content_height;
+    if (max_possible_start > 0) {
+        *start_line = MIN(*start_line, max_possible_start);
     } else {
         *start_line = 0;
     }
@@ -368,13 +440,14 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
 
         // Print the visible portion of the line
         if (h_scroll < line_length) {
+            int printable_length = MIN(content_width, line_length - h_scroll);
             mvwprintw(window, i + 1, content_start, "%.*s", 
-                     content_width,
-                     line + h_scroll);  // Offset the line by h_scroll
+                     printable_length,
+                     line + h_scroll);
         } else {
             mvwprintw(window, i + 1, content_start, "%*s", 
                      content_width,
-                     "");  // Print empty string if line is shorter than content_width
+                     "");
         }
 
         // If this is the cursor line, highlight the cursor position
@@ -628,7 +701,7 @@ void edit_file_in_terminal(WINDOW *window,
                 cursor_col = prev_len;
             }
         }
-        // 9) Possibly an extra “exit edit” keystroke
+        // 9) Possibly an extra "exit edit" keystroke
         else if (ch == kb->edit_quit) {
             exit_edit_mode = true;
         }
@@ -661,7 +734,6 @@ void edit_file_in_terminal(WINDOW *window,
     }
     free(text_buffer.lines);
 }
-
 
 /**
  * Checks if the given file has a supported MIME type.

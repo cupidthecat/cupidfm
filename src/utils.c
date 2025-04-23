@@ -190,11 +190,23 @@ void preview_file(const char *filename) {
                 mvaddch(row, col++, '?');
             }
         }
+        // Clear remaining columns in this row
+        while (col < max_cols - 1) {
+            mvaddch(row, col++, ' ');
+        }
         row++;
         
         if (row >= max_rows - 1) {
             break;
         }
+    }
+    // Clear any remaining rows in the preview window
+    while (row < max_rows - 1) {
+        col = 0;
+        while (col < max_cols - 1) {
+            mvaddch(row, col++, ' ');
+        }
+        row++;
     }
     
     refresh();

@@ -113,6 +113,10 @@ static const char* keycode_to_string(int keycode) {
  * @param max_x the maximum number of columns in the window
  */
 void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x) {
+    // Clear line before writing (WSL compatibility)
+    wmove(window, *line_num, 1);
+    wclrtoeol(window);
+    
     if (level == 0) {
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
         (*line_num)++;
@@ -171,6 +175,10 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
     // Check if no entries were found
     if (entry_count == 0) {
+        // Clear the line before writing (WSL fix)
+        wmove(window, *line_num, 1);
+        wclrtoeol(window);
+        
         mvwprintw(window, *line_num, 2 + level * 2, "This directory is empty");
         (*line_num)++;
     }
@@ -184,35 +192,23 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         }
     }
 
-    // Display collected entries
+    // Optimized directory tree rendering
     for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
-        const char *emoji;
-        if (entries[i].is_dir) {
-            emoji = "📁";
-        } else if (magic_cookie) { // if magic fails 
-            size_t name_len = strlen(entries[i].name);
-            if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                strcpy(full_path, dir_path);
-                if (full_path[dir_path_len - 1] != '/') {
-                    strcat(full_path, "/");
-                }
-                strcat(full_path, entries[i].name);
-                const char *mime_type = magic_file(magic_cookie, full_path);
-                emoji = get_file_emoji(mime_type, entries[i].name);
-            } else {
-                emoji = "📄";
-            }
-        } else {
-            emoji = "📄";
+        // Clear entire line before writing
+        wmove(window, *line_num, 1);
+        wclrtoeol(window);
+        
+        // Write new content
+        mvwaddstr(window, *line_num, 1 + (level * 2), entries[i].is_dir ? "📁 " : "📄 ");
+        waddstr(window, entries[i].name);
+        
+        // Increment line counter
+        if (++(*line_num) >= max_y - 1) break;
+        
+        // Batch updates every 10 lines
+        if ((*line_num % 10) == 0) {
+            wnoutrefresh(window);
         }
-
-        mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
-                  emoji, max_x - 4 - level * 2, entries[i].name);
-
-        char perm[10];
-        snprintf(perm, sizeof(perm), "%o", entries[i].mode & 0777);
-        mvwprintw(window, *line_num, max_x - 10, "%s", perm);
-        (*line_num)++;
 
         // Only recurse into directories if we have space
         if (entries[i].is_dir && *line_num < max_y - 1) {
@@ -228,8 +224,10 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         }
     }
 
-    if (magic_cookie) {
-        magic_close(magic_cookie);
+    // Clear remaining lines in directory view
+    for (int y = *line_num; y < max_y - 1; y++) {
+        wmove(window, y, 1);
+        wclrtoeol(window);
     }
 }
 
@@ -257,12 +255,7 @@ int get_total_lines(const char *file_path) {
 }
 
 // Function to draw the directory window
-void draw_directory_window(
-        WINDOW *window,
-        const char *directory,
-        Vector *files_vector,
-        CursorAndSlice *cas
-) {
+void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector, CursorAndSlice *cas) {
     int cols;
     int __attribute__((unused)) throwaway;
     getmaxyx(window, throwaway, cols);  // Get window dimensions
@@ -349,102 +342,118 @@ void draw_directory_window(
  * @param window the window to draw the preview in
  * @param current_directory the current directory
  * @param selected_entry the selected entry
- * @param start_line the starting line of the preview
+ * @param start_line the start line for displaying file content
  */
 void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
-    // Clear the window and draw a border
-    werase(window);
+    // Clear entire window including borders
+    wclear(window);
     box(window, 0, 0);
+    int max_y, max_x;
 
-    // Get window dimensions
-    int max_x, max_y;
     getmaxyx(window, max_y, max_x);
-
-    // Display the selected entry path
-    char file_path[MAX_PATH_LENGTH];
-    path_join(file_path, current_directory, selected_entry);
-    mvwprintw(window, 0, 2, "Selected Entry: %.*s", max_x - 4, file_path);
-
-    // Attempt to retrieve file information
+    for (int y = 1; y < max_y - 1; ++y) {
+    // start at column 1, fill max_x-2 chars with spaces
+    mvwhline(window, y, 1, ' ', max_x - 2);
+    }
+    // Declare needed variables
     struct stat file_stat;
+    char file_path[MAX_PATH_LENGTH];
+    
+    // Construct full path using current_directory parameter
+    path_join(file_path, current_directory, selected_entry);
+    
+    // Get file stats
     if (stat(file_path, &file_stat) == -1) {
-        mvwprintw(window, 2, 2, "Unable to retrieve file information");
-        wrefresh(window);
+        mvwprintw(window, 2, 2, "Error getting file info");
         return;
     }
-    
-    // Display file size with emoji
-    char fileSizeStr[20];
-    format_file_size(fileSizeStr, file_stat.st_size);
-    mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
 
-    // Display file permissions with emoji
-    char permissions[10];
-    snprintf(permissions, sizeof(permissions), "%o", file_stat.st_mode & 0777);
-    mvwprintw(window, 3, 2, "🔒 Permissions: %s", permissions);
+    // Get dimensions with cursor temporarily hidden
+    curs_set(0);
+    getmaxyx(window, max_y, max_x);
 
-    // Display last modification time with emoji
-    char modTime[50];
-    strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
-    mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
-    
-    // Display MIME type using libmagic
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
-        const char *mime_type = magic_file(magic_cookie, file_path);
-        mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
-        magic_close(magic_cookie);
-    } else {
-        mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
+    // Clear metadata area PROPERLY
+    for (int y = 0; y <= 3; y++) {
+        wmove(window, y, 1);
+        whline(window, ' ', max_x - 2);  // Full line clear with spaces
     }
 
-    // If the file is a directory, display the directory contents
-    if (S_ISDIR(file_stat.st_mode)) {
-        int line_num = 7;
-        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x);
+    // Draw updated metadata
+    wattron(window, A_BOLD);
+    mvwprintw(window, 0, 2, "Selected: %.*s", max_x - 12, selected_entry);
+    
+    // File size, permissions, and modification time
+    char size_buf[20], perm_buf[10], time_buf[50];
+    format_file_size(size_buf, file_stat.st_size);
+    snprintf(perm_buf, sizeof(perm_buf), "%o", file_stat.st_mode & 0777);
+    strftime(time_buf, sizeof(time_buf), "%c", localtime(&file_stat.st_mtime));
+    
+    mvwprintw(window, 2, 2, "📏 %s | 🔒 %s | 🕒 %s", 
+             size_buf, perm_buf, time_buf);
 
-        // If the directory is empty, show a message
-      
-    } else if (is_supported_file_type(file_path)) {
-        // Display file preview for supported types
+    // MIME type detection
+    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
+    if (magic_cookie && magic_load(magic_cookie, NULL) == 0) {
+        const char *mime_type = magic_file(magic_cookie, file_path);
+        mvwprintw(window, 3, 2, "MIME: %s", mime_type ? mime_type : "Unknown");
+        magic_close(magic_cookie);
+    }
+    wattroff(window, A_BOLD);
+
+    // Clear content area
+    int content_start = 5;
+    for (int y = content_start; y < max_y - 1; y++) {
+        wmove(window, y, 1);
+        whline(window, ' ', max_x - 2);  // Clear entire line with spaces
+    }
+
+    // Directory tree preview
+    if (S_ISDIR(file_stat.st_mode)) {
+        int line = content_start;
+        // Clear each line before drawing directory entry
+        while (line < max_y - 1) {
+            wmove(window, line, 1);
+            whline(window, ' ', max_x - 2);
+            line++;
+        }
+        line = content_start;  // Reset line counter
+        show_directory_tree(window, file_path, 0, &line, max_y, max_x);
+    } 
+    else if (is_supported_file_type(file_path)) {
         FILE *file = fopen(file_path, "r");
         if (file) {
             char line[256];
-            int line_num = 7;
-            int current_line = 0;
-
-            // Skip lines until start_line
-            while (current_line < start_line && fgets(line, sizeof(line), file)) {
-                current_line++;
-            }
-
-            // Display file content from start_line onward
-            while (fgets(line, sizeof(line), file) && line_num < max_y - 1) {
-                line[strcspn(line, "\n")] = '\0'; // Remove newline character
-
-                // Replace tabs with spaces
-                for (char *p = line; *p; p++) {
-                    if (*p == '\t') {
-                        *p = ' ';
-                    }
+            int preview_line = content_start;
+            
+            // Skip lines according to start_line
+            for (int i = 0; i < start_line; i++) {
+                if (!fgets(line, sizeof(line), file)) {
+                    break;
                 }
-
-                mvwprintw(window, line_num++, 2, "%.*s", max_x - 4, line);
             }
 
+            // Now draw content
+            while (fgets(line, sizeof(line), file) && preview_line < max_y - 1) {
+                wmove(window, preview_line, 1);
+                whline(window, ' ', max_x - 2);
+                mvwaddnstr(window, preview_line++, 2, line, max_x - 4);
+            }
             fclose(file);
-
-            if (line_num < max_y - 1) {
-                mvwprintw(window, line_num++, 2, "--------------------------------");
-                mvwprintw(window, line_num++, 2, "[End of file]");
-            }
-        } else {
-            mvwprintw(window, 7, 2, "Unable to open file for preview");
         }
+    } else {
+        /* wipe every row in the content area first */
+        for (int y = content_start; y < max_y - 1; ++y) {
+            wmove(window, y, 1);
+            whline(window, ' ', max_x - 2);  // Clear entire line with spaces
+        }
+
+        /* print the one-line warning */
+        mvwprintw(window, content_start, 2, "⚠️  Binary or unsupported file type");
     }
 
-    // Refresh to show changes
-    wrefresh(window);
+       wrefresh(window);
+
+    curs_set(1);
 }
 
 /** Function to handle cursor movement in the directory window
@@ -465,8 +474,8 @@ void fix_cursor(CursorAndSlice *cas) {
         cas->start = cas->cursor - visible_lines + 1;
     }
 
-    // Ensure start position is valid
-    cas->start = MIN(cas->start, cas->num_files - visible_lines);
+    // Ensure start position is valid, especially when num_files < visible_lines
+    cas->start = MIN(cas->start, MAX(0, cas->num_files - visible_lines));
     cas->start = MAX(0, cas->start);
 }
 
@@ -528,7 +537,9 @@ void redraw_all_windows(AppState *state) {
     fix_cursor(&state->dir_window_cas);
 
     // Draw borders for subwindows
+    werase(dirwin);
     box(dirwin, 0, 0);
+    werase(previewwin);
     box(previewwin, 0, 0);
 
     // Redraw content
@@ -646,6 +657,10 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     dir_window_cas->num_lines = LINES - 5;
     dir_window_cas->num_files = Vector_len(*files);
 
+    // Force redraw to clear any previous entries
+    werase(dirwin);
+    wrefresh(dirwin);
+
     // Set selected_entry to the first file in the parent directory
     if (dir_window_cas->num_files > 0) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
@@ -674,9 +689,8 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     if (!FileAttr_is_dir(current_file)) {
         werase(notifwin);
         show_notification(notifwin, "Selected entry is not a directory");
-        should_clear_notif = false;
-
         wrefresh(notifwin);
+        should_clear_notif = false;
         return;
     }
 
@@ -684,7 +698,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     char new_path[MAX_PATH_LENGTH];
     path_join(new_path, *current_directory, selected_entry);
 
-    // Check if we’re not re-entering the same directory path
+    // Check if we're not re-entering the same directory path
     if (strcmp(new_path, *current_directory) == 0) {
         werase(notifwin);
         show_notification(notifwin, "Already in this directory");
@@ -722,6 +736,10 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     dir_window_cas->num_lines = LINES - 5;
     dir_window_cas->num_files = Vector_len(*files);
 
+    // Force redraw to clear any previous entries
+    werase(dirwin);
+    wrefresh(dirwin);
+	
     // Set selected_entry to the first file in the new directory
     if (dir_window_cas->num_files > 0) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
@@ -729,7 +747,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         state->selected_entry = "";
     }
 
-    // If there’s only one entry, automatically select it
+    // If there's only one entry, automatically select it
     if (dir_window_cas->num_files == 1) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
     }
