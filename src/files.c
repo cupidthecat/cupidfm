@@ -314,8 +314,8 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
     const char *emoji     = get_file_emoji(mime_type, file_path);
 
     if (!mime_type) {
-        mvwprintw(window, 5, 2, "%-*s %s",
-                   label_width, emoji, "MIME type:", "Unknown");
+        mvwprintw(window, 5, 2, "%-*s %s %s",
+                   label_width, "❓", "MIME type:", "Unknown");
     } else {
         size_t value_width = (size_t)(max_x - 2 - label_width - 1);
         if (strlen(mime_type) > value_width) {
