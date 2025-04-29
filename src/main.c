@@ -82,13 +82,11 @@ static void get_actual_name(const char *display_name, char *out, size_t size) {
     }
 }
 
-/* ──────────────────────────────────────────────────────────
- * Add this helper anywhere in main.c (e.g. just above
- * get_total_lines()).
- * It counts how many lines the recursive directory tree
- * will occupy so we can clamp scrolling for previews that
- * show directories or symlinks-to-directories.
- * ──────────────────────────────────────────────────────────*/
+/** Function to count the number of lines in a directory tree
+ *
+ * @param dir_path the path to the directory
+ * @return the number of lines in the directory tree
+ */
 static int count_directory_tree_lines(const char *dir_path) {
     int lines = 1;                                     /* header line      */
 
@@ -119,6 +117,11 @@ static int count_directory_tree_lines(const char *dir_path) {
     return lines;
 }
 
+/** Function to convert a keycode to a string
+ *
+ * @param keycode the keycode to convert
+ * @return the string representation of the keycode
+ */
 static const char* keycode_to_string(int keycode) {
     static char buf[32];
 
@@ -285,6 +288,11 @@ void show_directory_tree(WINDOW *window,
     }
 }
 
+/** Function to check if a filename is hidden
+ *
+ * @param filename the filename to check
+ * @return true if the filename is hidden, false otherwise
+ */
 bool is_hidden(const char *filename) {
     return filename[0] == '.' && (strlen(filename) == 1 || (filename[1] != '.' && filename[1] != '\0'));
 }
@@ -308,7 +316,13 @@ int get_total_lines(const char *file_path) {
     return total_lines;
 }
 
-// Function to draw the directory window
+/** Function to draw the directory window
+ *
+ * @param window the window to draw the directory in
+ * @param directory the directory to draw
+ * @param files_vector the vector of files to draw
+ * @param cas the cursor and slice to draw
+ */
 void draw_directory_window(
         WINDOW *window,
         const char *directory,
@@ -856,7 +870,11 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
     last_scroll_time = current_time;
 }
 
-// Function to handle banner scrolling in a separate thread
+/** Function to handle banner scrolling in a separate thread
+ *
+ * @param arg the argument to pass to the thread
+ * @return NULL
+ */
 void *banner_scrolling_thread(void *arg) {
     WINDOW *window = (WINDOW *)arg;
     int banner_offset = 0;
@@ -884,6 +902,10 @@ void *banner_scrolling_thread(void *arg) {
     return NULL;
 }
 
+/** Function to cleanup temporary files
+ *
+ * @param void
+ */
 void cleanup_temp_files() {
     char command[1024];
     snprintf(command, sizeof(command), "rm -rf /tmp/cupidfm_*_%d", getpid());

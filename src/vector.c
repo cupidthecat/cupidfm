@@ -100,8 +100,12 @@ void Vector_sane_cap(Vector *v) {
     v->IMPL.cap = v->IMPL.len * 2;
     v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
 }
-
-
+/**
+ * Function to reserve memory for a Vector
+ *
+ * @param v the Vector to reserve memory for
+ * @param want the amount of memory to reserve
+ */
 void Vector_reserve(Vector *v, size_t want)
 {
     if (v->IMPL.cap < want) {

@@ -156,7 +156,12 @@ FileAttr mk_attr(const char *name, bool is_dir, ino_t inode) {
         return NULL;
     }
 }
-// Function to free the allocated memory for a FileAttr
+
+/**
+ * Function to free the allocated memory for a FileAttr
+ *
+ * @param fa the FileAttr to free
+ */
 void free_attr(FileAttr fa) {
     if (fa != NULL) {
         free(fa->name);  // Free the allocated memory for the name
@@ -164,7 +169,11 @@ void free_attr(FileAttr fa) {
     }
 }
 
-// Call once per directory to speed up read() and drop cache at the end.
+/**
+ * Function to advise the directory to be read sequentially 
+ *
+ * @param dirfd the file descriptor of the directory
+ */
 static void advise_dir(int dirfd) {
     posix_fadvise(dirfd, 0, 0, POSIX_FADV_SEQUENTIAL);
 }
@@ -770,7 +779,6 @@ bool is_supported_file_type(const char *filename) {
 
     return supported;
 }
-
 
 /*  Remove every FileAttr in the Vector but keep the Vector itself
  *  (useful when you want to re-use the same Vector instance).        */
