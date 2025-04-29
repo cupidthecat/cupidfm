@@ -263,56 +263,73 @@ long get_directory_size(const char *dir_path) {
 void display_file_info(WINDOW *window, const char *file_path, int max_x) {
     struct stat file_stat;
 
-    // Attempt to retrieve file statistics
     if (stat(file_path, &file_stat) == -1) {
         mvwprintw(window, 2, 2, "Unable to retrieve file information");
         return;
     }
 
-    // NEW: get from KeyBindings or from wherever you store it:
-    int label_width = g_kb.info_label_width;  
+    int label_width = g_kb.info_label_width;
 
-    // Display File Size or Directory Size
-   if (S_ISDIR(file_stat.st_mode)) {
-        long dir_size = get_directory_size(file_path);
-        
-        char fileSizeStr[20] = "Uncalculable";
-        if (dir_size != -2)
-            format_file_size(fileSizeStr, dir_size);
-        mvwprintw(window, 2, 2, "%-*s %s", label_width, "📁 Directory Size:", fileSizeStr);
+    if (S_ISDIR(file_stat.st_mode)) {
+        struct statfs sfs;
+        bool virtual_fs = (statfs(file_path, &sfs) == 0 && is_virtual_fstype(sfs.f_type));
+
+        if (virtual_fs) {
+            // Don't try to size a pseudo–FS
+            mvwprintw(window, 2, 2, "%-*s %s",
+                       label_width, "📁 Directory Size:", "-");
+        } else {
+            long dir_size = get_directory_size(file_path);
+            if (dir_size < 0) {
+                mvwprintw(window, 2, 2, "%-*s %s",
+                           label_width, "📁 Directory Size:", "Uncalculable");
+            } else {
+                char fileSizeStr[20];
+                format_file_size(fileSizeStr, (size_t)dir_size);
+                mvwprintw(window, 2, 2, "%-*s %s",
+                           label_width, "📁 Directory Size:", fileSizeStr);
+            }
+        }
     } else {
         char fileSizeStr[20];
         format_file_size(fileSizeStr, file_stat.st_size);
-        mvwprintw(window, 2, 2, "%-*s %s", label_width, "📏 File Size:", fileSizeStr); // Updated with emoji
+        mvwprintw(window, 2, 2, "%-*s %s",
+                   label_width, "📏 File Size:", fileSizeStr);
     }
-    // Display MIME type using libmagic
+
+    // MIME type display follows unchanged...
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
-    if (magic_cookie == NULL) {
-        mvwprintw(window, 5, 2, "%-*s %s", label_width, "📂 MIME type:", "Error initializing magic library");
+    if (!magic_cookie) {
+        mvwprintw(window, 5, 2, "%-*s %s",
+                   label_width, "📂 MIME type:", "Error initializing magic");
         return;
     }
     if (magic_load(magic_cookie, NULL) != 0) {
-        mvwprintw(window, 5, 2, "%-*s %s", label_width, "📂 MIME type:", magic_error(magic_cookie));
+        mvwprintw(window, 5, 2, "%-*s %s",
+                   label_width, "📂 MIME type:", magic_error(magic_cookie));
         magic_close(magic_cookie);
         return;
     }
     const char *mime_type = magic_file(magic_cookie, file_path);
-    const char *emoji = get_file_emoji(mime_type, file_path);
-    if (mime_type == NULL) {
-        mvwprintw(window, 5, 2, "%-*s %s", label_width, "📂 MIME type:", "Unknown (error)");
-    } else {
-        size_t value_width = (size_t)(max_x - 2 - label_width - 1); // 2 for left margin, 1 for space
+    const char *emoji     = get_file_emoji(mime_type, file_path);
 
-        // Truncate MIME type string if it's too long
+    if (!mime_type) {
+        mvwprintw(window, 5, 2, "%-*s %s",
+                   label_width, emoji, "MIME type:", "Unknown");
+    } else {
+        size_t value_width = (size_t)(max_x - 2 - label_width - 1);
         if (strlen(mime_type) > value_width) {
-            char truncated_mime[value_width + 1];
-            strncpy(truncated_mime, mime_type, value_width);
-            truncated_mime[value_width] = '\0';
-            mvwprintw(window, 5, 2, "%-*s %s %s", label_width, emoji, "MIME type:", truncated_mime);
+            char truncated[value_width+1];
+            strncpy(truncated, mime_type, value_width);
+            truncated[value_width] = '\0';
+            mvwprintw(window, 5, 2, "%-*s %s %s",
+                       label_width, emoji, "MIME type:", truncated);
         } else {
-            mvwprintw(window, 5, 2, "%-*s %s %s", label_width, emoji, "MIME type:", mime_type);
+            mvwprintw(window, 5, 2, "%-*s %s %s",
+                       label_width, emoji, "MIME type:", mime_type);
         }
     }
+
     magic_close(magic_cookie);
 }
 /**

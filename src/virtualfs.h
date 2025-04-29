@@ -1,20 +1,18 @@
+// src/virtualfs.h
 #ifndef VIRTUALFS_H
 #define VIRTUALFS_H
 
 #include <stdbool.h>
 #include <sys/statfs.h>
 
-// Include Linux-specific magic numbers when available
 #ifdef __linux__
-#include <linux/magic.h>
+#  include <linux/magic.h>
 #endif
 
-/* Returns true if the statfs type represents a pseudo / memory fs. */
+/**
+ * Returns true if the statfs type represents a pseudo / memory fs.
+ */
 static inline bool is_virtual_fstype(long t) {
-    (void)t;  // Suppress unused parameter warning when no FS types are defined
-    
-    /* Values are from <linux/magic.h>. Wrap each one with #ifdef so the
-       code still builds on non-Linux systems that do not define them. */
 #ifdef PROC_SUPER_MAGIC
     if (t == PROC_SUPER_MAGIC)      return true;  // procfs
 #endif
@@ -37,9 +35,37 @@ static inline bool is_virtual_fstype(long t) {
     if (t == OVERLAYFS_SUPER_MAGIC) return true;  // overlayfs
 #endif
 #ifdef FUSE_SUPER_MAGIC
-    if (t == FUSE_SUPER_MAGIC)      return true;  // FUSE filesystems
+    if (t == FUSE_SUPER_MAGIC)      return true;  // fuse
 #endif
+#ifdef SQUASHFS_MAGIC
+    if (t == SQUASHFS_MAGIC)        return true;  // squashfs (e.g. /snap)
+#endif
+#ifdef SECURITYFS_MAGIC
+    if (t == SECURITYFS_MAGIC)      return true;  // securityfs
+#endif
+#ifdef DEBUGFS_MAGIC
+    if (t == DEBUGFS_MAGIC)         return true;  // debugfs
+#endif
+#ifdef TRACEFS_MAGIC
+    if (t == TRACEFS_MAGIC)         return true;  // tracefs
+#endif
+#ifdef CONFIGFS_MAGIC
+    if (t == CONFIGFS_MAGIC)        return true;  // configfs
+#endif
+#ifdef MQUEUE_MAGIC
+    if (t == MQUEUE_MAGIC)          return true;  // POSIX mqueue
+#endif
+#ifdef AUTOFS_SUPER_MAGIC
+    if (t == AUTOFS_SUPER_MAGIC)    return true;  // autofs
+#endif
+#ifdef BPF_FS_MAGIC
+    if (t == BPF_FS_MAGIC)          return true;  // bpffs
+#endif
+#ifdef EFIVARFS_MAGIC
+    if (t == EFIVARFS_MAGIC)        return true;  // efivarfs
+#endif
+
     return false;
 }
 
-#endif // VIRTUALFS_H 
+#endif // VIRTUALFS_H
