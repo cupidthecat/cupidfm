@@ -260,7 +260,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Optimize file loading performance for large directories
 - [ ] Optimize scrolling
 - [ ] Fix long names of files messing up UI
-Performance Improvements
+### Performance Improvements
 - [ ] Implement lazy loading for large directories
 - [ ] Optimize memory usage for file preview
 - [ ] Cache directory contents for faster navigation
