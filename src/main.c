@@ -65,8 +65,8 @@ typedef struct {
 void fix_cursor(CursorAndSlice *cas);
 
 // Function Implementations
-// Extract the real filename from a “name → target” display string
-// Helper to strip off “ → target” from a symlink display name,
+// Extract the real filename from a "name → target" display string
+// Helper to strip off " → target" from a symlink display name,
 // e.g. input:  "my-link → /real/path"  → output: "my-link"
 static void get_actual_name(const char *display_name, char *out, size_t size) {
     const char *sep = strstr(display_name, " → ");
@@ -130,15 +130,16 @@ static const char* keycode_to_string(int keycode) {
  * @param max_y the maximum number of lines in the window
  * @param max_x the maximum number of columns in the window
  */
-void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x) {
+void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x, int *start_line) {
     if (level == 0) {
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
         (*line_num)++;
     }
 
-    // Early exit if we're already past visible area
-    if (*line_num >= max_y - 1) {
-        return;
+    // Skip lines until we reach start_line
+    while (*start_line > 0 && *line_num < max_y - 1) {
+        (*start_line)--;
+        (*line_num)++;
     }
 
     DIR *dir = opendir(dir_path);
@@ -204,6 +205,12 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
     // Display collected entries
     for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
+        // Skip entries if we're still before start_line
+        if (*start_line > 0) {
+            (*start_line)--;
+            continue;
+        }
+
         const char *emoji;
         if (entries[i].is_dir) {
             emoji = "📁";
@@ -232,7 +239,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         mvwprintw(window, *line_num, max_x - 10, "%s", perm);
         (*line_num)++;
 
-        // Only recurse into directories if we have space
+        // Recurse into subdirectories if we have space
         if (entries[i].is_dir && *line_num < max_y - 1) {
             size_t name_len = strlen(entries[i].name);
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
@@ -241,7 +248,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                     strcat(full_path, "/");
                 }
                 strcat(full_path, entries[i].name);
-                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x);
+                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line);
             }
         }
     }
@@ -448,7 +455,8 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     // If directory, show tree; else preview file...
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
-        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x);
+        int adjusted_start = start_line;
+        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, &adjusted_start);
     } else if (is_supported_file_type(file_path)) {
          // Display file preview for supported types
         FILE *file = fopen(file_path, "r");
