@@ -247,8 +247,15 @@ void show_directory_tree(WINDOW *window,
             }
 
             /* Draw entry */
-            const char *emoji = entries[i].is_dir ? "📁" : "📄";
-            if (!entries[i].is_dir) {
+            /* 1.  Make the absolute path for this entry */
+            char full_path[MAX_PATH_LENGTH];
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+
+            /* 2.  Decide which icon to show */
+            const char *emoji;
+            if (entries[i].is_dir) {
+                emoji = "📁";
+            } else {
                 const char *mime_type = magic_file(g_magic_cookie, full_path);
                 emoji = get_file_emoji(mime_type, entries[i].name);
             }
