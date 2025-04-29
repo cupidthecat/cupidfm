@@ -81,6 +81,44 @@ static void get_actual_name(const char *display_name, char *out, size_t size) {
     }
 }
 
+/* ──────────────────────────────────────────────────────────
+ * Add this helper anywhere in main.c (e.g. just above
+ * get_total_lines()).
+ * It counts how many lines the recursive directory tree
+ * will occupy so we can clamp scrolling for previews that
+ * show directories or symlinks-to-directories.
+ * ──────────────────────────────────────────────────────────*/
+static int count_directory_tree_lines(const char *dir_path)
+{
+    int lines = 1;                                     /* header line      */
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) return lines + 1;                        /* "empty" msg      */
+
+    struct dirent *e;
+    struct stat    st;
+    char            full[MAX_PATH_LENGTH];
+    int             has_entries = 0;
+
+    while ((e = readdir(dir)) != NULL)
+    {
+        if (strcmp(e->d_name, ".") == 0 ||
+            strcmp(e->d_name, "..") == 0)
+            continue;
+
+        has_entries  = 1;
+        lines++;                                       /* this entry       */
+
+        snprintf(full, sizeof(full), "%s/%s", dir_path, e->d_name);
+        if (lstat(full, &st) == 0 && S_ISDIR(st.st_mode))
+            lines += count_directory_tree_lines(full); /* recurse          */
+    }
+    closedir(dir);
+
+    if (!has_entries) lines++;                         /* "directory empty"*/
+    return lines;
+}
+
 static const char* keycode_to_string(int keycode) {
     static char buf[32];
 
@@ -130,108 +168,108 @@ static const char* keycode_to_string(int keycode) {
  * @param max_y the maximum number of lines in the window
  * @param max_x the maximum number of columns in the window
  */
-void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x, int *start_line) {
+/** Show a directory tree inside the preview window
+ *
+ *  NOTE: This version fixes scrolling behaviour.  
+ *  We now discard the scrolled-off lines **without** advancing
+ *  the on-screen cursor, so the list actually moves up when
+ *  you scroll down (and vice-versa) instead of sliding inside
+ *  the remaining space.
+ */
+void show_directory_tree(WINDOW *window,
+                         const char *dir_path,
+                         int level,
+                         int *line_num,
+                         int max_y,
+                         int max_x,
+                         int *start_line)
+{
+    /* header -------------------------------------------------------------- */
     if (level == 0) {
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
-        (*line_num)++;
+        (*line_num)++;                           /* consume the header row   */
     }
 
-    // Skip lines until we reach start_line
-    while (*start_line > 0 && *line_num < max_y - 1) {
-        (*start_line)--;
-        (*line_num)++;
-    }
-
+    /* open directory ----------------------------------------------------- */
     DIR *dir = opendir(dir_path);
     if (!dir) return;
 
     struct dirent *entry;
-    struct stat statbuf;
-    char full_path[MAX_PATH_LENGTH];
-    size_t dir_path_len = strlen(dir_path);
+    struct stat    statbuf;
+    char           full_path[MAX_PATH_LENGTH];
+    size_t         dir_path_len = strlen(dir_path);
 
-    // Define window size for entries
-    const int WINDOW_SIZE = 50; // Maximum entries to process at once
-    const int VISIBLE_ENTRIES = max_y - *line_num - 1; // Available lines in window
-    const int MAX_ENTRIES = MIN(WINDOW_SIZE, VISIBLE_ENTRIES);
+    /* read entries (bounded to what can actually be shown) --------------- */
+    const int WINDOW_SIZE      = 50;
+    const int VISIBLE_ENTRIES  = max_y - *line_num - 1;
+    const int MAX_ENTRIES      = MIN(WINDOW_SIZE, VISIBLE_ENTRIES);
 
     struct {
-        char name[MAX_PATH_LENGTH];
-        bool is_dir;
+        char  name[MAX_PATH_LENGTH];
+        bool  is_dir;
         mode_t mode;
     } entries[WINDOW_SIZE];
     int entry_count = 0;
 
-    // Only collect entries that will be visible
     while ((entry = readdir(dir)) != NULL && entry_count < MAX_ENTRIES) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-
-        size_t name_len = strlen(entry->d_name);
-        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+            continue;
 
         strcpy(full_path, dir_path);
-        if (full_path[dir_path_len - 1] != '/') {
+        if (dir_path_len && full_path[dir_path_len - 1] != '/')
             strcat(full_path, "/");
-        }
         strcat(full_path, entry->d_name);
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
-        // Only store if it will be visible
-        if (*line_num + entry_count < max_y - 1) {
-            strncpy(entries[entry_count].name, entry->d_name, MAX_PATH_LENGTH - 1);
-            entries[entry_count].name[MAX_PATH_LENGTH - 1] = '\0';
-            entries[entry_count].is_dir = S_ISDIR(statbuf.st_mode);
-            entries[entry_count].mode = statbuf.st_mode;
-            entry_count++;
-        }
+        strncpy(entries[entry_count].name, entry->d_name, MAX_PATH_LENGTH - 1);
+        entries[entry_count].name[MAX_PATH_LENGTH - 1] = '\0';
+        entries[entry_count].is_dir = S_ISDIR(statbuf.st_mode);
+        entries[entry_count].mode   = statbuf.st_mode;
+        entry_count++;
     }
     closedir(dir);
 
-    // Check if no entries were found
-    if (entry_count == 0) {
-        mvwprintw(window, *line_num, 2 + level * 2, "This directory is empty");
-        (*line_num)++;
-    }
-
-    // Initialize magic only if we have entries to display
+    /* magic initialisation (only if something will be printed) ----------- */
     magic_t magic_cookie = NULL;
-    if (entry_count > 0) {
+    if (entry_count) {
         magic_cookie = magic_open(MAGIC_MIME_TYPE);
-        if (magic_cookie != NULL) {
-            magic_load(magic_cookie, NULL);
-        }
+        if (magic_cookie) magic_load(magic_cookie, NULL);
     }
 
-    // Display collected entries
+    /* print the collected entries --------------------------------------- */
     for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
-        // Skip entries if we're still before start_line
-        if (*start_line > 0) {
-            (*start_line)--;
+        /* Calculate how many lines this entry would take */
+        int entry_lines = 1;  // The entry itself
+        if (entries[i].is_dir) {
+            strcpy(full_path, dir_path);
+            if (full_path[dir_path_len - 1] != '/')
+                strcat(full_path, "/");
+            strcat(full_path, entries[i].name);
+            entry_lines += count_directory_tree_lines(full_path);
+        }
+
+        /* Handle scrolling - skip entire entries that are above the viewport */
+        if (*start_line >= entry_lines) {
+            *start_line -= entry_lines;
             continue;
         }
 
-        const char *emoji;
+        /* choose icon ---------------------------------------------------- */
+        const char *emoji = "📄";
         if (entries[i].is_dir) {
             emoji = "📁";
-        } else if (magic_cookie) { // if magic fails 
-            size_t name_len = strlen(entries[i].name);
-            if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                strcpy(full_path, dir_path);
-                if (full_path[dir_path_len - 1] != '/') {
-                    strcat(full_path, "/");
-                }
-                strcat(full_path, entries[i].name);
-                const char *mime_type = magic_file(magic_cookie, full_path);
-                emoji = get_file_emoji(mime_type, entries[i].name);
-            } else {
-                emoji = "📄";
-            }
-        } else {
-            emoji = "📄";
+        } else if (magic_cookie) {
+            strcpy(full_path, dir_path);
+            if (full_path[dir_path_len - 1] != '/')
+                strcat(full_path, "/");
+            strcat(full_path, entries[i].name);
+            const char *mime = magic_file(magic_cookie, full_path);
+            emoji = get_file_emoji(mime, entries[i].name);
         }
 
-        mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
+        /* draw entry ----------------------------------------------------- */
+        mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s",
                   emoji, max_x - 4 - level * 2, entries[i].name);
 
         char perm[10];
@@ -239,24 +277,26 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         mvwprintw(window, *line_num, max_x - 10, "%s", perm);
         (*line_num)++;
 
-        // Recurse into subdirectories if we have space
+        /* recurse into sub-directories ---------------------------------- */
         if (entries[i].is_dir && *line_num < max_y - 1) {
-            size_t name_len = strlen(entries[i].name);
-            if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                strcpy(full_path, dir_path);
-                if (full_path[dir_path_len - 1] != '/') {
-                    strcat(full_path, "/");
-                }
-                strcat(full_path, entries[i].name);
-                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line);
-            }
+            strcpy(full_path, dir_path);
+            if (full_path[dir_path_len - 1] != '/')
+                strcat(full_path, "/");
+            strcat(full_path, entries[i].name);
+
+            show_directory_tree(window,
+                                full_path,
+                                level + 1,
+                                line_num,
+                                max_y,
+                                max_x,
+                                start_line);
         }
     }
 
-    if (magic_cookie) {
-        magic_close(magic_cookie);
-    }
+    if (magic_cookie) magic_close(magic_cookie);
 }
+
 
 bool is_hidden(const char *filename) {
     return filename[0] == '.' && (strlen(filename) == 1 || (filename[1] != '.' && filename[1] != '\0'));
@@ -1155,29 +1195,43 @@ int main() {
                     show_notification(notifwin, "Moved down");
                     wrefresh(notifwin);
                     should_clear_notif = false;
-                } else if (active_window == PREVIEW_WIN_ACTIVE) {
-                    // Determine total lines for scrolling in the preview
+                }
+                else if (active_window == PREVIEW_WIN_ACTIVE) {
+                    /* figure out what we're previewing */
                     char actual[MAX_PATH_LENGTH];
                     get_actual_name(state.selected_entry, actual, sizeof(actual));
 
                     char file_path[MAX_PATH_LENGTH];
                     path_join(file_path, state.current_directory, actual);
-                    int total_lines = get_total_lines(file_path);
+
+                    struct stat st;
+                    if (stat(file_path, &st) != 0)
+                        continue;  /* can't stat – nothing to scroll */
 
                     int max_x, max_y;
                     getmaxyx(previewwin, max_y, max_x);
-                    (void) max_x;
-                    int content_height = max_y - 7;
-                    int max_start_line = total_lines - content_height;
-                    if (max_start_line < 0) max_start_line = 0;
+                    (void)max_x;
 
-                    if (state.preview_start_line < max_start_line) {
-                        state.preview_start_line++;
-                        werase(notifwin);
-                        show_notification(notifwin, "Scrolled down");
-                        wrefresh(notifwin);
-                        should_clear_notif = false;
+                    /* "content" inside preview starts after the 7th row */
+                    const int content_height = max_y - 7;
+                    int total_lines;
+
+                    if (S_ISDIR(st.st_mode)) {
+                        total_lines = count_directory_tree_lines(file_path);
+                        if (state.preview_start_line < total_lines - content_height) {
+                            state.preview_start_line++;
+                        }
+                    } else {
+                        total_lines = get_total_lines(file_path);
+                        if (state.preview_start_line < total_lines - content_height) {
+                            state.preview_start_line++;
+                        }
                     }
+
+                    werase(notifwin);
+                    show_notification(notifwin, "Scrolled down");
+                    wrefresh(notifwin);
+                    should_clear_notif = false;
                 }
             }
 

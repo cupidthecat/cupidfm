@@ -374,12 +374,11 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         *start_line = cursor_line - content_height + 1;
     }
 
-    // Ensure start_line doesn't go out of bounds
-    if (*start_line < 0) *start_line = 0;
-    if (buffer->num_lines > content_height) {
-        *start_line = MIN(*start_line, buffer->num_lines - content_height);
-    } else {
-        *start_line = 0;
+    // Modified section: Ensure we don't scroll past the end of content
+    int max_visible_line = buffer->num_lines - content_height;
+    if (max_visible_line < 0) max_visible_line = 0;
+    if (*start_line > max_visible_line) {
+        *start_line = max_visible_line;
     }
 
     // Draw separator line for line numbers
@@ -402,15 +401,18 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
     }
 
     // Display line numbers and content
-    for (int i = 0; i < content_height && (*start_line + i) < buffer->num_lines; i++) {
+    for (int i = 0; i < content_height; i++) {  // Changed condition
+        int line_index = *start_line + i;
+        if (line_index >= buffer->num_lines) break;
+
         // Print line number (right-aligned in its column)
-        mvwprintw(window, i + 1, 2, "%*d", label_width - 1, *start_line + i + 1);
+        mvwprintw(window, i + 1, 2, "%*d", label_width - 1, line_index + 1);
 
         // Calculate the content start position
         int content_start = label_width + 3;
 
         // Get the line content
-        const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
+        const char *line = buffer->lines[line_index] ? buffer->lines[line_index] : "";
         int line_length = strlen(line);
 
         // Print the visible portion of the line
@@ -425,7 +427,7 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         }
 
         // If this is the cursor line, highlight the cursor position
-        if ((*start_line + i) == cursor_line) {
+        if (line_index == cursor_line) {
             char cursor_char = ' ';
             if (cursor_col < (int)strlen(line)) {
                 cursor_char = line[cursor_col];
