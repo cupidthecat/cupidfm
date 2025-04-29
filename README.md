@@ -264,7 +264,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ### Performance Improvements
 - [ ] Implement lazy loading for large directories
 - [ ] Optimize memory usage for file preview
-- [ ] Directory-size cache invalidation, cache du results but expire them when files in the tree change (e.g., via inotify).
+- [ ] Directory-size cache invalidation, cache `du` results but expire them when files in the tree change (e.g., via inotify).
 - [ ] Improve MIME type detection performance
 - [ ] Implement background loading for directory contents
 - [ ] Optimize scrolling
@@ -282,9 +282,10 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ### Features
 - [X] Fix dir size calc not working (wont calc files inside)
 - [X] Enable scrolling for tree preview in the preview window when tabbed over
-- [ ] Fix mime icons not working in dir tree preview
+- [X] Fix mime icons not working in dir tree preview
+- [ ] Auto refresh on new file etc...
 - [ ] Add preview support for `.zip`, `.tar`, and other compressed types 
-- [ ] Implement syntax highlighting for supported file types
+- [ ] Implement syntax highlighting for supported file types (while preview or editing)
 - [x] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
 - [ ] Implement text editing shortcuts:
   - [ ] Shift+arrow for selection
@@ -308,6 +309,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
   - [ ] File associations
   - [ ] Change default text preview files
 - [ ] Add image preview
+- [ ] Drag into file manager
 - [ ] Basic file dialog for web and other applications
 - [ ] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
 
