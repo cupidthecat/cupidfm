@@ -9,10 +9,8 @@
 #include <unistd.h>                // for lstat
 #include <stdio.h>                 // for snprintf
 #include <sys/stat.h>              // for struct stat, lstat, S_ISDIR
-#include <time.h>                  // for strftime
 #include <ncurses.h>               // for WINDOW, mvwprintw
 #include <stdbool.h>               // for bool, true, false
-#include <string.h>                // for strcmp
 #include <limits.h>                // For PATH_MAX
 #include <fcntl.h>                 // For O_RDONLY
 #include <magic.h>                 // For libmagic
@@ -24,6 +22,8 @@
 #include "files.h"                 // for FileAttributes, FileAttr, MAX_PATH_LENGTH
 #include "globals.h"
 #include "config.h"
+#include "virtualfs.h"
+
 #define MIN_INT_SIZE_T(x, y) (((size_t)(x) > (y)) ? (y) : (x))
 #define FILES_BANNER_UPDATE_INTERVAL 50000 // 50ms in microseconds
 
@@ -196,6 +196,12 @@ void append_files_to_vec(Vector *v, const char *name) {
 //       fork() -> calculate directory size and return it somehow (maybe print
 //       as binary to the stdout)
 long get_directory_size(const char *dir_path) {
+    struct statfs sfs;
+    // Check filesystem type first
+    if (statfs(dir_path, &sfs) == 0 && is_virtual_fstype(sfs.f_type)) {
+        return 0;  // Skip virtual filesystems
+    }
+
     DIR *dir;
     struct dirent *entry;
     struct stat statbuf;
@@ -210,18 +216,21 @@ long get_directory_size(const char *dir_path) {
         if (strlen(dir_path) + strlen(entry->d_name) + 1 < sizeof(path)) {
             snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
         } else {
-            // Handle the error, e.g., log a message or skip this entry
             fprintf(stderr, "Path length exceeds buffer size for %s/%s\n", dir_path, entry->d_name);
             continue;
         }
         if (lstat(path, &statbuf) == -1)
             continue;
         if (S_ISDIR(statbuf.st_mode)) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                continue;
             long dir_size = get_directory_size(path);
             if (dir_size == -2) {
                 closedir(dir);
                 return -2;
             }
+            if (dir_size == -1)
+                continue;
             total_size += dir_size;
         } else {
             total_size += statbuf.st_size;
@@ -231,7 +240,6 @@ long get_directory_size(const char *dir_path) {
             return -2;
         }
     }
-
     closedir(dir);
     return total_size;
 }
@@ -628,7 +636,7 @@ void edit_file_in_terminal(WINDOW *window,
                 cursor_col = prev_len;
             }
         }
-        // 9) Possibly an extra “exit edit” keystroke
+        // 9) Possibly an extra "exit edit" keystroke
         else if (ch == kb->edit_quit) {
             exit_edit_mode = true;
         }
