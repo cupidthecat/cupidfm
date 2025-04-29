@@ -1,5 +1,6 @@
 // File: utils.c
 // -----------------------
+#define _POSIX_C_SOURCE 200809L
 #include <errno.h>     // for errno
 #include <stdarg.h>    // for va_list, va_start, va_end
 #include <stdio.h>     // for fprintf, stderr, vfprintf
@@ -14,7 +15,7 @@
 #include <ctype.h>     // for isprint
 #include <libgen.h>    // for dirname() and basename()
 #include <limits.h>    // for PATH_MAX
-
+#include <unistd.h>    // for readlink
 // Local includes
 #include "utils.h"
 #include "files.h"  // Include the header for FileAttr and related functions
@@ -862,4 +863,20 @@ void reload_directory(Vector *files, const char *current_directory) {
     append_files_to_vec(files, current_directory);
     // Makes the vector shorter
     Vector_sane_cap(files);
+}
+
+/**
+ * Gets the symlink target if the path is a symlink
+ * @param path The path to check
+ * @param target Buffer to store the target path
+ * @param target_size Size of the target buffer
+ * @return true if path is a symlink, false otherwise
+ */
+bool get_symlink_target(const char *path, char *target, size_t target_size) {
+    ssize_t len = readlink(path, target, target_size - 1);
+    if (len != -1) {
+        target[len] = '\0';
+        return true;
+    }
+    return false;
 }

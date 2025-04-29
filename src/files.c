@@ -18,7 +18,7 @@
 
 // Local includes
 #include "main.h"                  // for FileAttr, Vector, Vector_add, Vector_len, Vector_set_len
-#include "utils.h"                 // for path_join, is_directory
+#include "utils.h"                 // for path_join, is_directory, get_symlink_target
 #include "files.h"                 // for FileAttributes, FileAttr, MAX_PATH_LENGTH
 #include "globals.h"
 #include "config.h"
@@ -173,10 +173,22 @@ void append_files_to_vec(Vector *v, const char *name) {
                 path_join(full_path, name, entry->d_name);
 
                 bool is_dir = is_directory(name, entry->d_name);
+                
+                // Check if it's a symlink
+                char symlink_target[MAX_PATH_LENGTH] = {0};
+                bool is_symlink = get_symlink_target(full_path, symlink_target, sizeof(symlink_target));
+                
+                // Create the display name
+                char display_name[MAX_PATH_LENGTH * 2] = {0};
+                if (is_symlink) {
+                    snprintf(display_name, sizeof(display_name), "%s → %s", entry->d_name, symlink_target);
+                } else {
+                    strncpy(display_name, entry->d_name, sizeof(display_name));
+                }
 
-                FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
+                FileAttr file_attr = mk_attr(display_name, is_dir, entry->d_ino);
 
-                if (file_attr != NULL) {  // Only add if not NULL
+                if (file_attr != NULL) {
                     Vector_add(v, 1);
                     v->el[Vector_len(*v)] = file_attr;
                     Vector_set_len(v, Vector_len(*v) + 1);

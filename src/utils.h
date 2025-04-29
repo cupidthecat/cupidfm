@@ -21,6 +21,7 @@ void change_directory(const char *new_directory, const char ***files, int *num_f
 void path_join(char *result, const char *base, const char *extra);
 const char* get_file_emoji(const char *mime_type, const char *filename);
 void reload_directory(Vector *files, const char *current_directory);
+bool get_symlink_target(const char *path, char *target, size_t target_size);
 
 // short cut utils
 void copy_to_clipboard(const char *path);
