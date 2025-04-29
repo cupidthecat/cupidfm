@@ -197,9 +197,19 @@ void append_files_to_vec(Vector *v, const char *name) {
 //       as binary to the stdout)
 long get_directory_size(const char *dir_path) {
     struct statfs sfs;
-    // Check filesystem type first
-    if (statfs(dir_path, &sfs) == 0 && is_virtual_fstype(sfs.f_type)) {
-        return 0;  // Skip virtual filesystems
+    
+    // First check filesystem type
+    if (statfs(dir_path, &sfs) == 0) {
+        if (is_virtual_fstype(sfs.f_type)) {
+            return 0;
+        }
+    }
+    
+    // Fallback path check for known virtual FS roots
+    if (strcmp(dir_path, "/proc") == 0 || 
+        strcmp(dir_path, "/sys") == 0 || 
+        strcmp(dir_path, "/dev") == 0) {
+        return 0;
     }
 
     DIR *dir;
