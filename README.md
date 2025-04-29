@@ -259,10 +259,12 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
 - [ ] Fix long names of files messing up UI
+- [ ] Harden input parsing, validate all user-supplied paths and filenames to avoid path-traversal or escape-sequence issues.
+- [ ] Graceful SIGINT/SIGTERM shut-down, free ncurses windows, vectors, and temporary files on Ctrl-C or kill.
 ### Performance Improvements
 - [ ] Implement lazy loading for large directories
 - [ ] Optimize memory usage for file preview
-- [ ] Cache directory contents for faster navigation
+- [ ] Directory-size cache invalidation, cache du results but expire them when files in the tree change (e.g., via inotify).
 - [ ] Improve MIME type detection performance
 - [ ] Implement background loading for directory contents
 - [ ] Optimize scrolling
