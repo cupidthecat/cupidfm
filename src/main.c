@@ -248,8 +248,10 @@ void show_directory_tree(WINDOW *window,
 
             /* Draw entry */
             /* 1.  Make the absolute path for this entry */
-            char full_path[MAX_PATH_LENGTH];
-            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+            size_t p = snprintf(full_path, sizeof(full_path),
+                                        "%s/%s", dir_path, entries[i].name);
+                    if (p >= sizeof(full_path))
+                        continue;          
 
             /* 2.  Decide which icon to show */
             const char *emoji;
