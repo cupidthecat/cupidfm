@@ -282,6 +282,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ### Features
 - [X] Fix dir size calc not working (wont calc files inside)
 - [X] Enable scrolling for tree preview in the preview window when tabbed over
+- [ ] Fix mime icons not working in dir tree preview
 - [ ] Add preview support for `.zip`, `.tar`, and other compressed types 
 - [ ] Implement syntax highlighting for supported file types
 - [x] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
