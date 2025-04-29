@@ -255,11 +255,14 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 
 ### High Priority
 - [ ] Fix directory preview not scrolling 
-- [ ] Write custom magic library for in-house MIME type detection
 - [ ] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
 - [ ] Optimize scrolling
+- [ ] Fix long names of files messing up UI
+
+## Low Priority 
+- [ ] Write custom magic library for in-house MIME type detection
 
 ### Edit Mode Issues
 - [ ] Banner marquee not rotating correctly when rotating in edit mode
