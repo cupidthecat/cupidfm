@@ -1400,16 +1400,17 @@ int main() {
     delwin(notifwin);
     delwin(mainwin);
     delwin(bannerwin);
+
+    if (g_magic_cookie) {
+        magic_close(g_magic_cookie);
+        g_magic_cookie = NULL;  // Prevent double-free
+    }
+
     endwin();
     cleanup_temp_files();
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);
-
-    // Add cleanup before exit
-    if (g_magic_cookie) {
-        magic_close(g_magic_cookie);
-    }
 
     return 0;
 }

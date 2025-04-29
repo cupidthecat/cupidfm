@@ -309,20 +309,14 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
                    label_width, "📏 File Size:", fileSizeStr);
     }
 
-    // MIME type display follows unchanged...
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
-    if (!magic_cookie) {
+    // MIME type display using global magic cookie
+    if (!g_magic_cookie) {
         mvwprintw(window, 5, 2, "%-*s %s",
-                   label_width, "📂 MIME type:", "Error initializing magic");
+                   label_width, "📂 MIME type:", "Magic cookie not initialized");
         return;
     }
-    if (magic_load(magic_cookie, NULL) != 0) {
-        mvwprintw(window, 5, 2, "%-*s %s",
-                   label_width, "📂 MIME type:", magic_error(magic_cookie));
-        magic_close(magic_cookie);
-        return;
-    }
-    const char *mime_type = magic_file(magic_cookie, file_path);
+
+    const char *mime_type = magic_file(g_magic_cookie, file_path);
     const char *emoji     = get_file_emoji(mime_type, file_path);
 
     if (!mime_type) {
@@ -341,8 +335,6 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
                        label_width, emoji, "MIME type:", mime_type);
         }
     }
-
-    magic_close(magic_cookie);
 }
 /**
  * Function to render and manage scrolling within the text buffer
@@ -374,11 +366,12 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         *start_line = cursor_line - content_height + 1;
     }
 
-    // Modified section: Ensure we don't scroll past the end of content
-    int max_visible_line = buffer->num_lines - content_height;
-    if (max_visible_line < 0) max_visible_line = 0;
-    if (*start_line > max_visible_line) {
-        *start_line = max_visible_line;
+    // Ensure start_line doesn't go out of bounds
+    if (*start_line < 0) *start_line = 0;
+    if (buffer->num_lines > content_height) {
+        *start_line = MIN(*start_line, buffer->num_lines - content_height);
+    } else {
+        *start_line = 0;
     }
 
     // Draw separator line for line numbers
@@ -401,18 +394,15 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
     }
 
     // Display line numbers and content
-    for (int i = 0; i < content_height; i++) {  // Changed condition
-        int line_index = *start_line + i;
-        if (line_index >= buffer->num_lines) break;
-
+    for (int i = 0; i < content_height && (*start_line + i) < buffer->num_lines; i++) {
         // Print line number (right-aligned in its column)
-        mvwprintw(window, i + 1, 2, "%*d", label_width - 1, line_index + 1);
+        mvwprintw(window, i + 1, 2, "%*d", label_width - 1, *start_line + i + 1);
 
         // Calculate the content start position
         int content_start = label_width + 3;
 
         // Get the line content
-        const char *line = buffer->lines[line_index] ? buffer->lines[line_index] : "";
+        const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
         int line_length = strlen(line);
 
         // Print the visible portion of the line
@@ -427,7 +417,7 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         }
 
         // If this is the cursor line, highlight the cursor position
-        if (line_index == cursor_line) {
+        if ((*start_line + i) == cursor_line) {
             char cursor_char = ' ';
             if (cursor_col < (int)strlen(line)) {
                 cursor_char = line[cursor_col];
@@ -719,28 +709,17 @@ void edit_file_in_terminal(WINDOW *window,
  * @return true if the file has a supported MIME type, false otherwise.
  */
 bool is_supported_file_type(const char *filename) {
-    magic_t magic_cookie;
     bool supported = false;
 
-    // Open magic cookie with additional flags for better MIME detection
-    magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
-    if (magic_cookie == NULL) {
-        fprintf(stderr, "Unable to initialize magic library\n");
-        return false;
-    }
-
-    // Load the default magic database
-    if (magic_load(magic_cookie, NULL) != 0) {
-        fprintf(stderr, "Cannot load magic database: %s\n", magic_error(magic_cookie));
-        magic_close(magic_cookie);
+    if (g_magic_cookie == NULL) {
+        fprintf(stderr, "Magic library not initialized\n");
         return false;
     }
 
     // Get the MIME type of the file
-    const char *mime_type = magic_file(magic_cookie, filename);
+    const char *mime_type = magic_file(g_magic_cookie, filename);
     if (mime_type == NULL) {
-        fprintf(stderr, "Could not determine file type: %s\n", magic_error(magic_cookie));
-        magic_close(magic_cookie);
+        fprintf(stderr, "Could not determine file type: %s\n", magic_error(g_magic_cookie));
         return false;
     }
 
@@ -758,6 +737,5 @@ bool is_supported_file_type(const char *filename) {
         }
     }
 
-    magic_close(magic_cookie);
     return supported;
 }
