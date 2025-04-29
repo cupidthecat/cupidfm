@@ -260,8 +260,14 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Optimize file loading performance for large directories
 - [ ] Optimize scrolling
 - [ ] Fix long names of files messing up UI
+Performance Improvements
+- [ ] Implement lazy loading for large directories
+- [ ] Optimize memory usage for file preview
+- [ ] Cache directory contents for faster navigation
+- [ ] Improve MIME type detection performance
+- [ ] Implement background loading for directory contents
 
-## Low Priority 
+### Low Priority 
 - [ ] Write custom magic library for in-house MIME type detection
 
 ### Edit Mode Issues
@@ -489,13 +495,6 @@ The **Command Line Interface (CLI)** for **cupidfm** will introduce a powerful w
 - [ ] Develop custom cupidfm commands (`tree`, `info`, etc.).
 - [ ] Integrate with system shell commands.
 - [ ] Allow user-defined aliases in a configuration file.
-
-### Performance Improvements
-- [ ] Implement lazy loading for large directories
-- [ ] Optimize memory usage for file preview
-- [ ] Cache directory contents for faster navigation
-- [ ] Improve MIME type detection performance
-- [ ] Implement background loading for directory contents
 
 ### Completed
 - [X] Fallback to extension-based detection instead of MIME type when detection fails
