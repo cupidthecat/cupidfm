@@ -27,6 +27,18 @@
 char copied_filename[MAX_PATH_LENGTH] = "";
 extern bool should_clear_notif; 
 
+#define FOLDER_EMOJI "📁 "
+#define TEXT_EMOJI "📄 "
+#define IMAGE_EMOJI "🖼️ "
+#define CODE_EMOJI "📝 "
+#define ARCHIVE_EMOJI "📦 "
+#define PDF_EMOJI "📑 "
+#define AUDIO_EMOJI "🎵 "
+#define VIDEO_EMOJI "🎬 "
+#define SPREADSHEET_EMOJI "📊 "
+#define PRESENTATION_EMOJI "📽️ "
+#define BINARY_EMOJI "🔢 "
+
 /**
  * Confirm deletion of a file or directory by prompting the user.
  *
@@ -259,201 +271,46 @@ void path_join(char *result, const char *base, const char *extra) {
  * @return A string representing the emoji.
  */
 const char* get_file_emoji(const char *mime_type, const char *filename) {
-    if (mime_type == NULL) {
-        return "📄";
+    // First check for directories
+    if (strcmp(mime_type, "inode/directory") == 0) {
+        return FOLDER_EMOJI;
     }
 
-    // Check for specific MIME types first
-    if (strncmp(mime_type, "text/", 5) == 0) {
-        if (strstr(mime_type, "python")) return "🐍";
-        if (strstr(mime_type, "javascript")) return "📜";
-        if (strstr(mime_type, "html")) return "🌐";
-        if (strstr(mime_type, "css")) return "🎨";
-        if (strstr(mime_type, "x-c")) return "📝";
-        if (strstr(mime_type, "x-java")) return "☕";
-        if (strstr(mime_type, "x-shellscript")) return "💻";
-        if (strstr(mime_type, "x-rust")) return "🦀";
-        if (strstr(mime_type, "markdown")) return "📘";
-        if (strstr(mime_type, "csv")) return "📊";
-        if (strstr(mime_type, "x-perl")) return "🐪";
-        if (strstr(mime_type, "x-ruby")) return "💎";
-        if (strstr(mime_type, "x-php")) return "🐘";
-        if (strstr(mime_type, "x-go")) return "🐹";
-        if (strstr(mime_type, "x-swift")) return "🦅";
-        if (strstr(mime_type, "x-kotlin")) return "🎯";
-        if (strstr(mime_type, "x-scala")) return "⚡";
-        if (strstr(mime_type, "x-haskell")) return "λ";
-        if (strstr(mime_type, "x-lua")) return "🌙";
-        if (strstr(mime_type, "x-r")) return "📊";
-        
-        // Data formats
-        if (strstr(mime_type, "json")) return "🔣";
-        if (strstr(mime_type, "xml")) return "📑";
-        if (strstr(mime_type, "yaml")) return "📋";
-        if (strstr(mime_type, "toml")) return "⚙️";
-        if (strstr(mime_type, "ini")) return "🔧";
+    // Then check specific MIME types
+    if (strstr(mime_type, "text/") == mime_type) {
+        if (strstr(mime_type, "html")) return "🌐 ";
+        if (strstr(mime_type, "shellscript")) return "🐚 ";
+        if (strstr(mime_type, "python")) return "🐍 ";
+        if (strstr(mime_type, "javascript")) return "📜 ";
+        return TEXT_EMOJI;
+    }
+    
+    if (strstr(mime_type, "image/")) return IMAGE_EMOJI;
+    if (strstr(mime_type, "audio/")) return AUDIO_EMOJI;
+    if (strstr(mime_type, "video/")) return VIDEO_EMOJI;
+    if (strstr(mime_type, "application/pdf")) return PDF_EMOJI;
+    if (strstr(mime_type, "application/zip") || 
+        strstr(mime_type, "application/x-tar") ||
+        strstr(mime_type, "application/x-gzip")) return ARCHIVE_EMOJI;
+    
+    // Fallback to file extension checks
+    const char *dot = strrchr(filename, '.');
+    if (dot) {
+        if (strcmp(dot, ".pdf") == 0) return PDF_EMOJI;
+        if (strcmp(dot, ".csv") == 0 || strcmp(dot, ".xls") == 0) return SPREADSHEET_EMOJI;
+        if (strcmp(dot, ".ppt") == 0 || strcmp(dot, ".pptx") == 0) return PRESENTATION_EMOJI;
+        if (strcmp(dot, ".mp3") == 0 || strcmp(dot, ".wav") == 0) return AUDIO_EMOJI;
+        if (strcmp(dot, ".mp4") == 0 || strcmp(dot, ".mov") == 0) return VIDEO_EMOJI;
     }
 
-    // Fallback to extension-based detection if MIME type is "text/plain"
-    if (strcmp(mime_type, "text/plain") == 0) {
-        const char *ext = strrchr(filename, '.');
-        if (ext) {
-            if (strcmp(ext, ".js") == 0) return "📜";
-            if (strcmp(ext, ".py") == 0) return "🐍";
-            if (strcmp(ext, ".html") == 0) return "🌐";
-            if (strcmp(ext, ".css") == 0) return "🎨";
-            if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) return "📝";
-            if (strcmp(ext, ".java") == 0) return "☕";
-            if (strcmp(ext, ".sh") == 0) return "💻";
-            if (strcmp(ext, ".rs") == 0) return "🦀";
-            if (strcmp(ext, ".md") == 0) return "📘";
-            if (strcmp(ext, ".csv") == 0) return "📊";
-            if (strcmp(ext, ".pl") == 0) return "🐪";
-            if (strcmp(ext, ".rb") == 0) return "💎";
-            if (strcmp(ext, ".php") == 0) return "🐘";
-            if (strcmp(ext, ".go") == 0) return "🐹";
-            if (strcmp(ext, ".swift") == 0) return "🦅";
-            if (strcmp(ext, ".kt") == 0) return "🎯";
-            if (strcmp(ext, ".scala") == 0) return "⚡";
-            if (strcmp(ext, ".hs") == 0) return "λ";
-            if (strcmp(ext, ".lua") == 0) return "🌙";
-            if (strcmp(ext, ".r") == 0) return "📊";
-            if (strcmp(ext, ".json") == 0) return "🔣";
-            if (strcmp(ext, ".xml") == 0) return "📑";
-            if (strcmp(ext, ".yaml") == 0 || strcmp(ext, ".yml") == 0) return "📋";
-            if (strcmp(ext, ".toml") == 0) return "⚙️";
-            if (strcmp(ext, ".ini") == 0) return "🔧";
-        }
+    // Binary detection fallback
+    if (strstr(mime_type, "application/octet-stream") || 
+        strstr(mime_type, "application/x-executable")) {
+        return BINARY_EMOJI;
     }
 
-    // Images
-    if (strncmp(mime_type, "image/", 6) == 0) {
-        if (strstr(mime_type, "gif")) return "🎭";
-        if (strstr(mime_type, "svg")) return "✨";
-        if (strstr(mime_type, "png")) return "🖼️ ";
-        if (strstr(mime_type, "jpeg") || strstr(mime_type, "jpg")) return "📸";
-        if (strstr(mime_type, "webp")) return "🌅";
-        if (strstr(mime_type, "tiff")) return "📷";
-        if (strstr(mime_type, "bmp")) return "🎨";
-        if (strstr(mime_type, "ico")) return "🎯";
-        return "🖼️";
-    }
-
-    // Audio
-    if (strncmp(mime_type, "audio/", 6) == 0) {
-        if (strstr(mime_type, "midi")) return "🎹";
-        if (strstr(mime_type, "mp3")) return "🎵";
-        if (strstr(mime_type, "wav")) return "🔊";
-        if (strstr(mime_type, "ogg")) return "🎼";
-        if (strstr(mime_type, "flac")) return "🎶";
-        if (strstr(mime_type, "aac")) return "🔉";
-        return "🎵";
-    }
-
-    // Video
-    if (strncmp(mime_type, "video/", 6) == 0) {
-        if (strstr(mime_type, "mp4")) return "🎥";
-        if (strstr(mime_type, "avi")) return "📽️";
-        if (strstr(mime_type, "mkv")) return "🎬";
-        if (strstr(mime_type, "webm")) return "▶️";
-        if (strstr(mime_type, "mov")) return "🎦";
-        if (strstr(mime_type, "wmv")) return "📹";
-        return "🎞️";
-    }
-
-    // Applications
-    if (strncmp(mime_type, "application/", 12) == 0) {
-        // Archives
-        if (strstr(mime_type, "zip")) return "📦";
-        if (strstr(mime_type, "x-tar")) return "📦";
-        if (strstr(mime_type, "x-rar")) return "📦";
-        if (strstr(mime_type, "x-7z")) return "📦";
-        if (strstr(mime_type, "gzip")) return "📦";
-        if (strstr(mime_type, "x-bzip")) return "📦";
-        if (strstr(mime_type, "x-xz")) return "📦";
-        if (strstr(mime_type, "x-compress")) return "📦";
-
-        // Documents
-        if (strstr(mime_type, "pdf")) return "📕";
-        if (strstr(mime_type, "msword")) return "📝";
-        if (strstr(mime_type, "vnd.ms-excel")) return "📊";
-        if (strstr(mime_type, "vnd.ms-powerpoint")) return "📊";
-        if (strstr(mime_type, "vnd.oasis.opendocument.text")) return "📃";
-        if (strstr(mime_type, "rtf")) return "📄";
-        if (strstr(mime_type, "epub")) return "📚";
-        if (strstr(mime_type, "js")) return "📜";
-
-        // Data formats
-        if (strstr(mime_type, "json")) return "🔣";
-        if (strstr(mime_type, "xml")) return "📑";
-        if (strstr(mime_type, "yaml")) return "📋";
-        if (strstr(mime_type, "sql")) return "🗄️";
-        
-        // Executables and binaries
-        if (strstr(mime_type, "x-executable")) return "⚙️";
-        if (strstr(mime_type, "x-sharedlib")) return "🔧";
-        if (strstr(mime_type, "x-object")) return "🔨";
-        if (strstr(mime_type, "x-pie-executable")) return "🎯";
-        if (strstr(mime_type, "x-dex")) return "🤖";
-        if (strstr(mime_type, "java-archive")) return "☕";
-        if (strstr(mime_type, "x-msdownload")) return "🪟";
-    }
-
-    // Font files
-    if (strncmp(mime_type, "font/", 5) == 0) {
-        if (strstr(mime_type, "ttf")) return "🔤";
-        if (strstr(mime_type, "otf")) return "🔠";
-        if (strstr(mime_type, "woff")) return "🔡";
-        if (strstr(mime_type, "woff2")) return "🔣";
-        return "🔤";
-    }
-
-    // Database files
-    if (strstr(mime_type, "database") || strstr(mime_type, "sql")) {
-        return "🗄️";
-    }
-
-    // Version control
-    if (strstr(mime_type, "x-git")) {
-        return "📥";
-    }
-
-    // Certificate files
-    if (strstr(mime_type, "x-x509-ca-cert")) {
-        return "🔐";
-    }
-
-    // Fallback to extension-based detection
-    const char *ext = strrchr(filename, '.');
-    if (ext) {
-        if (strcmp(ext, ".py") == 0) return "🐍";
-        if (strcmp(ext, ".js") == 0) return "📜";
-        if (strcmp(ext, ".html") == 0) return "🌐";
-        if (strcmp(ext, ".css") == 0) return "🎨";
-        if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) return "📝";
-        if (strcmp(ext, ".java") == 0) return "☕";
-        if (strcmp(ext, ".sh") == 0) return "💻";
-        if (strcmp(ext, ".rs") == 0) return "🦀";
-        if (strcmp(ext, ".md") == 0) return "📘";
-        if (strcmp(ext, ".csv") == 0) return "📊";
-        if (strcmp(ext, ".pl") == 0) return "🐪";
-        if (strcmp(ext, ".rb") == 0) return "💎";
-        if (strcmp(ext, ".php") == 0) return "🐘";
-        if (strcmp(ext, ".go") == 0) return "🐹";
-        if (strcmp(ext, ".swift") == 0) return "🦅";
-        if (strcmp(ext, ".kt") == 0) return "🎯";
-        if (strcmp(ext, ".scala") == 0) return "⚡";
-        if (strcmp(ext, ".hs") == 0) return "λ";
-        if (strcmp(ext, ".lua") == 0) return "🌙";
-        if (strcmp(ext, ".r") == 0) return "📊";
-        if (strcmp(ext, ".json") == 0) return "🔣";
-        if (strcmp(ext, ".xml") == 0) return "📑";
-        if (strcmp(ext, ".yaml") == 0 || strcmp(ext, ".yml") == 0) return "📋";
-        if (strcmp(ext, ".toml") == 0) return "⚙️";
-        if (strcmp(ext, ".ini") == 0) return "🔧";
-    }
-
-    return "📄";
+    // Default for unknown types
+    return "🌐 ";
 }
 
 // copy file to users clipboard
