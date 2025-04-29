@@ -450,7 +450,41 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         int line_num = 7;
         show_directory_tree(window, file_path, 0, &line_num, max_y, max_x);
     } else if (is_supported_file_type(file_path)) {
-        // existing preview logic...
+         // Display file preview for supported types
+        FILE *file = fopen(file_path, "r");
+        if (file) {
+            char line[256];
+            int line_num = 7;
+            int current_line = 0;
+
+            // Skip lines until start_line
+            while (current_line < start_line && fgets(line, sizeof(line), file)) {
+                current_line++;
+            }
+
+            // Display file content from start_line onward
+            while (fgets(line, sizeof(line), file) && line_num < max_y - 1) {
+                line[strcspn(line, "\n")] = '\0'; // Remove newline character
+
+                // Replace tabs with spaces
+                for (char *p = line; *p; p++) {
+                    if (*p == '\t') {
+                        *p = ' ';
+                    }
+                }
+
+                mvwprintw(window, line_num++, 2, "%.*s", max_x - 4, line);
+            }
+
+            fclose(file);
+
+            if (line_num < max_y - 1) {
+                mvwprintw(window, line_num++, 2, "--------------------------------");
+                mvwprintw(window, line_num++, 2, "[End of file]");
+            }
+        } else {
+            mvwprintw(window, 7, 2, "Unable to open file for preview");
+        }
     }
 
     wrefresh(window);
