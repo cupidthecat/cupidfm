@@ -4,7 +4,7 @@
 #include <signal.h>  // For sig_atomic_t
 #include <time.h>
 #include <stdbool.h>
-
+#include <magic.h>
 #include "config.h"
 
 #define MAX_PATH_LENGTH 1024  // Define it here consistently
@@ -25,4 +25,7 @@ extern char copied_filename[MAX_PATH_LENGTH];
 extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;
+extern magic_t g_magic_cookie;
+
+
 #endif // GLOBALS_H

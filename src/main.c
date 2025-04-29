@@ -41,6 +41,7 @@ volatile sig_atomic_t is_editing = 0;
 WINDOW *mainwin = NULL;
 WINDOW *dirwin = NULL;
 WINDOW *previewwin = NULL;
+extern magic_t g_magic_cookie;
 
 VecStack directoryStack;
 
@@ -88,8 +89,7 @@ static void get_actual_name(const char *display_name, char *out, size_t size) {
  * will occupy so we can clamp scrolling for previews that
  * show directories or symlinks-to-directories.
  * ──────────────────────────────────────────────────────────*/
-static int count_directory_tree_lines(const char *dir_path)
-{
+static int count_directory_tree_lines(const char *dir_path) {
     int lines = 1;                                     /* header line      */
 
     DIR *dir = opendir(dir_path);
@@ -229,60 +229,52 @@ void show_directory_tree(WINDOW *window,
     closedir(dir);
 
     /* print entries */
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie) magic_load(magic_cookie, NULL);
-
-    for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
-        /* Calculate total lines for this entry */
-        int total_lines = 1;
-        if (entries[i].is_dir) {
-            size_t path_len = snprintf(full_path, sizeof(full_path), "%s/%s",
-                                     dir_path, entries[i].name);
-            if (path_len >= sizeof(full_path)) continue;
-            total_lines += count_directory_tree_lines(full_path);
-        }
-
-        /* Handle scrolling - skip lines that are above the viewport */
-        if (*start_line > 0) {
-            *start_line -= 1;
-            continue;
-        }
-
-        /* Draw entry */
-        const char *emoji = entries[i].is_dir ? "📁" : "📄";
-        if (magic_cookie && !entries[i].is_dir) {
-            size_t path_len = snprintf(full_path, sizeof(full_path), "%s/%s",
-                                     dir_path, entries[i].name);
-            if (path_len < sizeof(full_path)) {
-                const char *mime = magic_file(magic_cookie, full_path);
-                emoji = get_file_emoji(mime, entries[i].name);
+    if (g_magic_cookie) {
+        for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
+            /* Calculate total lines for this entry */
+            int total_lines = 1;
+            if (entries[i].is_dir) {
+                size_t path_len = snprintf(full_path, sizeof(full_path), "%s/%s",
+                                         dir_path, entries[i].name);
+                if (path_len >= sizeof(full_path)) continue;
+                total_lines += count_directory_tree_lines(full_path);
             }
-        }
 
-        /* Calculate available width for the entry name */
-        int available_width = max_x - 4 - level * 2;
-        if (available_width < 0) available_width = 0;
+            /* Handle scrolling - skip lines that are above the viewport */
+            if (*start_line > 0) {
+                *start_line -= 1;
+                continue;
+            }
 
-        /* Draw the entry with proper truncation */
-        mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
-                 emoji, available_width, entries[i].name);
-        (*line_num)++;
+            /* Draw entry */
+            const char *emoji = entries[i].is_dir ? "📁" : "📄";
+            if (!entries[i].is_dir) {
+                const char *mime_type = magic_file(g_magic_cookie, full_path);
+                emoji = get_file_emoji(mime_type, entries[i].name);
+            }
 
-        /* Recurse into directories */
-        if (entries[i].is_dir && *line_num < max_y - 1) {
-            size_t path_len = snprintf(full_path, sizeof(full_path), "%s/%s",
-                                     dir_path, entries[i].name);
-            if (path_len < sizeof(full_path)) {
-                int sub_start = 0;
-                show_directory_tree(window, full_path, level+1, line_num, 
-                                  max_y, max_x, &sub_start);
+            /* Calculate available width for the entry name */
+            int available_width = max_x - 4 - level * 2;
+            if (available_width < 0) available_width = 0;
+
+            /* Draw the entry with proper truncation */
+            mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
+                     emoji, available_width, entries[i].name);
+            (*line_num)++;
+
+            /* Recurse into directories */
+            if (entries[i].is_dir && *line_num < max_y - 1) {
+                size_t path_len = snprintf(full_path, sizeof(full_path), "%s/%s",
+                                         dir_path, entries[i].name);
+                if (path_len < sizeof(full_path)) {
+                    int sub_start = 0;
+                    show_directory_tree(window, full_path, level+1, line_num, 
+                                      max_y, max_x, &sub_start);
+                }
             }
         }
     }
-
-    if (magic_cookie) magic_close(magic_cookie);
 }
-
 
 bool is_hidden(const char *filename) {
     return filename[0] == '.' && (strlen(filename) == 1 || (filename[1] != '.' && filename[1] != '\0'));
@@ -329,66 +321,38 @@ void draw_directory_window(
         return;
     }
     
-    // Initialize magic for MIME type detection
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie == NULL || magic_load(magic_cookie, NULL) != 0) {
-        // Fallback to basic directory/file emojis if magic fails
-        for (int i = 0; i < cas->num_lines && (cas->start + i) < cas->num_files; i++) {
-            FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-            const char *name = FileAttr_get_name(fa);
-            const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
-
-            if ((cas->start + i) == cas->cursor) {
-                wattron(window, A_REVERSE);
-            }
-
-            int name_len = strlen(name);
-            int max_name_len = cols - 4; // Adjusted to fit within window width
-            if (name_len > max_name_len) {
-                mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
-            }
-
-            if ((cas->start + i) == cas->cursor) {
-                wattroff(window, A_REVERSE);
-            }
+    // Use magic to get proper file type emojis
+    for (int i = 0; i < cas->num_lines && (cas->start + i) < cas->num_files; i++) {
+        FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
+        const char *name = FileAttr_get_name(fa);
+        
+        // Construct full path for MIME type detection
+        char full_path[MAX_PATH_LENGTH];
+        path_join(full_path, directory, name);
+        
+        const char *emoji;
+        if (FileAttr_is_dir(fa)) {
+            emoji = "📁";
+        } else {
+            const char *mime_type = magic_file(g_magic_cookie, full_path);
+            emoji = get_file_emoji(mime_type, name);
         }
-    } else {
-        // Use magic to get proper file type emojis
-        for (int i = 0; i < cas->num_lines && (cas->start + i) < cas->num_files; i++) {
-            FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-            const char *name = FileAttr_get_name(fa);
-            
-            // Construct full path for MIME type detection
-            char full_path[MAX_PATH_LENGTH];
-            path_join(full_path, directory, name);
-            
-            const char *emoji;
-            if (FileAttr_is_dir(fa)) {
-                emoji = "📁";
-            } else {
-                const char *mime_type = magic_file(magic_cookie, full_path);
-                emoji = get_file_emoji(mime_type, name);
-            }
 
-            if ((cas->start + i) == cas->cursor) {
-                wattron(window, A_REVERSE);
-            }
-
-            int name_len = strlen(name);
-            int max_name_len = cols - 4; // Adjusted to fit within window width
-            if (name_len > max_name_len) {
-                mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
-            }
-
-            if ((cas->start + i) == cas->cursor) {
-                wattroff(window, A_REVERSE);
-            }
+        if ((cas->start + i) == cas->cursor) {
+            wattron(window, A_REVERSE);
         }
-        magic_close(magic_cookie);
+
+        int name_len = strlen(name);
+        int max_name_len = cols - 4; // Adjusted to fit within window width
+        if (name_len > max_name_len) {
+            mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+        } else {
+            mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+        }
+
+        if ((cas->start + i) == cas->cursor) {
+            wattroff(window, A_REVERSE);
+        }
     }
 
     mvwprintw(window, 0, 2, "Directory: %.*s", cols - 13, directory);
@@ -469,11 +433,9 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
 
     // MIME type
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie && magic_load(magic_cookie, NULL) == 0) {
-        const char *mime_type = magic_file(magic_cookie, file_path);
+    if (g_magic_cookie) {
+        const char *mime_type = magic_file(g_magic_cookie, file_path);
         mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
-        magic_close(magic_cookie);
     } else {
         mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
     }
@@ -1106,6 +1068,15 @@ int main() {
         PREVIEW_WIN_ACTIVE = 2,
     } active_window = DIRECTORY_WIN_ACTIVE;
 
+    // Initialize libmagic
+    g_magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
+    if (!g_magic_cookie) {
+        die(1, "Failed to initialize magic library");
+    }
+    if (magic_load(g_magic_cookie, NULL) != 0) {
+        die(1, "Cannot load magic database: %s", magic_error(g_magic_cookie));
+    }
+
     // Initial drawing
     redraw_all_windows(&state);
 
@@ -1434,6 +1405,11 @@ int main() {
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);
+
+    // Add cleanup before exit
+    if (g_magic_cookie) {
+        magic_close(g_magic_cookie);
+    }
 
     return 0;
 }
