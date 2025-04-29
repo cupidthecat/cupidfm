@@ -100,3 +100,12 @@ void Vector_sane_cap(Vector *v) {
     v->IMPL.cap = v->IMPL.len * 2;
     v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
 }
+
+
+void Vector_reserve(Vector *v, size_t want)
+{
+    if (v->IMPL.cap < want) {
+        v->IMPL.cap = want;
+        v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
+    }
+}

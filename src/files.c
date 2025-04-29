@@ -1,6 +1,9 @@
 // File: files.c
 // -----------------------
 #define _POSIX_C_SOURCE 200112L    // for strdup
+#define _GNU_SOURCE          /* O_DIRECTORY, fdopendir(), etc.            */
+#define _DEFAULT_SOURCE      /* DT_DIR, DT_UNKNOWN, AT_* flags, …         */
+
 #include <stdlib.h>                // for malloc, free
 #include <stddef.h>                // for NULL
 #include <sys/types.h>             // for ino_t
@@ -15,6 +18,9 @@
 #include <fcntl.h>                 // For O_RDONLY
 #include <magic.h>                 // For libmagic
 #include <time.h>
+#include <linux/stat.h>     
+#include <sys/syscall.h> 
+#include <sys/statfs.h>  
 
 // Local includes
 #include "main.h"                  // for FileAttr, Vector, Vector_add, Vector_len, Vector_set_len
@@ -157,46 +163,72 @@ void free_attr(FileAttr fa) {
         free(fa);
     }
 }
+
+// Call once per directory to speed up read() and drop cache at the end.
+static void advise_dir(int dirfd) {
+    posix_fadvise(dirfd, 0, 0, POSIX_FADV_SEQUENTIAL);
+}
+
 /**
  * Function to append files in a directory to a Vector
  *
  * @param v the Vector to append the files to
  * @param name the name of the directory
  */
-void append_files_to_vec(Vector *v, const char *name) {
-    DIR *dir = opendir(name);
-    if (dir != NULL) {
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                char full_path[MAX_PATH_LENGTH];
-                path_join(full_path, name, entry->d_name);
+void append_files_to_vec(Vector *v, const char *dirpath) {
+    // 1) clear old list
+    clear_files_vector(v);
 
-                bool is_dir = is_directory(name, entry->d_name);
-                
-                // Check if it's a symlink
-                char symlink_target[MAX_PATH_LENGTH] = {0};
-                bool is_symlink = get_symlink_target(full_path, symlink_target, sizeof(symlink_target));
-                
-                // Create the display name
-                char display_name[MAX_PATH_LENGTH * 2] = {0};
-                if (is_symlink) {
-                    snprintf(display_name, sizeof(display_name), "%s → %s", entry->d_name, symlink_target);
-                } else {
-                    strncpy(display_name, entry->d_name, sizeof(display_name));
-                }
+    // 2) open dir
+    int dfd = open(dirpath, O_RDONLY | O_DIRECTORY);
+    if (dfd < 0) return;
+    advise_dir(dfd);
 
-                FileAttr file_attr = mk_attr(display_name, is_dir, entry->d_ino);
+    DIR *dir = fdopendir(dfd);
+    if (!dir) { close(dfd); return; }
 
-                if (file_attr != NULL) {
-                    Vector_add(v, 1);
-                    v->el[Vector_len(*v)] = file_attr;
-                    Vector_set_len(v, Vector_len(*v) + 1);
-                }
+    // 3) pre-size the vector to avoid reallocs (guess: st_nlink entries or 128)
+    struct stat st;
+    if (fstat(dfd, &st) == 0 && st.st_nlink > 0) {
+        Vector_reserve(v, MIN_INT_SIZE_T(st.st_nlink, 1024));
+    }
+
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        // skip . and ..
+        if (ent->d_name[0]=='.' && 
+            (ent->d_name[1]=='\0' ||
+             (ent->d_name[1]=='.' && ent->d_name[2]=='\0')))
+            continue;
+
+        // use d_type if available
+        bool is_dir = false;
+        if (ent->d_type == DT_DIR) {
+            is_dir = true;
+        } else if (ent->d_type == DT_UNKNOWN) {
+            // fallback: very cheap statx
+            struct statx stx;
+            if (statx(dfd, ent->d_name,
+                      AT_STATX_DONT_SYNC|AT_SYMLINK_NOFOLLOW,
+                      STATX_MODE, &stx)==0 &&
+                (stx.stx_mode & S_IFMT) == S_IFDIR)
+            {
+                is_dir = true;
             }
         }
-        closedir(dir);
+
+        // build display name (no symlink resolution here!)
+        FileAttr fa = mk_attr(ent->d_name, is_dir, ent->d_ino);
+        if (!fa) continue;
+
+        Vector_add(v, 1);
+        v->el[Vector_len(*v)] = fa;
+        Vector_set_len(v, Vector_len(*v) + 1);
     }
+
+    closedir(dir);
+    // drop pages now that we’ve scanned
+    posix_fadvise(dfd, 0, 0, POSIX_FADV_DONTNEED);
 }
 
 // Recursive function to calculate directory size
@@ -742,8 +774,7 @@ bool is_supported_file_type(const char *filename) {
 
 /*  Remove every FileAttr in the Vector but keep the Vector itself
  *  (useful when you want to re-use the same Vector instance).        */
-void clear_files_vector(Vector *v)
-{
+void clear_files_vector(Vector *v) {
     size_t n = Vector_len(*v);
     for (size_t i = 0; i < n; ++i)          /* free nested members   */
         if (v->el[i])
@@ -754,8 +785,7 @@ void clear_files_vector(Vector *v)
 
 /*  Destroy an entire Vector of FileAttr.  Free the contained objects
  *  first and then the element array itself.                          */
-void free_files_vector(Vector *v)
-{
+void free_files_vector(Vector *v) {
     clear_files_vector(v);                   /* free every FileAttr  */
     free(v->el);                             /* free element array   */
     v->el = NULL;
