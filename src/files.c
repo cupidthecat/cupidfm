@@ -701,7 +701,6 @@ void edit_file_in_terminal(WINDOW *window,
     free(text_buffer.lines);
 }
 
-
 /**
  * Checks if the given file has a supported MIME type.
  *
@@ -738,4 +737,26 @@ bool is_supported_file_type(const char *filename) {
     }
 
     return supported;
+}
+
+
+/*  Remove every FileAttr in the Vector but keep the Vector itself
+ *  (useful when you want to re-use the same Vector instance).        */
+void clear_files_vector(Vector *v)
+{
+    size_t n = Vector_len(*v);
+    for (size_t i = 0; i < n; ++i)          /* free nested members   */
+        if (v->el[i])
+            free_attr((FileAttr)v->el[i]);
+
+    Vector_set_len_no_free(v, 0);            /* length → 0, no frees */
+}
+
+/*  Destroy an entire Vector of FileAttr.  Free the contained objects
+ *  first and then the element array itself.                          */
+void free_files_vector(Vector *v)
+{
+    clear_files_vector(v);                   /* free every FileAttr  */
+    free(v->el);                             /* free element array   */
+    v->el = NULL;
 }

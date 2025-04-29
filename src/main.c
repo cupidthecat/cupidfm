@@ -1402,7 +1402,7 @@ int main() {
     }
 
     // Clean up
-    Vector_bye(&state.files);
+    free_files_vector(&state.files);
     free(state.current_directory);
     delwin(dirwin);
     delwin(previewwin);

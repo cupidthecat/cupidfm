@@ -25,5 +25,7 @@ void edit_file_in_terminal(WINDOW *window,
                            KeyBindings *kb);
 
 char* format_file_size(char *buffer, size_t size);
+void clear_files_vector(Vector *v);
+void free_files_vector(Vector *v);
 
 #endif // FILES_H
