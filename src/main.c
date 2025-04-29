@@ -375,7 +375,25 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     
     // Display file size with emoji
     char fileSizeStr[20];
-    format_file_size(fileSizeStr, file_stat.st_size);
+    if (S_ISDIR(file_stat.st_mode)) {
+        // Use du -sb to get accurate directory size
+        char cmd[PATH_MAX + 50];
+        snprintf(cmd, sizeof(cmd), "du -sb '%s' 2>/dev/null", file_path);
+        FILE *fp = popen(cmd, "r");
+        if (fp) {
+            unsigned long size = 0;
+            if (fscanf(fp, "%lu", &size) == 1) {
+                format_file_size(fileSizeStr, size);
+            } else {
+                strncpy(fileSizeStr, "Unknown", sizeof(fileSizeStr));
+            }
+            pclose(fp);
+        } else {
+            strncpy(fileSizeStr, "Error", sizeof(fileSizeStr));
+        }
+    } else {
+        format_file_size(fileSizeStr, file_stat.st_size);
+    }
     mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
 
     // Display file permissions with emoji
@@ -684,7 +702,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     char new_path[MAX_PATH_LENGTH];
     path_join(new_path, *current_directory, selected_entry);
 
-    // Check if we’re not re-entering the same directory path
+    // Check if we're not re-entering the same directory path
     if (strcmp(new_path, *current_directory) == 0) {
         werase(notifwin);
         show_notification(notifwin, "Already in this directory");
@@ -729,7 +747,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         state->selected_entry = "";
     }
 
-    // If there’s only one entry, automatically select it
+    // If there's only one entry, automatically select it
     if (dir_window_cas->num_files == 1) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
     }
