@@ -66,16 +66,18 @@ void fix_cursor(CursorAndSlice *cas);
 
 // Function Implementations
 // Extract the real filename from a “name → target” display string
-static void get_actual_name(const char *display_name, char *actual_name, size_t size) {
+// Helper to strip off “ → target” from a symlink display name,
+// e.g. input:  "my-link → /real/path"  → output: "my-link"
+static void get_actual_name(const char *display_name, char *out, size_t size) {
     const char *sep = strstr(display_name, " → ");
     if (sep) {
         size_t len = sep - display_name;
         if (len >= size) len = size - 1;
-        memcpy(actual_name, display_name, len);
-        actual_name[len] = '\0';
+        memcpy(out, display_name, len);
+        out[len] = '\0';
     } else {
-        strncpy(actual_name, display_name, size);
-        actual_name[size-1] = '\0';
+        strncpy(out, display_name, size);
+        out[size-1] = '\0';
     }
 }
 
@@ -368,22 +370,23 @@ void draw_directory_window(
  * @param start_line the starting line of the preview
  */
 void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
-    (void)start_line;  // suppress unused-parameter warning
-
-    // Clear and border
+    (void)start_line;
     werase(window);
     box(window, 0, 0);
 
-    // Window dimensions
     int max_x, max_y;
     getmaxyx(window, max_y, max_x);
 
-    // Show selected path
+    // Determine the real filename (strip "→ target" if present)
+    char actual[MAX_PATH_LENGTH];
+    get_actual_name(selected_entry, actual, sizeof(actual));
+
+    // Build the full path using the real name
     char file_path[MAX_PATH_LENGTH];
-    path_join(file_path, current_directory, selected_entry);
+    path_join(file_path, current_directory, actual);
     mvwprintw(window, 0, 2, "Selected Entry: %.*s", max_x - 4, file_path);
 
-    // Stat the file
+    // Now stat(file_path) will follow the symlink correctly
     struct stat file_stat;
     if (stat(file_path, &file_stat) == -1) {
         mvwprintw(window, 2, 2, "Unable to retrieve file information");
