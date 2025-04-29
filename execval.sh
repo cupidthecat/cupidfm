@@ -1,7 +1,7 @@
 valgrind --tool=memcheck \
          --leak-check=full \
-         --show-leak-kinds=all \
+         --show-leak-kinds=definite,possible \
          --track-origins=yes \
-         --num-callers=30 \
-         --suppressions=valgrind.supp \
-         ./cupidfm
+         --num-callers=20 \
+         --log-file=valgrind.log \
+         ./cupidfm <<<'q'      # quit immediately (or script a minimal session)
