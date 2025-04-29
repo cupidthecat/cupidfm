@@ -4,7 +4,9 @@
 * fix file dir sizes using du 
 * fixe virtualfs
 * display symlink and what they link to
-* scroll dir tree preview 
+* scroll dir tree preview
+* Vector_reserve() helper - Optimize file loading performance for large directories
+* Implement proper memory management and cleanup for file attributes
   
 cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses` library for the user interface, providing features like directory navigation, directory tree preview, file preview, file editing, and file information display. 
 
@@ -257,7 +259,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [X] Fix directory preview not scrolling 
 - [X] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
-- [ ] Optimize file loading performance for large directories
+- [X] Optimize file loading performance for large directories
 - [ ] Fix long names of files messing up UI
 - [ ] Harden input parsing, validate all user-supplied paths and filenames to avoid path-traversal or escape-sequence issues.
 - [ ] Graceful SIGINT/SIGTERM shut-down, free ncurses windows, vectors, and temporary files on Ctrl-C or kill.
