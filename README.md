@@ -1,4 +1,8 @@
-# cupidfm - file editing
+# cupidfm - file editing - branch fix
+
+added sym link visuals and make it work
+fix file dir sizes using du 
+fixe virtualfs
 
 cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses` library for the user interface, providing features like directory navigation, directory tree preview, file preview, file editing, and file information display. 
 
