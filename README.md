@@ -254,11 +254,10 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ## Todo
 
 ### High Priority
-- [ ] Fix directory preview not scrolling 
+- [X] Fix directory preview not scrolling 
 - [ ] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
-- [ ] Optimize scrolling
 - [ ] Fix long names of files messing up UI
 ### Performance Improvements
 - [ ] Implement lazy loading for large directories
@@ -266,6 +265,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Cache directory contents for faster navigation
 - [ ] Improve MIME type detection performance
 - [ ] Implement background loading for directory contents
+- [ ] Optimize scrolling
 
 ### Low Priority 
 - [ ] Write custom magic library for in-house MIME type detection
@@ -278,11 +278,11 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Fix text buffer not scrolling to the right when typing and hitting the border of the window
 
 ### Features
-- [ ] Fix dir size calc not working (wont calc files inside)
-- [ ] Enable scrolling for tree preview in the preview window when tabbed over
-- [ ] Add preview support for `.zip` and `.tar` files
+- [X] Fix dir size calc not working (wont calc files inside)
+- [X] Enable scrolling for tree preview in the preview window when tabbed over
+- [ ] Add preview support for `.zip`, `.tar`, and other compressed types 
 - [ ] Implement syntax highlighting for supported file types
-- [ ] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [x] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
 - [ ] Implement text editing shortcuts:
   - [ ] Shift+arrow for selection
   - [ ] Ctrl+arrow for faster cursor movement
