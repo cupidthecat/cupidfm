@@ -65,6 +65,20 @@ typedef struct {
 void fix_cursor(CursorAndSlice *cas);
 
 // Function Implementations
+// Extract the real filename from a “name → target” display string
+static void get_actual_name(const char *display_name, char *actual_name, size_t size) {
+    const char *sep = strstr(display_name, " → ");
+    if (sep) {
+        size_t len = sep - display_name;
+        if (len >= size) len = size - 1;
+        memcpy(actual_name, display_name, len);
+        actual_name[len] = '\0';
+    } else {
+        strncpy(actual_name, display_name, size);
+        actual_name[size-1] = '\0';
+    }
+}
+
 static const char* keycode_to_string(int keycode) {
     static char buf[32];
 
@@ -673,8 +687,11 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     }
 
     // Construct the new path carefully
+    char actual[MAX_PATH_LENGTH];
+    get_actual_name(selected_entry, actual, sizeof(actual));
+
     char new_path[MAX_PATH_LENGTH];
-    path_join(new_path, *current_directory, selected_entry);
+    path_join(new_path, *current_directory, actual);
 
     // Check if we're not re-entering the same directory path
     if (strcmp(new_path, *current_directory) == 0) {
@@ -686,7 +703,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     }
 
     // Push the selected directory name onto the stack
-    char *new_entry = strdup(selected_entry);
+    char *new_entry = strdup(actual);
     if (new_entry == NULL) {
         mvwprintw(notifwin, LINES - 1, 1, "Memory allocation error");
         wrefresh(notifwin);
@@ -1095,8 +1112,11 @@ int main() {
                     should_clear_notif = false;
                 } else if (active_window == PREVIEW_WIN_ACTIVE) {
                     // Determine total lines for scrolling in the preview
+                    char actual[MAX_PATH_LENGTH];
+                    get_actual_name(state.selected_entry, actual, sizeof(actual));
+
                     char file_path[MAX_PATH_LENGTH];
-                    path_join(file_path, state.current_directory, state.selected_entry);
+                    path_join(file_path, state.current_directory, actual);
                     int total_lines = get_total_lines(file_path);
 
                     int max_x, max_y;
