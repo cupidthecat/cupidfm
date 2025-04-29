@@ -255,7 +255,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 
 ### High Priority
 - [X] Fix directory preview not scrolling 
-- [ ] Implement proper memory management and cleanup for file attributes and vectors
+- [X] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
 - [ ] Fix long names of files messing up UI
