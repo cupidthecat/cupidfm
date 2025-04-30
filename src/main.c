@@ -59,7 +59,7 @@ typedef struct {
     CursorAndSlice dir_window_cas;
     const char *selected_entry;
     int preview_start_line;
-    // Add more state variables here if needed
+    int preview_cursor;
 } AppState;
 
 // Forward declaration of fix_cursor
@@ -185,7 +185,9 @@ void show_directory_tree(WINDOW *window,
                          int *line_num,
                          int max_y,
                          int max_x,
-                         int *start_line)
+                         int *start_line,
+                         int *current_cursor,
+                         int *selected_level)
 {
     /* header -------------------------------------------------------------- */
     if (level == 0) {
@@ -249,6 +251,12 @@ void show_directory_tree(WINDOW *window,
                 continue;
             }
 
+            /* Handle selection highlighting */
+            if (*current_cursor == *line_num - 7) {  // Adjust for header lines
+                wattron(window, A_REVERSE);
+                *selected_level = level;  // Track selection depth
+            }
+
             /* Draw entry */
             /* 1.  Make the absolute path for this entry */
             size_t p = snprintf(full_path, sizeof(full_path),
@@ -272,6 +280,11 @@ void show_directory_tree(WINDOW *window,
             /* Draw the entry with proper truncation */
             mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
                      emoji, available_width, entries[i].name);
+            
+            if (*current_cursor == *line_num - 7) {
+                wattroff(window, A_REVERSE);
+            }
+
             (*line_num)++;
 
             /* Recurse into directories */
@@ -281,7 +294,7 @@ void show_directory_tree(WINDOW *window,
                 if (path_len < sizeof(full_path)) {
                     int sub_start = 0;
                     show_directory_tree(window, full_path, level+1, line_num, 
-                                      max_y, max_x, &sub_start);
+                                      max_y, max_x, &sub_start, current_cursor, selected_level);
                 }
             }
         }
@@ -389,8 +402,9 @@ void draw_directory_window(
  * @param selected_entry the selected entry
  * @param start_line the starting line of the preview
  */
-void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
-    (void)start_line;
+void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, 
+                        int *preview_start_line, int *preview_cursor) {
+    (void)*preview_start_line;
     werase(window);
     box(window, 0, 0);
 
@@ -466,8 +480,10 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     // If directory, show tree; else preview file...
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
-        int adjusted_start = start_line;
-        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, &adjusted_start);
+        int adjusted_start = *preview_start_line;
+        int selected_level = 0;
+        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, 
+                          &adjusted_start, preview_cursor, &selected_level);
     } else if (is_supported_file_type(file_path)) {
          // Display file preview for supported types
         FILE *file = fopen(file_path, "r");
@@ -477,7 +493,7 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
             int current_line = 0;
 
             // Skip lines until start_line
-            while (current_line < start_line && fgets(line, sizeof(line), file)) {
+            while (current_line < *preview_start_line && fgets(line, sizeof(line), file)) {
                 current_line++;
             }
 
@@ -605,7 +621,8 @@ void redraw_all_windows(AppState *state) {
         previewwin,
         state->current_directory,
         state->selected_entry,
-        state->preview_start_line
+        &state->preview_start_line,
+        &state->preview_cursor
     );
 
     // Refresh all windows in correct order
@@ -1093,6 +1110,7 @@ int main() {
     };
 
     state.preview_start_line = 0;
+    state.preview_cursor = 0;
 
     enum {
         DIRECTORY_WIN_ACTIVE = 1,
@@ -1164,12 +1182,11 @@ int main() {
                     wrefresh(notifwin);
                     should_clear_notif = false;
                 } else if (active_window == PREVIEW_WIN_ACTIVE) {
-                    if (state.preview_start_line > 0) {
-                        state.preview_start_line--;
-                        werase(notifwin);
-                        show_notification(notifwin, "Scrolled up");
-                        wrefresh(notifwin);
-                        should_clear_notif = false;
+                    if (state.preview_cursor > 0) {
+                        state.preview_cursor--;
+                        if (state.preview_cursor < state.preview_start_line) {
+                            state.preview_start_line--;
+                        }
                     }
                 }
             }
@@ -1185,11 +1202,14 @@ int main() {
                     should_clear_notif = false;
                 }
                 else if (active_window == PREVIEW_WIN_ACTIVE) {
-                    state.preview_start_line++;
-                    werase(notifwin);
-                    show_notification(notifwin, "Scrolled down");
-                    wrefresh(notifwin);
-                    should_clear_notif = false;
+                    int max_y;
+                    int __attribute__((unused)) max_x;  // Add unused attribute
+                    getmaxyx(previewwin, max_y, max_x);
+                    
+                    state.preview_cursor++;
+                    if (state.preview_cursor >= state.preview_start_line + (max_y - 8)) {
+                        state.preview_start_line++;
+                    }
                 }
             }
 
@@ -1405,7 +1425,8 @@ int main() {
                 previewwin,
                 state.current_directory,
                 state.selected_entry,
-                state.preview_start_line
+                &state.preview_start_line,
+                &state.preview_cursor
         );
 
         // Highlight the active window
