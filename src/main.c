@@ -1182,9 +1182,21 @@ int main() {
                     wrefresh(notifwin);
                     should_clear_notif = false;
                 } else if (active_window == PREVIEW_WIN_ACTIVE) {
-                    if (state.preview_cursor > 0) {
-                        state.preview_cursor--;
-                        if (state.preview_cursor < state.preview_start_line) {
+                    // Check if we're previewing a directory
+                    char full_path[MAX_PATH_LENGTH];
+                    path_join(full_path, state.current_directory, state.selected_entry);
+                    struct stat st;
+                    if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                        // Directory tree navigation
+                        if (state.preview_cursor > 0) {
+                            state.preview_cursor--;
+                            if (state.preview_cursor < state.preview_start_line) {
+                                state.preview_start_line--;
+                            }
+                        }
+                    } else {
+                        // File content scrolling
+                        if (state.preview_start_line > 0) {
                             state.preview_start_line--;
                         }
                     }
@@ -1202,12 +1214,22 @@ int main() {
                     should_clear_notif = false;
                 }
                 else if (active_window == PREVIEW_WIN_ACTIVE) {
-                    int max_y;
-                    int __attribute__((unused)) max_x;  // Add unused attribute
-                    getmaxyx(previewwin, max_y, max_x);
-                    
-                    state.preview_cursor++;
-                    if (state.preview_cursor >= state.preview_start_line + (max_y - 8)) {
+                    // Check if we're previewing a directory
+                    char full_path[MAX_PATH_LENGTH];
+                    path_join(full_path, state.current_directory, state.selected_entry);
+                    struct stat st;
+                    if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                        // Directory tree navigation
+                        int max_y;
+                        int __attribute__((unused)) max_x;
+                        getmaxyx(previewwin, max_y, max_x);
+                        
+                        state.preview_cursor++;
+                        if (state.preview_cursor >= state.preview_start_line + (max_y - 8)) {
+                            state.preview_start_line++;
+                        }
+                    } else {
+                        // File content scrolling
                         state.preview_start_line++;
                     }
                 }
