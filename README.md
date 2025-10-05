@@ -254,6 +254,8 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
 - [ ] Optimize scrolling
+- [ ] Use tree command to rewrite tree preview
+- [ ] Use YSAP make-diagram program to learn more about files
 
 ### Edit Mode Issues
 - [ ] Banner marquee not rotating correctly when rotating in edit mode
