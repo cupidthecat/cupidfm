@@ -452,10 +452,22 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         return;
     }
     
-    // Display file size with emoji
+    // Display file size or directory size with emoji
     char fileSizeStr[20];
-    format_file_size(fileSizeStr, file_stat.st_size);
-    mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
+    if (S_ISDIR(file_stat.st_mode)) {
+        long dir_size = get_directory_size(file_path);
+        if (dir_size == -1) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
+        } else if (dir_size == -2) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+        } else {
+            format_file_size(fileSizeStr, dir_size);
+        }
+        mvwprintw(window, 2, 2, "📁 Directory Size: %s", fileSizeStr);
+    } else {
+        format_file_size(fileSizeStr, file_stat.st_size);
+        mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
+    }
 
     // Display file permissions with emoji
     char permissions[10];

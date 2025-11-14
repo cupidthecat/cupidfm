@@ -25,5 +25,6 @@ void edit_file_in_terminal(WINDOW *window,
                            KeyBindings *kb);
 
 char* format_file_size(char *buffer, size_t size);
+long get_directory_size(const char *dir_path);
 
 #endif // FILES_H
