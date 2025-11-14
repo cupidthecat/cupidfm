@@ -256,6 +256,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Optimize scrolling
 - [ ] Use tree command to rewrite tree preview
 - [ ] Use YSAP make-diagram program to learn more about files
+- [X] Fixed cursor issue in directory window scroll
 
 ### Edit Mode Issues
 - [ ] Banner marquee not rotating correctly when rotating in edit mode
@@ -266,7 +267,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 
 ### Features
 - [ ] Fix dir size calc not working (wont calc files inside)
-- [ ] Enable scrolling for tree preview in the preview window when tabbed over
+- [X] Enable scrolling for tree preview in the preview window when tabbed over
 - [ ] Add preview support for `.zip` and `.tar` files
 - [ ] Implement syntax highlighting for supported file types
 - [ ] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
