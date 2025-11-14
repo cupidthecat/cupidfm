@@ -248,7 +248,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ## Todo
 
 ### High Priority
-- [ ] Fix directory preview not scrolling 
+- [X] Fix directory preview not scrolling 
 - [ ] Write custom magic library for in-house MIME type detection
 - [ ] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
