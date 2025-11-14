@@ -159,6 +159,82 @@ void free_attr(FileAttr fa) {
     }
 }
 /**
+ * Count total files in a directory (excluding . and ..)
+ *
+ * @param name the name of the directory
+ * @return the number of files in the directory
+ */
+size_t count_directory_files(const char *name) {
+    DIR *dir = opendir(name);
+    size_t count = 0;
+    if (dir != NULL) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                count++;
+            }
+        }
+        closedir(dir);
+    }
+    return count;
+}
+
+/**
+ * Function to append files in a directory to a Vector (lazy loading version)
+ * Loads up to max_files, starting from files_loaded offset
+ *
+ * @param v the Vector to append the files to
+ * @param name the name of the directory
+ * @param max_files maximum number of files to load in this batch
+ * @param files_loaded pointer to track how many files have been loaded (in/out)
+ * @return number of files actually loaded in this batch
+ */
+void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files, size_t *files_loaded) {
+    DIR *dir = opendir(name);
+    size_t loaded_this_batch = 0;
+    size_t skipped = 0;
+    
+    if (dir != NULL) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL && loaded_this_batch < max_files) {
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                // Skip files we've already loaded
+                if (skipped < *files_loaded) {
+                    skipped++;
+                    continue;
+                }
+                
+                // Optimize: Use d_type to avoid expensive stat calls when possible
+                bool is_dir = false;
+                #ifdef DT_DIR
+                if (entry->d_type == DT_DIR) {
+                    is_dir = true;
+                } else if (entry->d_type == DT_UNKNOWN) {
+                    // d_type unavailable, fall back to stat
+                    is_dir = is_directory(name, entry->d_name);
+                }
+                // else: d_type indicates regular file or other non-directory
+                #else
+                // No d_type support, use stat
+                is_dir = is_directory(name, entry->d_name);
+                #endif
+
+                FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
+
+                if (file_attr != NULL) {  // Only add if not NULL
+                    Vector_add(v, 1);
+                    v->el[Vector_len(*v)] = file_attr;
+                    Vector_set_len(v, Vector_len(*v) + 1);
+                    loaded_this_batch++;
+                }
+            }
+        }
+        closedir(dir);
+    }
+    *files_loaded += loaded_this_batch;
+}
+
+/**
  * Function to append files in a directory to a Vector
  *
  * @param v the Vector to append the files to
@@ -170,10 +246,20 @@ void append_files_to_vec(Vector *v, const char *name) {
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                char full_path[MAX_PATH_LENGTH];
-                path_join(full_path, name, entry->d_name);
-
-                bool is_dir = is_directory(name, entry->d_name);
+                // Optimize: Use d_type to avoid expensive stat calls when possible
+                bool is_dir = false;
+                #ifdef DT_DIR
+                if (entry->d_type == DT_DIR) {
+                    is_dir = true;
+                } else if (entry->d_type == DT_UNKNOWN) {
+                    // d_type unavailable, fall back to stat
+                    is_dir = is_directory(name, entry->d_name);
+                }
+                // else: d_type indicates regular file or other non-directory
+                #else
+                // No d_type support, use stat
+                is_dir = is_directory(name, entry->d_name);
+                #endif
 
                 FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
 
@@ -203,10 +289,23 @@ long get_directory_size(const char *dir_path) {
     long total_size = 0;
     const long MAX_SIZE_THRESHOLD = 1000L * 1024 * 1024 * 1024 * 1024; // 1000 TiB
 
+    // Skip virtual/special filesystems that don't have real sizes
+    if (strncmp(dir_path, "/proc", 5) == 0 ||
+        strncmp(dir_path, "/sys", 4) == 0 ||
+        strncmp(dir_path, "/dev", 4) == 0 ||
+        strncmp(dir_path, "/run", 4) == 0) {
+        return -2;  // Return "too large" indicator for virtual filesystems
+    }
+
     if (!(dir = opendir(dir_path)))
         return -1;
 
     while ((entry = readdir(dir)) != NULL) {
+        // Skip "." and ".." entries to avoid infinite recursion and incorrect calculations
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
         char path[MAX_PATH_LENGTH];
         if (strlen(dir_path) + strlen(entry->d_name) + 1 < sizeof(path)) {
             snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
@@ -259,9 +358,12 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
    if (S_ISDIR(file_stat.st_mode)) {
         long dir_size = get_directory_size(file_path);
         
-        char fileSizeStr[20] = "Uncalculable";
-        if (dir_size != -2)
+        char fileSizeStr[20] = "Virtual FS";
+        if (dir_size == -1) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
+        } else if (dir_size != -2) {
             format_file_size(fileSizeStr, dir_size);
+        }
         mvwprintw(window, 2, 2, "%-*s %s", label_width, "📁 Directory Size:", fileSizeStr);
     } else {
         char fileSizeStr[20];

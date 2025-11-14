@@ -253,7 +253,8 @@ bool is_directory(const char *path, const char *filename) {
     char full_path[MAX_PATH_LENGTH];
     snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
 
-    if (stat(full_path, &path_stat) == 0)
+    // Use lstat instead of stat - faster (doesn't follow symlinks) and sufficient for directory check
+    if (lstat(full_path, &path_stat) == 0)
         return S_ISDIR(path_stat.st_mode);
 
     return false; // Correct: Do not assume it's a directory if stat fails
@@ -988,4 +989,61 @@ void reload_directory(Vector *files, const char *current_directory) {
     append_files_to_vec(files, current_directory);
     // Makes the vector shorter
     Vector_sane_cap(files);
+}
+
+// Lazy loading version - loads initial batch
+void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files) {
+    // Empties the vector
+    Vector_set_len(files, 0);
+    *files_loaded = 0;
+    
+    // Count total files first (for display purposes)
+    *total_files = count_directory_files(current_directory);
+    
+    // Load initial batch - larger for better UX (200 files or all if less)
+    const size_t INITIAL_BATCH = 200;
+    size_t batch_size = (*total_files > INITIAL_BATCH) ? INITIAL_BATCH : *total_files;
+    
+    if (batch_size > 0) {
+        append_files_to_vec_lazy(files, current_directory, batch_size, files_loaded);
+    }
+    
+    // Makes the vector shorter
+    Vector_sane_cap(files);
+}
+
+// Load more files when user scrolls near the end
+// Note: CursorAndSlice is defined in main.c, this function is implemented here but declared in utils.h
+void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas_ptr, size_t *files_loaded, size_t total_files) {
+    // Cast to access CursorAndSlice fields (defined in main.c)
+    typedef struct {
+        SIZE start;
+        SIZE cursor;
+        SIZE num_lines;
+        SIZE num_files;
+    } CursorAndSlice;
+    CursorAndSlice *cas = (CursorAndSlice *)cas_ptr;
+    
+    // Only load more if we haven't loaded all files yet
+    if (total_files > 0 && *files_loaded >= total_files) {
+        return;  // All files already loaded
+    }
+    
+    // Calculate how close we are to the end of loaded files
+    size_t visible_lines = cas->num_lines - 2;
+    size_t end_of_visible = cas->start + visible_lines;
+    
+    // Load more if we're within 50 items of the end of loaded files (increased threshold for smoother experience)
+    const size_t LOAD_THRESHOLD = 50;
+    if (end_of_visible + LOAD_THRESHOLD >= *files_loaded && *files_loaded < total_files) {
+        // Load larger batches to reduce frequency of loading
+        size_t remaining = (total_files > *files_loaded) ? (total_files - *files_loaded) : 200;
+        size_t batch_size = (remaining > 200) ? 200 : remaining;  // Load 200 at a time for better performance
+        
+        append_files_to_vec_lazy(files, current_directory, batch_size, files_loaded);
+        cas->num_files = Vector_len(*files);
+        
+        // Make the vector shorter if needed
+        Vector_sane_cap(files);
+    }
 }

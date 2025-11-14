@@ -12,6 +12,8 @@ typedef struct FileAttributes* FileAttr;
 const char *FileAttr_get_name(FileAttr fa);
 bool FileAttr_is_dir(FileAttr fa);
 void append_files_to_vec(Vector *v, const char *name);
+void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files, size_t *files_loaded);
+size_t count_directory_files(const char *name);
 void display_file_info(WINDOW *window, const char *file_path, int max_x);
 bool is_supported_file_type(const char *filename);
 

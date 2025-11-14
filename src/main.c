@@ -50,13 +50,22 @@ typedef struct {
     SIZE num_files;
 } CursorAndSlice;
 
+// Lazy loading state for large directories
+typedef struct {
+    char *directory_path;
+    size_t files_loaded;
+    size_t total_files;  // -1 if unknown
+    bool is_loading;
+    struct timespec last_load_time;  // Prevent loading too frequently
+} LazyLoadState;
+
 typedef struct {
     char *current_directory;
     Vector files;
     CursorAndSlice dir_window_cas;
     const char *selected_entry;
     int preview_start_line;
-    // Add more state variables here if needed
+    LazyLoadState lazy_load;  // Lazy loading state
 } AppState;
 
 // Forward declaration of fix_cursor
@@ -260,17 +269,33 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             continue;
         }
 
+        // Reconstruct full path for symlink detection
+        size_t name_len = strlen(entries[i].name);
+        if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
+            strcpy(full_path, dir_path);
+            if (full_path[dir_path_len - 1] != '/') {
+                strcat(full_path, "/");
+            }
+            strcat(full_path, entries[i].name);
+        }
+
+        // Check if this is a symlink
+        struct stat link_statbuf;
+        bool is_symlink = (lstat(full_path, &link_statbuf) == 0 && S_ISLNK(link_statbuf.st_mode));
+        char symlink_target[MAX_PATH_LENGTH] = {0};
+        
+        if (is_symlink) {
+            ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
+            if (target_len > 0) {
+                symlink_target[target_len] = '\0';
+            }
+        }
+
         const char *emoji;
         if (entries[i].is_dir) {
             emoji = "📁";
         } else if (magic_cookie) { // if magic fails 
-            size_t name_len = strlen(entries[i].name);
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                strcpy(full_path, dir_path);
-                if (full_path[dir_path_len - 1] != '/') {
-                    strcat(full_path, "/");
-                }
-                strcat(full_path, entries[i].name);
                 const char *mime_type = magic_file(magic_cookie, full_path);
                 emoji = get_file_emoji(mime_type, entries[i].name);
             } else {
@@ -280,8 +305,30 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             emoji = "📄";
         }
 
-        mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
-                  emoji, max_x - 4 - level * 2, entries[i].name);
+        // Calculate available width for display
+        int available_width = max_x - 4 - level * 2 - 10; // Account for permissions column
+        int display_len = name_len + (is_symlink ? (4 + strlen(symlink_target)) : 0);
+        
+        if (display_len > available_width) {
+            // Truncate if needed
+            if (is_symlink && strlen(symlink_target) > 0) {
+                int name_part = available_width / 2;
+                int target_part = available_width - name_part - 4;
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s -> %.*s...", 
+                         emoji, name_part, entries[i].name, target_part, symlink_target);
+            } else {
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
+                         emoji, available_width, entries[i].name);
+            }
+        } else {
+            if (is_symlink && strlen(symlink_target) > 0) {
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %s -> %s", 
+                         emoji, entries[i].name, symlink_target);
+            } else {
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", 
+                         emoji, available_width, entries[i].name);
+            }
+        }
 
         char perm[10];
         snprintf(perm, sizeof(perm), "%o", entries[i].mode & 0777);
@@ -291,13 +338,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
         // Only recurse into directories if we have space
         if (entries[i].is_dir && *line_num < max_y - 1) {
-            size_t name_len = strlen(entries[i].name);
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                strcpy(full_path, dir_path);
-                if (full_path[dir_path_len - 1] != '/') {
-                    strcat(full_path, "/");
-                }
-                strcat(full_path, entries[i].name);
                 show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
             }
         }
@@ -364,6 +405,23 @@ void draw_directory_window(
         for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
             FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
             const char *name = FileAttr_get_name(fa);
+            
+            // Construct full path for symlink detection
+            char full_path[MAX_PATH_LENGTH];
+            path_join(full_path, directory, name);
+            
+            // Check if this is a symlink
+            struct stat statbuf;
+            bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
+            char symlink_target[MAX_PATH_LENGTH] = {0};
+            
+            if (is_symlink) {
+                ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
+                if (target_len > 0) {
+                    symlink_target[target_len] = '\0';
+                }
+            }
+            
             const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
 
             if ((cas->start + i) == cas->cursor) {
@@ -371,11 +429,28 @@ void draw_directory_window(
             }
 
             int name_len = strlen(name);
+            int target_len = is_symlink ? strlen(symlink_target) : 0;
+            int display_len = name_len + (is_symlink ? (4 + target_len) : 0); // " -> " + target
             int max_name_len = cols - 4; // Adjusted to fit within window width
-            if (name_len > max_name_len) {
-                mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+            
+            if (display_len > max_name_len) {
+                // Truncate if needed
+                int available = max_name_len - (is_symlink ? 4 : 0);
+                if (is_symlink && target_len > 0) {
+                    // Show name and truncated target
+                    int name_part = available / 2;
+                    int target_part = available - name_part - 4;
+                    mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji, 
+                             name_part, name, target_part, symlink_target);
+                } else {
+                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+                }
             } else {
-                mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                if (is_symlink && target_len > 0) {
+                    mvwprintw(window, i + 1, 1, "%s %s -> %s", emoji, name, symlink_target);
+                } else {
+                    mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                }
             }
 
             if ((cas->start + i) == cas->cursor) {
@@ -392,6 +467,18 @@ void draw_directory_window(
             char full_path[MAX_PATH_LENGTH];
             path_join(full_path, directory, name);
             
+            // Check if this is a symlink
+            struct stat statbuf;
+            bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
+            char symlink_target[MAX_PATH_LENGTH] = {0};
+            
+            if (is_symlink) {
+                ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
+                if (target_len > 0) {
+                    symlink_target[target_len] = '\0';
+                }
+            }
+            
             const char *emoji;
             if (FileAttr_is_dir(fa)) {
                 emoji = "📁";
@@ -405,11 +492,28 @@ void draw_directory_window(
             }
 
             int name_len = strlen(name);
+            int target_len = is_symlink ? strlen(symlink_target) : 0;
+            int display_len = name_len + (is_symlink ? (4 + target_len) : 0); // " -> " + target
             int max_name_len = cols - 4; // Adjusted to fit within window width
-            if (name_len > max_name_len) {
-                mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+            
+            if (display_len > max_name_len) {
+                // Truncate if needed
+                int available = max_name_len - (is_symlink ? 4 : 0);
+                if (is_symlink && target_len > 0) {
+                    // Show name and truncated target
+                    int name_part = available / 2;
+                    int target_part = available - name_part - 4;
+                    mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji, 
+                             name_part, name, target_part, symlink_target);
+                } else {
+                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+                }
             } else {
-                mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                if (is_symlink && target_len > 0) {
+                    mvwprintw(window, i + 1, 1, "%s %s -> %s", emoji, name, symlink_target);
+                } else {
+                    mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                }
             }
 
             if ((cas->start + i) == cas->cursor) {
@@ -459,7 +563,7 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
         } else if (dir_size == -2) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
         } else {
             format_file_size(fileSizeStr, dir_size);
         }
@@ -679,10 +783,15 @@ void redraw_all_windows(AppState *state) {
  * @param files the list of files
  * @param selected_entry the selected entry
  */
-void navigate_up(CursorAndSlice *cas, const Vector *files, const char **selected_entry) {
+void navigate_up(CursorAndSlice *cas, Vector *files, const char **selected_entry,
+                const char *current_directory, LazyLoadState *lazy_load) {
     if (cas->num_files > 0) {
         if (cas->cursor == 0) {
-            // Wrap to bottom
+            // Wrap to bottom - need to ensure all files are loaded first
+            load_more_files_if_needed(files, current_directory, cas, 
+                                     &lazy_load->files_loaded, lazy_load->total_files);
+            cas->num_files = Vector_len(*files);
+            
             cas->cursor = cas->num_files - 1;
             // Calculate visible window size (subtract 2 for borders)
             int visible_lines = cas->num_lines - 2;
@@ -702,7 +811,9 @@ void navigate_up(CursorAndSlice *cas, const Vector *files, const char **selected
             }
         }
         fix_cursor(cas);
-        *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
+        if (cas->num_files > 0) {
+            *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
+        }
     }
 }
 
@@ -711,8 +822,11 @@ void navigate_up(CursorAndSlice *cas, const Vector *files, const char **selected
  * @param cas the cursor and slice state
  * @param files the list of files
  * @param selected_entry the selected entry
+ * @param current_directory the current directory path
+ * @param lazy_load the lazy loading state
  */
-void navigate_down(CursorAndSlice *cas, const Vector *files, const char **selected_entry) {
+void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_entry, 
+                   const char *current_directory, LazyLoadState *lazy_load) {
     if (cas->num_files > 0) {
         if (cas->cursor >= cas->num_files - 1) {
             // Wrap to top
@@ -737,7 +851,15 @@ void navigate_down(CursorAndSlice *cas, const Vector *files, const char **select
             }
         }
         fix_cursor(cas);
-        *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
+        
+        // Check if we need to load more files
+        load_more_files_if_needed(files, current_directory, cas, 
+                                  &lazy_load->files_loaded, lazy_load->total_files);
+        cas->num_files = Vector_len(*files);
+        
+        if (cas->num_files > 0) {
+            *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
+        }
     }
 }
 
@@ -755,7 +877,13 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
         char *last_slash = strrchr(*current_directory, '/');
         if (last_slash != NULL) {
             *last_slash = '\0'; // Remove the last directory from the path
-            reload_directory(files, *current_directory);
+            // Update lazy loading state
+            if (state->lazy_load.directory_path) {
+                free(state->lazy_load.directory_path);
+            }
+            state->lazy_load.directory_path = strdup(*current_directory);
+            reload_directory_lazy(files, *current_directory, 
+                                &state->lazy_load.files_loaded, &state->lazy_load.total_files);
         }
     }
 
@@ -763,7 +891,13 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     if ((*current_directory)[0] == '\0') {
         // If empty, set it back to the root directory
         strcpy(*current_directory, "/");
-        reload_directory(files, *current_directory);
+        // Update lazy loading state
+        if (state->lazy_load.directory_path) {
+            free(state->lazy_load.directory_path);
+        }
+        state->lazy_load.directory_path = strdup(*current_directory);
+        reload_directory_lazy(files, *current_directory, 
+                            &state->lazy_load.files_loaded, &state->lazy_load.total_files);
     }
 
     // Pop the last directory from the stack
@@ -845,8 +979,15 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         return;
     }
 
-    // Reload directory contents in the new path
-    reload_directory(files, *current_directory);
+    // Update lazy loading state for new directory
+    if (state->lazy_load.directory_path) {
+        free(state->lazy_load.directory_path);
+    }
+    state->lazy_load.directory_path = strdup(*current_directory);
+    
+    // Reload directory contents in the new path (lazy loading)
+    reload_directory_lazy(files, *current_directory, 
+                        &state->lazy_load.files_loaded, &state->lazy_load.total_files);
 
     // Reset cursor and start position for the new directory
     dir_window_cas->cursor = 0;
@@ -1141,7 +1282,16 @@ int main() {
     state.selected_entry = "";
 
     state.files = Vector_new(10);
-    append_files_to_vec(&state.files, state.current_directory);
+    
+    // Initialize lazy loading state
+    state.lazy_load.directory_path = strdup(state.current_directory);
+    state.lazy_load.files_loaded = 0;
+    state.lazy_load.total_files = 0;
+    state.lazy_load.is_loading = false;
+    
+    // Use lazy loading for initial directory load
+    reload_directory_lazy(&state.files, state.current_directory, 
+                         &state.lazy_load.files_loaded, &state.lazy_load.total_files);
 
     state.dir_window_cas = (CursorAndSlice){
             .start = 0,
@@ -1206,7 +1356,8 @@ int main() {
             // 1) UP
             if (ch == kb.key_up) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
-                    navigate_up(&state.dir_window_cas, &state.files, &state.selected_entry);
+                    navigate_up(&state.dir_window_cas, &state.files, &state.selected_entry,
+                               state.current_directory, &state.lazy_load);
                     state.preview_start_line = 0;
                     werase(notifwin);
                     show_notification(notifwin, "Moved up");
@@ -1226,7 +1377,8 @@ int main() {
             // 2) DOWN
             else if (ch == kb.key_down) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
-                    navigate_down(&state.dir_window_cas, &state.files, &state.selected_entry);
+                    navigate_down(&state.dir_window_cas, &state.files, &state.selected_entry,
+                                 state.current_directory, &state.lazy_load);
                     state.preview_start_line = 0;
                     werase(notifwin);
                     show_notification(notifwin, "Moved down");
