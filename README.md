@@ -257,7 +257,8 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Use tree command to rewrite tree preview
 - [ ] Use YSAP make-diagram program to learn more about files
 - [X] Fixed cursor issue in directory window scroll
-- [ ] Fix dir size calc not working (wont calc files inside)
+- [X] Fix dir size calc not working (wont calc files inside)
+- [ ] Fix long preview file names
 
 ### Edit Mode Issues
 - [X] Banner marquee not rotating correctly when rotating in edit mode
@@ -272,7 +273,7 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [X] Enable scrolling for tree preview in the preview window when tabbed over
 - [ ] Add preview support for `.zip` and `.tar` files
 - [ ] Implement syntax highlighting for supported file types
-- [ ] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [X] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
 - [ ] Implement text editing shortcuts:
   - [ ] Shift+arrow for selection
   - [ ] Ctrl+arrow for faster cursor movement
@@ -297,6 +298,47 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Add image preview
 - [ ] Basic file dialog for web and other applications
 - [ ] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
+
+### Todo List for Command Line Feature
+
+- [ ] Design and implement the command bar UI.
+- [ ] Add a command parser to interpret user input.
+- [ ] Implement core file operations (`cd`, `ls`, `open`, etc.).
+- [ ] Add error handling and feedback messages.
+- [ ] Support command history with Up/Down arrow keys.
+- [ ] Implement tab-based auto-completion for file and directory names.
+- [ ] Develop custom cupidfm commands (`tree`, `info`, etc.).
+- [ ] Integrate with system shell commands.
+- [ ] Allow user-defined aliases in a configuration file.
+
+### Performance Improvements
+- [ ] Implement lazy loading for large directories
+- [ ] Optimize memory usage for file preview
+- [ ] Cache directory contents for faster navigation
+- [ ] Improve MIME type detection performance
+- [ ] Implement background loading for directory contents
+
+### Completed
+- [X] Fallback to extension-based detection instead of MIME type when detection fails
+- [X] Fix directory list not staying within the border
+- [X] Implement directory tree preview for directories
+- [X] Fix weird crash on different window resize
+- [X] Fix text buffer from breaking the preview win border
+- [X] Fix issue with title banner notif rotating showing char when rotating from left side to right
+- [X] Fix inputs being overloaded and taking awhile to execute
+- [X] Add build version and name display
+- [X] Add cursor highlighting to text editing buffer
+- [X] Add line numbers to text editing buffer
+- [X] Fix preview window not updating on directory enter and leave
+- [X] Implement proper file item list
+- [X] Fix directory list being too big and getting cut off
+- [X] Fix crashing when trying to edit too small of a file
+- [X] Add support for sig winch handling
+- [X] Fix being able to enter directory before calculation is done
+- [X] Add directory window scrolling
+- [X] Add tree structure visualization with proper icons and indentation
+- [X] File info not using emojis
+- [X] Add text display on tree preview when user enters an empty dir and on dir preview
 
 ### Key Features to Implement
 
@@ -415,47 +457,6 @@ The **Command Line Interface (CLI)** for **cupidfm** will introduce a powerful w
 - [ ] Allow users to create command aliases for frequently used commands (e.g., alias `ls` to `list`).
 
 ---
-
-### Todo List for Command Line Feature
-
-- [ ] Design and implement the command bar UI.
-- [ ] Add a command parser to interpret user input.
-- [ ] Implement core file operations (`cd`, `ls`, `open`, etc.).
-- [ ] Add error handling and feedback messages.
-- [ ] Support command history with Up/Down arrow keys.
-- [ ] Implement tab-based auto-completion for file and directory names.
-- [ ] Develop custom cupidfm commands (`tree`, `info`, etc.).
-- [ ] Integrate with system shell commands.
-- [ ] Allow user-defined aliases in a configuration file.
-
-### Performance Improvements
-- [ ] Implement lazy loading for large directories
-- [ ] Optimize memory usage for file preview
-- [ ] Cache directory contents for faster navigation
-- [ ] Improve MIME type detection performance
-- [ ] Implement background loading for directory contents
-
-### Completed
-- [X] Fallback to extension-based detection instead of MIME type when detection fails
-- [X] Fix directory list not staying within the border
-- [X] Implement directory tree preview for directories
-- [X] Fix weird crash on different window resize
-- [X] Fix text buffer from breaking the preview win border
-- [X] Fix issue with title banner notif rotating showing char when rotating from left side to right
-- [X] Fix inputs being overloaded and taking awhile to execute
-- [X] Add build version and name display
-- [X] Add cursor highlighting to text editing buffer
-- [X] Add line numbers to text editing buffer
-- [X] Fix preview window not updating on directory enter and leave
-- [X] Implement proper file item list
-- [X] Fix directory list being too big and getting cut off
-- [X] Fix crashing when trying to edit too small of a file
-- [X] Add support for sig winch handling
-- [X] Fix being able to enter directory before calculation is done
-- [X] Add directory window scrolling
-- [X] Add tree structure visualization with proper icons and indentation
-- [X] File info not using emojis
-- [X] Add text display on tree preview when user enters an empty dir and on dir preview
 
 ## Usage
 
