@@ -1,6 +1,6 @@
 # cupidfm - file editing
 
-cupidFM is a terminal-based file manager implemented in C. It uses the `ncurses` library for the user interface, providing features like directory navigation, directory tree preview, file preview, file editing, and file information display. 
+cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses` library for the user interface, providing features like directory navigation, directory tree preview, file preview, file editing, and file information display. 
 
 ![preview](img/preview2.png)
 
@@ -253,20 +253,22 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Implement proper memory management and cleanup for file attributes and vectors
 - [ ] Add error handling for failed memory allocations
 - [ ] Optimize file loading performance for large directories
-- [ ] Optimize scrolling
+- [ ] Optimize scrolling, also make sure tree preview is optimized 
 - [ ] Use tree command to rewrite tree preview
 - [ ] Use YSAP make-diagram program to learn more about files
 - [X] Fixed cursor issue in directory window scroll
+- [ ] Fix dir size calc not working (wont calc files inside)
 
 ### Edit Mode Issues
-- [ ] Banner marquee not rotating correctly when rotating in edit mode
-- [ ] Fix banner not rotating when prompted eg. (new file or dir)
-- [ ] Fix sig winch handling breaking while in edit mode
-- [ ] Fix cursor showing up at the bottom of the text editing buffer
-- [ ] Fix text buffer not scrolling to the right when typing and hitting the border of the window
+- [X] Banner marquee not rotating correctly when rotating in edit mode
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix banner not rotating when prompted eg. (new file or dir)
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix sig winch handling breaking while in edit mode
+- [X] Fix cursor showing up at the bottom of the text editing buffer
+- [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
 
 ### Features
-- [ ] Fix dir size calc not working (wont calc files inside)
 - [X] Enable scrolling for tree preview in the preview window when tabbed over
 - [ ] Add preview support for `.zip` and `.tar` files
 - [ ] Implement syntax highlighting for supported file types
@@ -327,64 +329,6 @@ The **Command Line Interface (CLI)** for **cupidfm** will introduce a powerful w
 
 - **System Command Integration**:
   - Run standard shell commands like `grep`, `find`, `chmod`, and others directly from the cupidfm command bar.
-
----
-
-### Usage Examples
-
-#### 1. **Navigating Directories**
-```bash
-> cd ~/Documents
-```
-- Changes the current working directory to `~/Documents`.
-
-#### 2. **Listing Files**
-```bash
-> ls
-```
-- Lists all files and directories in the current working directory.
-
-#### 3. **Opening a File**
-```bash
-> open notes.txt
-```
-- Opens `notes.txt` in the **preview window** or the **edit mode**.
-
-#### 4. **Copying Files**
-```bash
-> copy file1.txt ~/Documents/backup/
-```
-- Copies `file1.txt` to the `~/Documents/backup/` directory.
-
-#### 5. **Moving Files**
-```bash
-> move file1.txt ~/Downloads/
-```
-- Moves `file1.txt` to the `~/Downloads/` directory.
-
-#### 6. **Deleting a File**
-```bash
-> delete file1.txt
-```
-- Deletes `file1.txt` with a confirmation prompt.
-
-#### 7. **Directory Tree View**
-```bash
-> tree
-```
-- Displays the directory structure of the current folder in the **preview window**.
-
-#### 8. **Searching for Files**
-```bash
-> find "*.c"
-```
-- Finds all `.c` files in the current directory and its subdirectories.
-
-#### 9. **Checking File Information**
-```bash
-> info file1.txt
-```
-- Displays details like size, permissions, and modification time for `file1.txt`.
 
 ---
 
