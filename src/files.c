@@ -17,6 +17,7 @@
 #include <fcntl.h>                 // For O_RDONLY
 #include <magic.h>                 // For libmagic
 #include <time.h>
+#include <sys/ioctl.h>             // For ioctl, TIOCGWINSZ, struct winsize
 
 // Local includes
 #include "main.h"                  // for FileAttr, Vector, Vector_add, Vector_len, Vector_set_len
@@ -341,26 +342,105 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
     }
 
     // Calculate the width available for text content
-    int content_width = max_x - label_width - 4;  // Subtract borders and line number area
+    // Subtract: left border (1) + line numbers + separator (1) + right border (1) + padding (1)
+    int content_width = max_x - label_width - 4;
+    
+    // Ensure content_width is at least 1 to avoid issues
+    if (content_width < 1) {
+        content_width = 1;
+    }
+    
+    // Calculate the content start position (after line numbers and separator)
+    int content_start = label_width + 3;
 
     // Calculate horizontal scroll position to keep cursor visible
     static int h_scroll = 0;
+    static int last_content_width = 0;
     const int scroll_margin = 5;  // Number of columns to keep visible on either side
 
+    // If content_width is too small, reset h_scroll to prevent issues
+    if (content_width < scroll_margin * 2) {
+        h_scroll = 0;
+        last_content_width = content_width;
+    }
+    // Reset horizontal scroll if window got wider and we can now show more content
+    // This ensures we use all available horizontal space
+    else if (content_width > last_content_width && h_scroll > 0) {
+        // Find the longest line in the visible area
+        int max_line_length = 0;
+        for (int i = 0; i < content_height && (*start_line + i) < buffer->num_lines; i++) {
+            const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
+            int line_len = strlen(line);
+            if (line_len > max_line_length) {
+                max_line_length = line_len;
+            }
+        }
+        // If all visible lines fit in the new width, reset scroll to use full width
+        if (max_line_length <= content_width) {
+            h_scroll = 0;
+        } else {
+            // Otherwise, reduce scroll to show as much as possible while keeping cursor visible
+            // If cursor is within the new wider view, we can reduce scroll
+            if (cursor_col < content_width - scroll_margin) {
+                h_scroll = 0;
+            } else {
+                // Keep cursor visible but reduce scroll to show more content
+                int new_h_scroll = cursor_col - content_width + scroll_margin + 1;
+                if (new_h_scroll < h_scroll) {
+                    h_scroll = new_h_scroll;
+                }
+            }
+        }
+    }
+    // Only update last_content_width if we didn't reset h_scroll
+    if (content_width >= scroll_margin * 2) {
+        last_content_width = content_width;
+    }
+
     // Adjust horizontal scroll if cursor would be outside visible area
-    if (cursor_col >= h_scroll + content_width - scroll_margin) {
-        h_scroll = cursor_col - content_width + scroll_margin + 1;
-    } else if (cursor_col < h_scroll + scroll_margin) {
-        h_scroll = MAX(0, cursor_col - scroll_margin);
+    // Only do this if content_width is reasonable
+    if (content_width >= scroll_margin * 2) {
+        if (cursor_col >= h_scroll + content_width - scroll_margin) {
+            h_scroll = cursor_col - content_width + scroll_margin + 1;
+        } else if (cursor_col < h_scroll + scroll_margin) {
+            h_scroll = MAX(0, cursor_col - scroll_margin);
+        }
+        
+        // Ensure h_scroll doesn't exceed reasonable bounds
+        if (h_scroll < 0) h_scroll = 0;
+    }
+    
+    // Always try to minimize scroll to use maximum available space
+    // If cursor has plenty of room, reduce scroll to show more content to the left
+    // Only do this if content_width is reasonable
+    if (content_width >= scroll_margin * 2 && h_scroll > 0 && cursor_col < h_scroll + content_width - scroll_margin * 2) {
+        // Find the longest line in the visible area to see how much we need to scroll
+        int max_line_in_view = 0;
+        for (int i = 0; i < content_height && (*start_line + i) < buffer->num_lines; i++) {
+            const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
+            int line_len = strlen(line);
+            if (line_len > max_line_in_view) {
+                max_line_in_view = line_len;
+            }
+        }
+        
+        // If all lines fit without scrolling, reset scroll
+        if (max_line_in_view <= content_width) {
+            h_scroll = 0;
+        } else {
+            // Minimize scroll while keeping cursor visible
+            // Try to reduce scroll as much as possible
+            int ideal_scroll = MAX(0, cursor_col - content_width + scroll_margin + 1);
+            if (ideal_scroll < h_scroll) {
+                h_scroll = ideal_scroll;
+            }
+        }
     }
 
     // Display line numbers and content
     for (int i = 0; i < content_height && (*start_line + i) < buffer->num_lines; i++) {
         // Print line number (right-aligned in its column)
         mvwprintw(window, i + 1, 2, "%*d", label_width - 1, *start_line + i + 1);
-
-        // Calculate the content start position
-        int content_start = label_width + 3;
 
         // Get the line content
         const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
@@ -385,13 +465,17 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
             }
             
             // Adjust cursor position for horizontal scroll
-            wmove(window, i + 1, content_start + (cursor_col - h_scroll));
+            int cursor_x = content_start + (cursor_col - h_scroll);
             wattron(window, A_REVERSE);
-            waddch(window, cursor_char);
+            mvwaddch(window, i + 1, cursor_x, cursor_char);
             wattroff(window, A_REVERSE);
         }
     }
 
+    // Hide the terminal cursor since we're using visual highlighting (A_REVERSE)
+    // This prevents the cursor from appearing in the wrong location
+    curs_set(0);
+    
     wrefresh(window);
 }
 
@@ -407,6 +491,7 @@ void edit_file_in_terminal(WINDOW *window,
                            WINDOW *notification_window, 
                            KeyBindings *kb)
 {
+    (void)window;  // Unused - we create a full-screen editor window instead
     is_editing = 1;
 
     // Open the file for reading and writing
@@ -429,10 +514,30 @@ void edit_file_in_terminal(WINDOW *window,
         return;
     }
 
-    // Clear the window before editing
+    // Create a full-screen editor window (full terminal width, minus banner and notification)
+    // This gives us maximum horizontal space for editing
+    int banner_height = 3;
+    int notif_height = 1;
+    int editor_height = LINES - banner_height - notif_height;
+    int editor_width = COLS;
+    int editor_start_y = banner_height;
+    int editor_start_x = 0;
+    
+    WINDOW *editor_window = newwin(editor_height, editor_width, editor_start_y, editor_start_x);
+    if (!editor_window) {
+        pthread_mutex_lock(&banner_mutex);
+        mvwprintw(notification_window, 1, 2, "Unable to create editor window");
+        wrefresh(notification_window);
+        pthread_mutex_unlock(&banner_mutex);
+        fclose(file);
+        close(fd);
+        return;
+    }
+    
+    // Clear and prepare the editor window
     pthread_mutex_lock(&banner_mutex);
-    werase(window);
-    box(window, 0, 0);
+    werase(editor_window);
+    box(editor_window, 0, 0);
     pthread_mutex_unlock(&banner_mutex);
 
     TextBuffer text_buffer;
@@ -475,15 +580,127 @@ void edit_file_in_terminal(WINDOW *window,
     int cursor_col  = 0;
     int start_line  = 0;
 
-    curs_set(1);        // Show cursor
-    keypad(window, TRUE);
-    wtimeout(window, 10);  // Non-blocking input
+    // Hide terminal cursor - we use visual highlighting instead
+    curs_set(0);
+    keypad(editor_window, TRUE);
+    wtimeout(editor_window, 10);  // Non-blocking input
+
+    // Render the file content immediately when entering edit mode
+    render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
 
     bool exit_edit_mode = false;
 
+    // Initialize time-based update tracking for edit mode
+    // banner_offset is now a global variable - no need for static
+    struct timespec last_banner_update;
+    struct timespec last_notif_check;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+
     while (!exit_edit_mode) {
-        int ch = wgetch(window);
+        // Check for window resize
+        if (resized) {
+            resized = 0;
+            
+            // Update ncurses terminal size
+            struct winsize w;
+            if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0) {
+                resize_term(w.ws_row, w.ws_col);
+            }
+            
+            // Update banner and notification windows first
+            pthread_mutex_lock(&banner_mutex);
+            
+            // Recreate banner window with new dimensions
+            if (bannerwin) {
+                delwin(bannerwin);
+            }
+            bannerwin = newwin(banner_height, COLS, 0, 0);
+            if (bannerwin) {
+                box(bannerwin, 0, 0);
+                wrefresh(bannerwin);
+            }
+            
+            // Recreate notification window with new dimensions
+            if (notifwin) {
+                delwin(notifwin);
+            }
+            notifwin = newwin(notif_height, COLS, LINES - notif_height, 0);
+            if (notifwin) {
+                box(notifwin, 0, 0);
+                wrefresh(notifwin);
+            }
+            
+            // Recreate editor window with new dimensions
+            delwin(editor_window);
+            editor_height = LINES - banner_height - notif_height;
+            editor_width = COLS;
+            editor_window = newwin(editor_height, editor_width, editor_start_y, editor_start_x);
+            if (editor_window) {
+                // Adjust start_line to ensure cursor is visible in the new window size
+                // Get the new content height
+                int new_content_height = editor_height - 2; // Subtract 2 for borders
+                
+                // Ensure cursor is visible - adjust start_line if needed
+                if (cursor_line < start_line) {
+                    // Cursor is above visible area, move start_line up
+                    start_line = cursor_line;
+                } else if (cursor_line >= start_line + new_content_height) {
+                    // Cursor is below visible area, move start_line down
+                    start_line = cursor_line - new_content_height + 1;
+                }
+                
+                // Ensure start_line doesn't go out of bounds
+                if (start_line < 0) start_line = 0;
+                if (text_buffer.num_lines > new_content_height) {
+                    int max_start = text_buffer.num_lines - new_content_height;
+                    if (start_line > max_start) start_line = max_start;
+                } else {
+                    start_line = 0;
+                }
+                
+                werase(editor_window);
+                box(editor_window, 0, 0);
+                render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
+                keypad(editor_window, TRUE);
+                wtimeout(editor_window, 10);
+            }
+            
+            pthread_mutex_unlock(&banner_mutex);
+            
+            // Update scroll length for banner
+            total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+        }
+        
+        int ch = wgetch(editor_window);
         if (ch == ERR) {
+            // Handle time-based updates while waiting for input
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Update banner scrolling
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+            
+            // Update notification timeout
+            long notif_time_diff = (current_time.tv_sec - last_notif_check.tv_sec) * 1000 +
+                                  (current_time.tv_nsec - last_notif_check.tv_nsec) / 1000000;
+            if (!should_clear_notif && notif_time_diff >= NOTIFICATION_TIMEOUT_MS && notifwin) {
+                pthread_mutex_lock(&banner_mutex);
+                werase(notifwin);
+                wrefresh(notifwin);
+                pthread_mutex_unlock(&banner_mutex);
+                should_clear_notif = true;
+            }
+            
             napms(10);
             continue;
         }
@@ -648,13 +865,40 @@ void edit_file_in_terminal(WINDOW *window,
         }
 
         // Re-render after any key
-        render_text_buffer(window, &text_buffer, &start_line, cursor_line, cursor_col);
+        render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
     }
 
     // Cleanup
     fclose(file);
     curs_set(0);
-    wtimeout(window, -1);
+    
+    // Clear the editor window area before deleting it
+    pthread_mutex_lock(&banner_mutex);
+    werase(editor_window);
+    wrefresh(editor_window);
+    delwin(editor_window);
+    
+    // Clear the area where the editor was to remove any leftover text
+    // We need to clear the main content area (banner_height to LINES - notif_height)
+    int clear_start_y = banner_height;
+    int clear_height = LINES - banner_height - notif_height;
+    
+    // Create a temporary window to clear the editor area
+    WINDOW *clear_win = newwin(clear_height, COLS, clear_start_y, 0);
+    if (clear_win) {
+        werase(clear_win);
+        wrefresh(clear_win);
+        delwin(clear_win);
+    }
+    
+    // Force a full screen refresh to ensure everything is redrawn
+    // Trigger a resize event so the main loop will redraw all windows properly
+    resized = 1;
+    
+    refresh();
+    clear();
+    refresh();
+    pthread_mutex_unlock(&banner_mutex);
 
     for (int i = 0; i < text_buffer.num_lines; i++) {
         free(text_buffer.lines[i]);

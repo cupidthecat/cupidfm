@@ -867,9 +867,8 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
  */
 void handle_winch(int sig) {
     (void)sig;  // Suppress unused parameter warning
-    if (!is_editing) {
-        resized = 1;
-    }
+    // Always set resize flag, even during edit mode
+    resized = 1;
 }
 
 /**
@@ -928,7 +927,7 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
 // Function to handle banner scrolling in a separate thread
 void *banner_scrolling_thread(void *arg) {
     WINDOW *window = (WINDOW *)arg;
-    int banner_offset = 0;
+    // banner_offset is now a global variable - use the shared one
     struct timespec last_update_time;
     clock_gettime(CLOCK_MONOTONIC, &last_update_time);
 
@@ -1153,7 +1152,7 @@ int main() {
     wtimeout(mainwin, INPUT_CHECK_INTERVAL);  // Set shorter timeout for input checking
 
     // Initialize scrolling variables
-    int banner_offset = 0;
+    // banner_offset is now a global variable defined in globals.c
     struct timespec last_update_time;
     clock_gettime(CLOCK_MONOTONIC, &last_update_time);
 
@@ -1322,6 +1321,41 @@ int main() {
                     path_join(file_path, state.current_directory, state.selected_entry);
                     edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
                     state.preview_start_line = 0;
+                    
+                    // After exiting edit mode, redraw all windows with borders
+                    // Redraw banner
+                    if (bannerwin) {
+                        box(bannerwin, 0, 0);
+                        wrefresh(bannerwin);
+                    }
+                    
+                    // Redraw main window with border
+                    if (mainwin) {
+                        box(mainwin, 0, 0);
+                        wrefresh(mainwin);
+                    }
+                    
+                    // Redraw directory and preview windows (they draw their own borders)
+                    draw_directory_window(
+                        dirwin,
+                        state.current_directory,
+                        &state.files,
+                        &state.dir_window_cas
+                    );
+                    
+                    draw_preview_window(
+                        previewwin,
+                        state.current_directory,
+                        state.selected_entry,
+                        state.preview_start_line
+                    );
+                    
+                    // Redraw notification window
+                    if (notifwin) {
+                        box(notifwin, 0, 0);
+                        wrefresh(notifwin);
+                    }
+                    
                     werase(notifwin);
                     show_notification(notifwin, "Editing file: %s", state.selected_entry);
                     wrefresh(notifwin);

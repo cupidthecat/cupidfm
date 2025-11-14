@@ -25,4 +25,5 @@ extern char copied_filename[MAX_PATH_LENGTH];
 extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;
+extern int banner_offset;  // Shared banner scroll offset for synchronization
 #endif // GLOBALS_H

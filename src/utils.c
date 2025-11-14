@@ -1,5 +1,6 @@
 // File: utils.c
 // -----------------------
+#define _POSIX_C_SOURCE 200112L
 #include <errno.h>     // for errno
 #include <stdarg.h>    // for va_list, va_start, va_end
 #include <stdio.h>     // for fprintf, stderr, vfprintf
@@ -14,6 +15,7 @@
 #include <ctype.h>     // for isprint
 #include <libgen.h>    // for dirname() and basename()
 #include <limits.h>    // for PATH_MAX
+#include <time.h>      // for clock_gettime, CLOCK_MONOTONIC, struct timespec
 
 // Local includes
 #include "utils.h"
@@ -55,9 +57,38 @@ bool confirm_delete(const char *path, bool *should_delete) {
     mvwprintw(popup, 2, 2, "'%s' (Y to confirm, N or ESC to cancel)", path);
     wrefresh(popup);
     
+    // Make input non-blocking to allow banner updates
+    wtimeout(popup, 10);
+    
+    // Initialize time-based update tracking
+    // banner_offset is now a global variable - no need for static
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    
     // Capture user input
     int ch;
-    while ((ch = wgetch(popup)) != ERR) {
+    while (1) {
+        ch = wgetch(popup);
+        if (ch == ERR) {
+            // Handle time-based updates while waiting for input
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Update banner scrolling
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+            
+            napms(10);
+            continue;
+        }
         ch = tolower(ch);
         if (ch == 'y') {
             *should_delete = true;
@@ -66,6 +97,8 @@ bool confirm_delete(const char *path, bool *should_delete) {
             break;
         }
     }
+    
+    wtimeout(popup, -1); // Restore blocking input
     
     // Clear and delete the popup window
     werase(popup);
@@ -680,13 +713,42 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
     char dir_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
+    // Make input non-blocking to allow banner updates
+    wtimeout(win, 10);
+
+    // Initialize time-based update tracking
+    // banner_offset is now a global variable - no need for static
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+
     // Prompt for the new directory name
     werase(win);
     mvwprintw(win, 0, 0, "New directory name (Esc to cancel): ");
     wrefresh(win);
 
     while ((ch = wgetch(win)) != '\n') {
+        if (ch == ERR) {
+            // Handle time-based updates while waiting for input
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Update banner scrolling
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+            
+            napms(10);
+            continue;
+        }
         if (ch == 27) { // Escape key pressed
+            wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ Directory creation canceled.");
             should_clear_notif = false;
             return false;
@@ -704,6 +766,8 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
         mvwprintw(win, 0, 0, "New directory name (Esc to cancel): %s", dir_name);
         wrefresh(win);
     }
+    
+    wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
         show_notification(win, "❌ Invalid name, directory creation canceled.");
@@ -738,13 +802,42 @@ bool rename_item(WINDOW *win, const char *old_path) {
     char new_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
+    // Make input non-blocking to allow banner updates
+    wtimeout(win, 10);
+
+    // Initialize time-based update tracking
+    // banner_offset is now a global variable - no need for static
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+
     // Prompt for new name
     werase(win);
     mvwprintw(win, 0, 0, "Rename (Esc to cancel): ");
     wrefresh(win);
 
     while ((ch = wgetch(win)) != '\n') {
+        if (ch == ERR) {
+            // Handle time-based updates while waiting for input
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Update banner scrolling
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+            
+            napms(10);
+            continue;
+        }
         if (ch == 27) { // Escape key pressed
+            wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ Rename canceled.");
             should_clear_notif = false; // Prevent immediate clearing
             return false;
@@ -762,6 +855,8 @@ bool rename_item(WINDOW *win, const char *old_path) {
         mvwprintw(win, 0, 0, "Rename (Esc to cancel): %s", new_name);
         wrefresh(win);
     }
+    
+    wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
         show_notification(win, "❌ Invalid name, rename canceled.");
@@ -801,13 +896,42 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
     char file_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
+    // Make input non-blocking to allow banner updates
+    wtimeout(win, 10);
+
+    // Initialize time-based update tracking
+    // banner_offset is now a global variable - no need for static
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+
     // Prompt for the new file name
     werase(win);
     mvwprintw(win, 0, 0, "New file name (Esc to cancel): ");
     wrefresh(win);
 
     while ((ch = wgetch(win)) != '\n') {
+        if (ch == ERR) {
+            // Handle time-based updates while waiting for input
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            
+            // Update banner scrolling
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+            
+            napms(10);
+            continue;
+        }
         if (ch == 27) { // Escape key pressed
+            wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ File creation canceled.");
             should_clear_notif = false;
             return false;
@@ -825,6 +949,8 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
         mvwprintw(win, 0, 0, "New file name (Esc to cancel): %s", file_name);
         wrefresh(win);
     }
+    
+    wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
         show_notification(win, "❌ Invalid name, file creation canceled.");

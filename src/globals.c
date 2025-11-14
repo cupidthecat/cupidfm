@@ -12,3 +12,4 @@ pthread_mutex_t banner_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool should_clear_notif = true;
 struct timespec last_notification_time = {0, 0};
 KeyBindings g_kb;
+int banner_offset = 0;  // Shared banner scroll offset
