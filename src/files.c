@@ -285,16 +285,17 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
         mvwprintw(window, 5, 2, "%-*s %s", label_width, "📂 MIME type:", "Unknown (error)");
     } else {
         size_t value_width = (size_t)(max_x - 2 - label_width - 1); // 2 for left margin, 1 for space
+        const char *display_mime = mime_type;
 
         // Truncate MIME type string if it's too long
+        char truncated_mime[value_width + 1];
         if (strlen(mime_type) > value_width) {
-            char truncated_mime[value_width + 1];
             strncpy(truncated_mime, mime_type, value_width);
             truncated_mime[value_width] = '\0';
-            mvwprintw(window, 5, 2, "%-*s %s %s", label_width, emoji, "MIME type:", truncated_mime);
-        } else {
-            mvwprintw(window, 5, 2, "%-*s %s %s", label_width, emoji, "MIME type:", mime_type);
+            display_mime = truncated_mime;
         }
+
+        mvwprintw(window, 5, 2, "%-*s %s %s", label_width, emoji, "MIME type:", display_mime);
     }
     magic_close(magic_cookie);
 }
