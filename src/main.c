@@ -103,6 +103,59 @@ static const char* keycode_to_string(int keycode) {
     }
 }
 
+/** Function to count total lines in a directory tree recursively
+ *
+ * @param dir_path the path of the directory to count
+ * @param level the current level of the directory tree
+ * @param line_count pointer to the current line count
+ */
+void count_directory_tree_lines(const char *dir_path, int level, int *line_count) {
+    // Don't count header line (it's always visible at fixed position)
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) return;
+
+    struct dirent *entry;
+    struct stat statbuf;
+    char full_path[MAX_PATH_LENGTH];
+    size_t dir_path_len = strlen(dir_path);
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        size_t name_len = strlen(entry->d_name);
+        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
+
+        strcpy(full_path, dir_path);
+        if (full_path[dir_path_len - 1] != '/') {
+            strcat(full_path, "/");
+        }
+        strcat(full_path, entry->d_name);
+
+        if (lstat(full_path, &statbuf) == -1) continue;
+
+        (*line_count)++; // Count this entry
+
+        // Recurse into directories
+        if (S_ISDIR(statbuf.st_mode)) {
+            count_directory_tree_lines(full_path, level + 1, line_count);
+        }
+    }
+
+    closedir(dir);
+}
+
+/** Function to get the total number of lines in a directory tree
+ *
+ * @param dir_path the path to the directory
+ * @return the total number of lines in the directory tree
+ */
+int get_directory_tree_total_lines(const char *dir_path) {
+    int line_count = 0;
+    count_directory_tree_lines(dir_path, 0, &line_count);
+    return line_count;
+}
+
 /** Function to show directory tree recursively
  *
  * @param window the window to display the directory tree
@@ -111,11 +164,15 @@ static const char* keycode_to_string(int keycode) {
  * @param line_num the current line number in the window
  * @param max_y the maximum number of lines in the window
  * @param max_x the maximum number of columns in the window
+ * @param start_line the starting line offset for scrolling
+ * @param current_count pointer to track the current line count (for scrolling)
  */
-void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x) {
+void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x, int start_line, int *current_count) {
     if (level == 0) {
+        // Always display header (it's at a fixed position)
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
         (*line_num)++;
+        // Don't count header in scroll offset
     }
 
     // Early exit if we're already past visible area
@@ -143,8 +200,8 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
     } entries[WINDOW_SIZE];
     int entry_count = 0;
 
-    // Only collect entries that will be visible
-    while ((entry = readdir(dir)) != NULL && entry_count < MAX_ENTRIES) {
+    // Collect all entries first
+    while ((entry = readdir(dir)) != NULL && entry_count < WINDOW_SIZE) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
 
         size_t name_len = strlen(entry->d_name);
@@ -158,21 +215,22 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
-        // Only store if it will be visible
-        if (*line_num + entry_count < max_y - 1) {
-            strncpy(entries[entry_count].name, entry->d_name, MAX_PATH_LENGTH - 1);
-            entries[entry_count].name[MAX_PATH_LENGTH - 1] = '\0';
-            entries[entry_count].is_dir = S_ISDIR(statbuf.st_mode);
-            entries[entry_count].mode = statbuf.st_mode;
-            entry_count++;
-        }
+        strncpy(entries[entry_count].name, entry->d_name, MAX_PATH_LENGTH - 1);
+        entries[entry_count].name[MAX_PATH_LENGTH - 1] = '\0';
+        entries[entry_count].is_dir = S_ISDIR(statbuf.st_mode);
+        entries[entry_count].mode = statbuf.st_mode;
+        entry_count++;
     }
     closedir(dir);
 
     // Check if no entries were found
     if (entry_count == 0) {
-        mvwprintw(window, *line_num, 2 + level * 2, "This directory is empty");
-        (*line_num)++;
+        if (*current_count >= start_line && *line_num < max_y - 1) {
+            mvwprintw(window, *line_num, 2 + level * 2, "This directory is empty");
+            (*line_num)++;
+        }
+        (*current_count)++;
+        return;
     }
 
     // Initialize magic only if we have entries to display
@@ -186,6 +244,24 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
     // Display collected entries
     for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
+        // Skip lines until we reach start_line
+        if (*current_count < start_line) {
+            (*current_count)++;
+            // Still need to recurse into directories to count their lines
+            if (entries[i].is_dir) {
+                size_t name_len = strlen(entries[i].name);
+                if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
+                    strcpy(full_path, dir_path);
+                    if (full_path[dir_path_len - 1] != '/') {
+                        strcat(full_path, "/");
+                    }
+                    strcat(full_path, entries[i].name);
+                    show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
+                }
+            }
+            continue;
+        }
+
         const char *emoji;
         if (entries[i].is_dir) {
             emoji = "📁";
@@ -213,6 +289,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         snprintf(perm, sizeof(perm), "%o", entries[i].mode & 0777);
         mvwprintw(window, *line_num, max_x - 10, "%s", perm);
         (*line_num)++;
+        (*current_count)++;
 
         // Only recurse into directories if we have space
         if (entries[i].is_dir && *line_num < max_y - 1) {
@@ -223,7 +300,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                     strcat(full_path, "/");
                 }
                 strcat(full_path, entries[i].name);
-                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x);
+                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
             }
         }
     }
@@ -401,7 +478,8 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     // If the file is a directory, display the directory contents
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
-        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x);
+        int current_count = 0;
+        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, start_line, &current_count);
 
         // If the directory is empty, show a message
       
@@ -1105,7 +1183,17 @@ int main() {
                     // Determine total lines for scrolling in the preview
                     char file_path[MAX_PATH_LENGTH];
                     path_join(file_path, state.current_directory, state.selected_entry);
-                    int total_lines = get_total_lines(file_path);
+                    
+                    // Check if it's a directory or a file
+                    struct stat file_stat;
+                    int total_lines = 0;
+                    if (stat(file_path, &file_stat) == 0 && S_ISDIR(file_stat.st_mode)) {
+                        // It's a directory, count directory tree lines
+                        total_lines = get_directory_tree_total_lines(file_path);
+                    } else {
+                        // It's a file, count file lines
+                        total_lines = get_total_lines(file_path);
+                    }
 
                     int max_x, max_y;
                     getmaxyx(previewwin, max_y, max_x);
