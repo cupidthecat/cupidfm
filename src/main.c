@@ -190,8 +190,6 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
 
     // Define window size for entries
     const int WINDOW_SIZE = 50; // Maximum entries to process at once
-    const int VISIBLE_ENTRIES = max_y - *line_num - 1; // Available lines in window
-    const int MAX_ENTRIES = MIN(WINDOW_SIZE, VISIBLE_ENTRIES);
 
     struct {
         char name[MAX_PATH_LENGTH];
@@ -341,8 +339,8 @@ void draw_directory_window(
         CursorAndSlice *cas
 ) {
     int cols;
-    int __attribute__((unused)) throwaway;
-    getmaxyx(window, throwaway, cols);  // Get window dimensions
+    int rows;
+    getmaxyx(window, rows, cols);  // Get window dimensions
     
     // Clear the window and draw border
     werase(window);
@@ -355,11 +353,15 @@ void draw_directory_window(
         return;
     }
     
+    // Calculate maximum number of items that can fit (accounting for borders)
+    // Line 0 is top border, lines 1 to rows-2 are usable, line rows-1 is bottom border
+    int max_visible_items = rows - 2;
+    
     // Initialize magic for MIME type detection
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie == NULL || magic_load(magic_cookie, NULL) != 0) {
         // Fallback to basic directory/file emojis if magic fails
-        for (int i = 0; i < cas->num_lines && (cas->start + i) < cas->num_files; i++) {
+        for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
             FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
             const char *name = FileAttr_get_name(fa);
             const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
@@ -382,7 +384,7 @@ void draw_directory_window(
         }
     } else {
         // Use magic to get proper file type emojis
-        for (int i = 0; i < cas->num_lines && (cas->start + i) < cas->num_files; i++) {
+        for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
             FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
             const char *name = FileAttr_get_name(fa);
             
@@ -535,6 +537,12 @@ void fix_cursor(CursorAndSlice *cas) {
 
     // Calculate visible window size (subtract 2 for borders)
     int visible_lines = cas->num_lines - 2;
+    
+    // If there are fewer files than visible lines, start should be 0
+    if (cas->num_files <= visible_lines) {
+        cas->start = 0;
+        return;
+    }
 
     // Adjust start position to keep cursor visible
     if (cas->cursor < cas->start) {
@@ -543,9 +551,29 @@ void fix_cursor(CursorAndSlice *cas) {
         cas->start = cas->cursor - visible_lines + 1;
     }
 
-    // Ensure start position is valid
-    cas->start = MIN(cas->start, cas->num_files - visible_lines);
+    // Ensure start position is valid - don't scroll past the end
+    int max_start = cas->num_files - visible_lines;
+    if (max_start < 0) max_start = 0;
+    cas->start = MIN(cas->start, max_start);
     cas->start = MAX(0, cas->start);
+    
+    // Final check: ensure cursor is within the visible range
+    // The cursor should be at position (cursor - start) in the visible area
+    // Valid range is 0 to visible_lines - 1
+    int cursor_relative_pos = cas->cursor - cas->start;
+    if (cursor_relative_pos < 0 || cursor_relative_pos >= visible_lines) {
+        // If cursor is out of visible range, adjust start to show it
+        if (cursor_relative_pos < 0) {
+            // Cursor is above visible area, move start up
+            cas->start = cas->cursor;
+        } else {
+            // Cursor is below visible area, move start down
+            cas->start = cas->cursor - visible_lines + 1;
+            // Clamp to valid range (reuse max_start calculated above)
+            if (cas->start < 0) cas->start = 0;
+            if (cas->start > max_start) cas->start = max_start;
+        }
+    }
 }
 
 /** Function to redraw all windows
@@ -645,9 +673,15 @@ void navigate_up(CursorAndSlice *cas, const Vector *files, const char **selected
             // Wrap to bottom
             cas->cursor = cas->num_files - 1;
             // Calculate visible window size (subtract 2 for borders)
-            int visible_lines = cas->num_lines;
+            int visible_lines = cas->num_lines - 2;
             // Adjust start to show the last page of entries
-            cas->start = MAX(0, cas->num_files - visible_lines);
+            // Ensure the cursor (at num_files - 1) is visible
+            int max_start = cas->num_files - visible_lines;
+            if (max_start < 0) {
+                cas->start = 0;
+            } else {
+                cas->start = max_start;
+            }
         } else {
             cas->cursor -= 1;
             // Adjust start if cursor would go off screen
@@ -675,11 +709,19 @@ void navigate_down(CursorAndSlice *cas, const Vector *files, const char **select
         } else {
             cas->cursor += 1;
             // Calculate visible window size (subtract 2 for borders)
-            int visible_lines = cas->num_lines;
+            int visible_lines = cas->num_lines - 2;
             
             // Adjust start if cursor would go off screen
+            // The cursor should be visible, so if it's at or beyond the visible area, scroll
             if (cas->cursor >= cas->start + visible_lines) {
                 cas->start = cas->cursor - visible_lines + 1;
+            }
+            
+            // Ensure we don't scroll past the end
+            int max_start = cas->num_files - visible_lines;
+            if (max_start < 0) max_start = 0;
+            if (cas->start > max_start) {
+                cas->start = max_start;
             }
         }
         fix_cursor(cas);
@@ -721,7 +763,7 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     // Reset cursor and start position
     dir_window_cas->cursor = 0;
     dir_window_cas->start = 0;
-    dir_window_cas->num_lines = LINES - 5;
+    dir_window_cas->num_lines = LINES - 6;
     dir_window_cas->num_files = Vector_len(*files);
 
     // Set selected_entry to the first file in the parent directory
@@ -797,7 +839,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     // Reset cursor and start position for the new directory
     dir_window_cas->cursor = 0;
     dir_window_cas->start = 0;
-    dir_window_cas->num_lines = LINES - 5;
+    dir_window_cas->num_lines = LINES - 6;
     dir_window_cas->num_files = Vector_len(*files);
 
     // Set selected_entry to the first file in the new directory
@@ -1093,7 +1135,7 @@ int main() {
     state.dir_window_cas = (CursorAndSlice){
             .start = 0,
             .cursor = 0,
-            .num_lines = LINES - 5,
+            .num_lines = LINES - 6,
             .num_files = Vector_len(state.files),
     };
 
