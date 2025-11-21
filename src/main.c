@@ -305,6 +305,12 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             emoji = "📄";
         }
 
+        // Clear the line to prevent ghost characters from emojis
+        wmove(window, *line_num, 2 + level * 2);
+        for (int clear_x = 2 + level * 2; clear_x < max_x - 10; clear_x++) {
+            waddch(window, ' ');
+        }
+
         // Calculate available width for display
         int available_width = max_x - 4 - level * 2 - 10; // Account for permissions column
         int display_len = name_len + (is_symlink ? (4 + strlen(symlink_target)) : 0);
@@ -424,6 +430,12 @@ void draw_directory_window(
             
             const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
 
+            // Clear the line completely before drawing to prevent ghost characters
+            wmove(window, i + 1, 1);
+            for (int j = 1; j < cols - 1; j++) {
+                waddch(window, ' ');
+            }
+
             if ((cas->start + i) == cas->cursor) {
                 wattron(window, A_REVERSE);
             }
@@ -485,6 +497,12 @@ void draw_directory_window(
             } else {
                 const char *mime_type = magic_file(magic_cookie, full_path);
                 emoji = get_file_emoji(mime_type, name);
+            }
+
+            // Clear the line completely before drawing to prevent ghost characters
+            wmove(window, i + 1, 1);
+            for (int j = 1; j < cols - 1; j++) {
+                waddch(window, ' ');
             }
 
             if ((cas->start + i) == cas->cursor) {
@@ -950,7 +968,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     char new_path[MAX_PATH_LENGTH];
     path_join(new_path, *current_directory, selected_entry);
 
-    // Check if we’re not re-entering the same directory path
+    // Check if we're not re-entering the same directory path
     if (strcmp(new_path, *current_directory) == 0) {
         werase(notifwin);
         show_notification(notifwin, "Already in this directory");
@@ -1002,7 +1020,7 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         state->selected_entry = "";
     }
 
-    // If there’s only one entry, automatically select it
+    // If there's only one entry, automatically select it
     if (dir_window_cas->num_files == 1) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
     }
@@ -1683,8 +1701,16 @@ int main() {
     }
 
     // Clean up
+    // Free all FileAttr objects before destroying the vector
+    for (size_t i = 0; i < Vector_len(state.files); i++) {
+        free_attr((FileAttr)state.files.el[i]);
+    }
+    Vector_set_len_no_free(&state.files, 0);
     Vector_bye(&state.files);
     free(state.current_directory);
+    if (state.lazy_load.directory_path) {
+        free(state.lazy_load.directory_path);
+    }
     delwin(dirwin);
     delwin(previewwin);
     delwin(notifwin);

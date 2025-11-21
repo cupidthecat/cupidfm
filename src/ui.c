@@ -42,7 +42,7 @@ void show_popup(const char *title, const char *fmt, ...) {
     // Use varargs to display your custom message
     va_list args;
     va_start(args, fmt);
-    // Start printing text a few rows down so it’s readable
+    // Start printing text a few rows down so it's readable
     wmove(popup, 2, 2);
     vw_printw(popup, fmt, args);
     va_end(args);

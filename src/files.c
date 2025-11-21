@@ -948,7 +948,7 @@ void edit_file_in_terminal(WINDOW *window,
                 cursor_col = prev_len;
             }
         }
-        // 9) Possibly an extra “exit edit” keystroke
+        // 9) Possibly an extra "exit edit" keystroke
         else if (ch == kb->edit_quit) {
             exit_edit_mode = true;
         }

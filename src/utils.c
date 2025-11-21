@@ -291,12 +291,72 @@ void path_join(char *result, const char *base, const char *extra) {
  * @param mime_type The MIME type of the file.
  * @return A string representing the emoji.
  */
+static const char *emoji_from_extension(const char *ext) {
+    if (!ext) return NULL;
+
+    if (strcmp(ext, ".py") == 0) return "🐍";
+    if (strcmp(ext, ".js") == 0) return "📜";
+    if (strcmp(ext, ".html") == 0) return "🌐";
+    if (strcmp(ext, ".css") == 0) return "🎨";
+    if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) return "📝";
+    if (strcmp(ext, ".java") == 0) return "☕";
+    if (strcmp(ext, ".sh") == 0) return "💻";
+    if (strcmp(ext, ".rs") == 0) return "🦀";
+    if (strcmp(ext, ".md") == 0) return "📘";
+    if (strcmp(ext, ".csv") == 0) return "📊";
+    if (strcmp(ext, ".pl") == 0) return "🐪";
+    if (strcmp(ext, ".rb") == 0) return "💎";
+    if (strcmp(ext, ".php") == 0) return "🐘";
+    if (strcmp(ext, ".go") == 0) return "🐹";
+    if (strcmp(ext, ".swift") == 0) return "🦅";
+    if (strcmp(ext, ".kt") == 0) return "🎯";
+    if (strcmp(ext, ".scala") == 0) return "⚡";
+    if (strcmp(ext, ".hs") == 0) return "λ";
+    if (strcmp(ext, ".lua") == 0) return "🌙";
+    if (strcmp(ext, ".r") == 0) return "📊";
+    if (strcmp(ext, ".json") == 0) return "🔣";
+    if (strcmp(ext, ".xml") == 0) return "📑";
+    if (strcmp(ext, ".yaml") == 0 || strcmp(ext, ".yml") == 0) return "📋";
+    if (strcmp(ext, ".toml") == 0) return "⚙";
+    if (strcmp(ext, ".ini") == 0) return "🔧";
+    if (strcmp(ext, ".sql") == 0) return "🗄";
+    if (strcmp(ext, ".png") == 0) return "🖼";
+    if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) return "📸";
+    if (strcmp(ext, ".gif") == 0) return "🎭";
+    if (strcmp(ext, ".svg") == 0) return "✨";
+    if (strcmp(ext, ".bmp") == 0) return "🎨";
+    if (strcmp(ext, ".ico") == 0) return "🎯";
+    if (strcmp(ext, ".mp3") == 0) return "🎵";
+    if (strcmp(ext, ".wav") == 0) return "🔊";
+    if (strcmp(ext, ".flac") == 0) return "🎶";
+    if (strcmp(ext, ".mp4") == 0) return "🎥";
+    if (strcmp(ext, ".mkv") == 0) return "🎬";
+    if (strcmp(ext, ".avi") == 0) return "📽";
+    if (strcmp(ext, ".webm") == 0) return "▶";
+    if (strcmp(ext, ".mov") == 0) return "🎦";
+    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".tar") == 0 ||
+        strcmp(ext, ".gz") == 0 || strcmp(ext, ".rar") == 0 ||
+        strcmp(ext, ".7z") == 0) return "📦";
+    if (strcmp(ext, ".pdf") == 0) return "📕";
+    if (strcmp(ext, ".doc") == 0 || strcmp(ext, ".docx") == 0) return "📝";
+    if (strcmp(ext, ".xls") == 0 || strcmp(ext, ".xlsx") == 0) return "📊";
+    if (strcmp(ext, ".ppt") == 0 || strcmp(ext, ".pptx") == 0) return "📊";
+    if (strcmp(ext, ".epub") == 0) return "📚";
+    if (strcmp(ext, ".ttf") == 0 || strcmp(ext, ".otf") == 0 ||
+        strcmp(ext, ".woff") == 0 || strcmp(ext, ".woff2") == 0) return "🔤";
+
+    return NULL;
+}
+
 const char* get_file_emoji(const char *mime_type, const char *filename) {
+    const char *default_icon = "📄";
+    const char *ext = (filename != NULL) ? strrchr(filename, '.') : NULL;
+
     if (mime_type == NULL) {
-        return "📄";
+        const char *from_ext = emoji_from_extension(ext);
+        return from_ext ? from_ext : default_icon;
     }
 
-    // Check for specific MIME types first
     if (strncmp(mime_type, "text/", 5) == 0) {
         if (strstr(mime_type, "python")) return "🐍";
         if (strstr(mime_type, "javascript")) return "📜";
@@ -318,61 +378,31 @@ const char* get_file_emoji(const char *mime_type, const char *filename) {
         if (strstr(mime_type, "x-haskell")) return "λ";
         if (strstr(mime_type, "x-lua")) return "🌙";
         if (strstr(mime_type, "x-r")) return "📊";
-        
-        // Data formats
         if (strstr(mime_type, "json")) return "🔣";
         if (strstr(mime_type, "xml")) return "📑";
         if (strstr(mime_type, "yaml")) return "📋";
-        if (strstr(mime_type, "toml")) return "⚙️";
+        if (strstr(mime_type, "toml")) return "⚙";
         if (strstr(mime_type, "ini")) return "🔧";
+        return "📄";
     }
 
-    // Fallback to extension-based detection if MIME type is "text/plain"
     if (strcmp(mime_type, "text/plain") == 0) {
-        const char *ext = strrchr(filename, '.');
-        if (ext) {
-            if (strcmp(ext, ".js") == 0) return "📜";
-            if (strcmp(ext, ".py") == 0) return "🐍";
-            if (strcmp(ext, ".html") == 0) return "🌐";
-            if (strcmp(ext, ".css") == 0) return "🎨";
-            if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) return "📝";
-            if (strcmp(ext, ".java") == 0) return "☕";
-            if (strcmp(ext, ".sh") == 0) return "💻";
-            if (strcmp(ext, ".rs") == 0) return "🦀";
-            if (strcmp(ext, ".md") == 0) return "📘";
-            if (strcmp(ext, ".csv") == 0) return "📊";
-            if (strcmp(ext, ".pl") == 0) return "🐪";
-            if (strcmp(ext, ".rb") == 0) return "💎";
-            if (strcmp(ext, ".php") == 0) return "🐘";
-            if (strcmp(ext, ".go") == 0) return "🐹";
-            if (strcmp(ext, ".swift") == 0) return "🦅";
-            if (strcmp(ext, ".kt") == 0) return "🎯";
-            if (strcmp(ext, ".scala") == 0) return "⚡";
-            if (strcmp(ext, ".hs") == 0) return "λ";
-            if (strcmp(ext, ".lua") == 0) return "🌙";
-            if (strcmp(ext, ".r") == 0) return "📊";
-            if (strcmp(ext, ".json") == 0) return "🔣";
-            if (strcmp(ext, ".xml") == 0) return "📑";
-            if (strcmp(ext, ".yaml") == 0 || strcmp(ext, ".yml") == 0) return "📋";
-            if (strcmp(ext, ".toml") == 0) return "⚙️";
-            if (strcmp(ext, ".ini") == 0) return "🔧";
-        }
+        const char *from_ext = emoji_from_extension(ext);
+        return from_ext ? from_ext : "📄";
     }
 
-    // Images
     if (strncmp(mime_type, "image/", 6) == 0) {
         if (strstr(mime_type, "gif")) return "🎭";
         if (strstr(mime_type, "svg")) return "✨";
-        if (strstr(mime_type, "png")) return "🖼️ ";
+        if (strstr(mime_type, "png")) return "🖼";
         if (strstr(mime_type, "jpeg") || strstr(mime_type, "jpg")) return "📸";
         if (strstr(mime_type, "webp")) return "🌅";
         if (strstr(mime_type, "tiff")) return "📷";
         if (strstr(mime_type, "bmp")) return "🎨";
         if (strstr(mime_type, "ico")) return "🎯";
-        return "🖼️";
+        return "🖼";
     }
 
-    // Audio
     if (strncmp(mime_type, "audio/", 6) == 0) {
         if (strstr(mime_type, "midi")) return "🎹";
         if (strstr(mime_type, "mp3")) return "🎵";
@@ -383,30 +413,24 @@ const char* get_file_emoji(const char *mime_type, const char *filename) {
         return "🎵";
     }
 
-    // Video
     if (strncmp(mime_type, "video/", 6) == 0) {
         if (strstr(mime_type, "mp4")) return "🎥";
-        if (strstr(mime_type, "avi")) return "📽️";
+        if (strstr(mime_type, "avi")) return "📽";
         if (strstr(mime_type, "mkv")) return "🎬";
-        if (strstr(mime_type, "webm")) return "▶️";
+        if (strstr(mime_type, "webm")) return "▶";
         if (strstr(mime_type, "mov")) return "🎦";
         if (strstr(mime_type, "wmv")) return "📹";
-        return "🎞️";
+        return "🎞";
     }
 
-    // Applications
     if (strncmp(mime_type, "application/", 12) == 0) {
-        // Archives
-        if (strstr(mime_type, "zip")) return "📦";
-        if (strstr(mime_type, "x-tar")) return "📦";
-        if (strstr(mime_type, "x-rar")) return "📦";
-        if (strstr(mime_type, "x-7z")) return "📦";
-        if (strstr(mime_type, "gzip")) return "📦";
-        if (strstr(mime_type, "x-bzip")) return "📦";
-        if (strstr(mime_type, "x-xz")) return "📦";
-        if (strstr(mime_type, "x-compress")) return "📦";
+        if (strstr(mime_type, "zip") || strstr(mime_type, "x-tar") ||
+            strstr(mime_type, "x-rar") || strstr(mime_type, "x-7z") ||
+            strstr(mime_type, "gzip") || strstr(mime_type, "x-bzip") ||
+            strstr(mime_type, "x-xz") || strstr(mime_type, "x-compress")) {
+            return "📦";
+        }
 
-        // Documents
         if (strstr(mime_type, "pdf")) return "📕";
         if (strstr(mime_type, "msword")) return "📝";
         if (strstr(mime_type, "vnd.ms-excel")) return "📊";
@@ -415,15 +439,12 @@ const char* get_file_emoji(const char *mime_type, const char *filename) {
         if (strstr(mime_type, "rtf")) return "📄";
         if (strstr(mime_type, "epub")) return "📚";
         if (strstr(mime_type, "js")) return "📜";
-
-        // Data formats
         if (strstr(mime_type, "json")) return "🔣";
         if (strstr(mime_type, "xml")) return "📑";
         if (strstr(mime_type, "yaml")) return "📋";
-        if (strstr(mime_type, "sql")) return "🗄️";
-        
-        // Executables and binaries
-        if (strstr(mime_type, "x-executable")) return "⚙️";
+        if (strstr(mime_type, "sql")) return "🗄";
+
+        if (strstr(mime_type, "x-executable")) return "⚙";
         if (strstr(mime_type, "x-sharedlib")) return "🔧";
         if (strstr(mime_type, "x-object")) return "🔨";
         if (strstr(mime_type, "x-pie-executable")) return "🎯";
@@ -432,61 +453,24 @@ const char* get_file_emoji(const char *mime_type, const char *filename) {
         if (strstr(mime_type, "x-msdownload")) return "🪟";
     }
 
-    // Font files
     if (strncmp(mime_type, "font/", 5) == 0) {
-        if (strstr(mime_type, "ttf")) return "🔤";
-        if (strstr(mime_type, "otf")) return "🔠";
-        if (strstr(mime_type, "woff")) return "🔡";
-        if (strstr(mime_type, "woff2")) return "🔣";
         return "🔤";
     }
 
-    // Database files
     if (strstr(mime_type, "database") || strstr(mime_type, "sql")) {
-        return "🗄️";
+        return "🗄";
     }
 
-    // Version control
     if (strstr(mime_type, "x-git")) {
         return "📥";
     }
 
-    // Certificate files
     if (strstr(mime_type, "x-x509-ca-cert")) {
         return "🔐";
     }
 
-    // Fallback to extension-based detection
-    const char *ext = strrchr(filename, '.');
-    if (ext) {
-        if (strcmp(ext, ".py") == 0) return "🐍";
-        if (strcmp(ext, ".js") == 0) return "📜";
-        if (strcmp(ext, ".html") == 0) return "🌐";
-        if (strcmp(ext, ".css") == 0) return "🎨";
-        if (strcmp(ext, ".c") == 0 || strcmp(ext, ".h") == 0) return "📝";
-        if (strcmp(ext, ".java") == 0) return "☕";
-        if (strcmp(ext, ".sh") == 0) return "💻";
-        if (strcmp(ext, ".rs") == 0) return "🦀";
-        if (strcmp(ext, ".md") == 0) return "📘";
-        if (strcmp(ext, ".csv") == 0) return "📊";
-        if (strcmp(ext, ".pl") == 0) return "🐪";
-        if (strcmp(ext, ".rb") == 0) return "💎";
-        if (strcmp(ext, ".php") == 0) return "🐘";
-        if (strcmp(ext, ".go") == 0) return "🐹";
-        if (strcmp(ext, ".swift") == 0) return "🦅";
-        if (strcmp(ext, ".kt") == 0) return "🎯";
-        if (strcmp(ext, ".scala") == 0) return "⚡";
-        if (strcmp(ext, ".hs") == 0) return "λ";
-        if (strcmp(ext, ".lua") == 0) return "🌙";
-        if (strcmp(ext, ".r") == 0) return "📊";
-        if (strcmp(ext, ".json") == 0) return "🔣";
-        if (strcmp(ext, ".xml") == 0) return "📑";
-        if (strcmp(ext, ".yaml") == 0 || strcmp(ext, ".yml") == 0) return "📋";
-        if (strcmp(ext, ".toml") == 0) return "⚙️";
-        if (strcmp(ext, ".ini") == 0) return "🔧";
-    }
-
-    return "📄";
+    const char *from_ext = emoji_from_extension(ext);
+    return from_ext ? from_ext : default_icon;
 }
 
 // copy file to users clipboard
@@ -983,8 +967,12 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
  * @param current_directory the current directory
  */
 void reload_directory(Vector *files, const char *current_directory) {
+    // Free all FileAttr objects before clearing the vector
+    for (size_t i = 0; i < Vector_len(*files); i++) {
+        free_attr((FileAttr)files->el[i]);
+    }
     // Empties the vector
-    Vector_set_len(files, 0);
+    Vector_set_len_no_free(files, 0);
     // Reads the filenames
     append_files_to_vec(files, current_directory);
     // Makes the vector shorter
@@ -993,8 +981,12 @@ void reload_directory(Vector *files, const char *current_directory) {
 
 // Lazy loading version - loads initial batch
 void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files) {
+    // Free all FileAttr objects before clearing the vector
+    for (size_t i = 0; i < Vector_len(*files); i++) {
+        free_attr((FileAttr)files->el[i]);
+    }
     // Empties the vector
-    Vector_set_len(files, 0);
+    Vector_set_len_no_free(files, 0);
     *files_loaded = 0;
     
     // Count total files first (for display purposes)
