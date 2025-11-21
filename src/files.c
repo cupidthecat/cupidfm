@@ -18,6 +18,8 @@
 #include <magic.h>                 // For libmagic
 #include <time.h>
 #include <sys/ioctl.h>             // For ioctl, TIOCGWINSZ, struct winsize
+#include <pthread.h>               // For background directory size worker
+#include <errno.h>                 // For permission errors
 
 // Local includes
 #include "main.h"                  // for FileAttr, Vector, Vector_add, Vector_len, Vector_set_len
@@ -57,6 +59,227 @@ const char *supported_mime_types[] = {
     "text/x-javascript",        // Legacy JavaScript MIME type
     "text/x-*",                 // Any text-based x- files
 };
+
+typedef enum {
+    DIR_SIZE_STATUS_PENDING = 0,
+    DIR_SIZE_STATUS_READY = 1,
+} DirSizeCacheStatus;
+
+typedef struct DirSizeEntry {
+    char path[MAX_PATH_LENGTH];
+    long size;
+    DirSizeCacheStatus status;
+    bool job_enqueued;
+    struct DirSizeEntry *next;
+} DirSizeEntry;
+
+typedef struct DirSizeJob {
+    char path[MAX_PATH_LENGTH];
+    struct DirSizeJob *next;
+} DirSizeJob;
+
+static DirSizeEntry *dir_size_cache_head = NULL;
+static DirSizeJob *dir_size_job_head = NULL;
+static DirSizeJob *dir_size_job_tail = NULL;
+static pthread_mutex_t dir_size_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t dir_size_cond = PTHREAD_COND_INITIALIZER;
+static bool dir_size_thread_running = false;
+static bool dir_size_thread_initialized = false;
+static pthread_t dir_size_thread;
+static struct timespec dir_size_last_activity = {0};
+static bool dir_size_last_activity_initialized = false;
+
+static DirSizeEntry* dir_size_find_entry(const char *path);
+static void dir_size_enqueue_job_locked(const char *path);
+static void dir_size_cache_clear_locked(void);
+static void *dir_size_worker(void *arg);
+static void ensure_dir_size_worker(void);
+static long compute_directory_size_full(const char *dir_path);
+static long dir_size_get_result(const char *dir_path, bool allow_enqueue);
+static bool dir_size_user_idle(void);
+
+void dir_size_note_user_activity(void) {
+    clock_gettime(CLOCK_MONOTONIC, &dir_size_last_activity);
+    dir_size_last_activity_initialized = true;
+}
+
+static bool dir_size_user_idle(void) {
+    if (!dir_size_last_activity_initialized) {
+        return true;
+    }
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long elapsed_ns = (now.tv_sec - dir_size_last_activity.tv_sec) * 1000000000L +
+                      (now.tv_nsec - dir_size_last_activity.tv_nsec);
+    return elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS;
+}
+
+bool dir_size_can_enqueue(void) {
+    return dir_size_user_idle();
+}
+
+static DirSizeEntry* dir_size_find_entry(const char *path) {
+    for (DirSizeEntry *entry = dir_size_cache_head; entry != NULL; entry = entry->next) {
+        if (strncmp(entry->path, path, MAX_PATH_LENGTH) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static void dir_size_enqueue_job_locked(const char *path) {
+    DirSizeJob *job = malloc(sizeof(DirSizeJob));
+    if (!job) {
+        return;
+    }
+    strncpy(job->path, path, MAX_PATH_LENGTH - 1);
+    job->path[MAX_PATH_LENGTH - 1] = '\0';
+    job->next = NULL;
+
+    DirSizeEntry *entry = dir_size_find_entry(path);
+    if (entry) {
+        entry->job_enqueued = true;
+    }
+
+    if (dir_size_job_tail) {
+        dir_size_job_tail->next = job;
+    } else {
+        dir_size_job_head = job;
+    }
+    dir_size_job_tail = job;
+    pthread_cond_signal(&dir_size_cond);
+}
+
+static void dir_size_cache_clear_locked(void) {
+    DirSizeEntry *entry = dir_size_cache_head;
+    while (entry) {
+        DirSizeEntry *next = entry->next;
+        free(entry);
+        entry = next;
+    }
+    dir_size_cache_head = NULL;
+
+    DirSizeJob *job = dir_size_job_head;
+    while (job) {
+        DirSizeJob *next = job->next;
+        free(job);
+        job = next;
+    }
+    dir_size_job_head = NULL;
+    dir_size_job_tail = NULL;
+}
+
+static long compute_directory_size_full(const char *dir_path) {
+    if (strncmp(dir_path, "/proc", 5) == 0 ||
+        strncmp(dir_path, "/sys", 4) == 0 ||
+        strncmp(dir_path, "/dev", 4) == 0 ||
+        strncmp(dir_path, "/run", 4) == 0) {
+        return DIR_SIZE_VIRTUAL_FS;
+    }
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        if (errno == EACCES) {
+            return DIR_SIZE_PERMISSION_DENIED;
+        }
+        return -1;
+    }
+
+    long total_size = 0;
+    const long MAX_SIZE_THRESHOLD = 1000L * 1024 * 1024 * 1024 * 1024; // 1000 TiB
+    struct dirent *entry;
+    struct stat statbuf;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char path[MAX_PATH_LENGTH];
+        if (strlen(dir_path) + strlen(entry->d_name) + 1 < sizeof(path)) {
+            snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
+        } else {
+            fprintf(stderr, "Path length exceeds buffer size for %s/%s\n", dir_path, entry->d_name);
+            continue;
+        }
+
+        if (lstat(path, &statbuf) == -1) {
+            continue;
+        }
+
+        if (S_ISDIR(statbuf.st_mode)) {
+            long dir_size = compute_directory_size_full(path);
+            if (dir_size == DIR_SIZE_VIRTUAL_FS || dir_size == DIR_SIZE_PERMISSION_DENIED) {
+                closedir(dir);
+                return dir_size;
+            } else if (dir_size == DIR_SIZE_TOO_LARGE) {
+                closedir(dir);
+                return DIR_SIZE_TOO_LARGE;
+            } else if (dir_size >= 0) {
+                total_size += dir_size;
+            }
+            // If dir_size == -1 (unreadable), skip but keep going
+        } else {
+            total_size += statbuf.st_size;
+        }
+
+        if (total_size > MAX_SIZE_THRESHOLD) {
+            closedir(dir);
+            return DIR_SIZE_TOO_LARGE;
+        }
+    }
+
+    closedir(dir);
+    return total_size;
+}
+
+static void *dir_size_worker(void *arg) {
+    (void)arg;
+    pthread_mutex_lock(&dir_size_mutex);
+    while (dir_size_thread_running) {
+        while (dir_size_job_head == NULL && dir_size_thread_running) {
+            pthread_cond_wait(&dir_size_cond, &dir_size_mutex);
+        }
+        if (!dir_size_thread_running) {
+            break;
+        }
+
+        DirSizeJob *job = dir_size_job_head;
+        dir_size_job_head = job->next;
+        if (!dir_size_job_head) {
+            dir_size_job_tail = NULL;
+        }
+        char path[MAX_PATH_LENGTH];
+        strncpy(path, job->path, MAX_PATH_LENGTH - 1);
+        path[MAX_PATH_LENGTH - 1] = '\0';
+        free(job);
+
+        pthread_mutex_unlock(&dir_size_mutex);
+        long size = compute_directory_size_full(path);
+        pthread_mutex_lock(&dir_size_mutex);
+
+        DirSizeEntry *entry = dir_size_find_entry(path);
+        if (entry) {
+            entry->size = size;
+            entry->status = DIR_SIZE_STATUS_READY;
+            entry->job_enqueued = false;
+        }
+    }
+    pthread_mutex_unlock(&dir_size_mutex);
+    return NULL;
+}
+
+static void ensure_dir_size_worker(void) {
+    if (dir_size_thread_initialized) {
+        return;
+    }
+    dir_size_thread_running = true;
+    if (pthread_create(&dir_size_thread, NULL, dir_size_worker, NULL) == 0) {
+        dir_size_thread_initialized = true;
+    } else {
+        dir_size_thread_running = false;
+    }
+}
 
 size_t num_supported_mime_types = sizeof(supported_mime_types) / sizeof(supported_mime_types[0]);
 // FileAttributes structure
@@ -274,66 +497,72 @@ void append_files_to_vec(Vector *v, const char *name) {
     }
 }
 
-// Recursive function to calculate directory size
-// NOTE: this function may take long, it might be better to have the size of
-//       the directories displayed as "-" until we have a value. Use of "du" or
-//       another already existent tool might be better. The sizes should
-//       probably be cached.
-//       fork() -> exec() (if using du)
-//       fork() -> calculate directory size and return it somehow (maybe print
-//       as binary to the stdout)
-long get_directory_size(const char *dir_path) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat statbuf;
-    long total_size = 0;
-    const long MAX_SIZE_THRESHOLD = 1000L * 1024 * 1024 * 1024 * 1024; // 1000 TiB
+static long dir_size_get_result(const char *dir_path, bool allow_enqueue) {
+    dir_size_cache_start();
 
-    // Skip virtual/special filesystems that don't have real sizes
-    if (strncmp(dir_path, "/proc", 5) == 0 ||
-        strncmp(dir_path, "/sys", 4) == 0 ||
-        strncmp(dir_path, "/dev", 4) == 0 ||
-        strncmp(dir_path, "/run", 4) == 0) {
-        return -2;  // Return "too large" indicator for virtual filesystems
+    pthread_mutex_lock(&dir_size_mutex);
+    DirSizeEntry *entry = dir_size_find_entry(dir_path);
+    if (entry) {
+        long result = entry->size;
+        DirSizeCacheStatus status = entry->status;
+        pthread_mutex_unlock(&dir_size_mutex);
+        return (status == DIR_SIZE_STATUS_READY) ? result : DIR_SIZE_PENDING;
     }
 
-    if (!(dir = opendir(dir_path)))
+    if (!allow_enqueue || !dir_size_user_idle()) {
+        pthread_mutex_unlock(&dir_size_mutex);
+        return DIR_SIZE_PENDING;
+    }
+
+    DirSizeEntry *new_entry = malloc(sizeof(DirSizeEntry));
+    if (!new_entry) {
+        pthread_mutex_unlock(&dir_size_mutex);
         return -1;
-
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip "." and ".." entries to avoid infinite recursion and incorrect calculations
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        
-        char path[MAX_PATH_LENGTH];
-        if (strlen(dir_path) + strlen(entry->d_name) + 1 < sizeof(path)) {
-            snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
-        } else {
-            // Handle the error, e.g., log a message or skip this entry
-            fprintf(stderr, "Path length exceeds buffer size for %s/%s\n", dir_path, entry->d_name);
-            continue;
-        }
-        if (lstat(path, &statbuf) == -1)
-            continue;
-        if (S_ISDIR(statbuf.st_mode)) {
-            long dir_size = get_directory_size(path);
-            if (dir_size == -2) {
-                closedir(dir);
-                return -2;
-            }
-            total_size += dir_size;
-        } else {
-            total_size += statbuf.st_size;
-        }
-        if (total_size > MAX_SIZE_THRESHOLD) {
-            closedir(dir);
-            return -2;
-        }
     }
+    strncpy(new_entry->path, dir_path, MAX_PATH_LENGTH - 1);
+    new_entry->path[MAX_PATH_LENGTH - 1] = '\0';
+    new_entry->size = DIR_SIZE_PENDING;
+    new_entry->status = DIR_SIZE_STATUS_PENDING;
+    new_entry->job_enqueued = false;
+    new_entry->next = dir_size_cache_head;
+    dir_size_cache_head = new_entry;
 
-    closedir(dir);
-    return total_size;
+    dir_size_enqueue_job_locked(dir_path);
+    pthread_mutex_unlock(&dir_size_mutex);
+    return DIR_SIZE_PENDING;
+}
+
+void dir_size_cache_start(void) {
+    pthread_mutex_lock(&dir_size_mutex);
+    ensure_dir_size_worker();
+    pthread_mutex_unlock(&dir_size_mutex);
+}
+
+void dir_size_cache_stop(void) {
+    pthread_mutex_lock(&dir_size_mutex);
+    if (!dir_size_thread_initialized) {
+        dir_size_cache_clear_locked();
+        pthread_mutex_unlock(&dir_size_mutex);
+        return;
+    }
+    dir_size_thread_running = false;
+    pthread_cond_broadcast(&dir_size_cond);
+    pthread_mutex_unlock(&dir_size_mutex);
+    pthread_join(dir_size_thread, NULL);
+
+    pthread_mutex_lock(&dir_size_mutex);
+    dir_size_thread_initialized = false;
+    dir_size_cache_clear_locked();
+    pthread_mutex_unlock(&dir_size_mutex);
+}
+
+// Recursive function to calculate directory size with guard rails to keep UI responsive (legacy fallback)
+long get_directory_size(const char *dir_path) {
+    return dir_size_get_result(dir_path, true);
+}
+
+long get_directory_size_peek(const char *dir_path) {
+    return dir_size_get_result(dir_path, false);
 }
 /**
  * Function to display file information in a window
@@ -356,12 +585,40 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
 
     // Display File Size or Directory Size
    if (S_ISDIR(file_stat.st_mode)) {
-        long dir_size = get_directory_size(file_path);
+        static char last_size_path[MAX_PATH_LENGTH] = "";
+        static struct timespec last_size_path_change = {0};
+        static bool last_size_path_initialized = false;
+
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        bool path_changed = !last_size_path_initialized ||
+                            strncmp(last_size_path, file_path, MAX_PATH_LENGTH) != 0;
+        if (path_changed) {
+            strncpy(last_size_path, file_path, MAX_PATH_LENGTH - 1);
+            last_size_path[MAX_PATH_LENGTH - 1] = '\0';
+            last_size_path_change = now;
+            last_size_path_initialized = true;
+        }
+
+        long elapsed_ns = (now.tv_sec - last_size_path_change.tv_sec) * 1000000000L +
+                          (now.tv_nsec - last_size_path_change.tv_nsec);
+        bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
+
+        long dir_size = dir_size_get_result(file_path, allow_enqueue);
         
-        char fileSizeStr[20] = "Virtual FS";
+        char fileSizeStr[20] = "-";
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
-        } else if (dir_size != -2) {
+        } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
+        } else if (dir_size == DIR_SIZE_TOO_LARGE) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+        } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
+        } else if (dir_size == DIR_SIZE_PENDING) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
+        } else {
             format_file_size(fileSizeStr, dir_size);
         }
         mvwprintw(window, 2, 2, "%-*s %s", label_width, "📁 Directory Size:", fileSizeStr);

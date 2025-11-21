@@ -6,6 +6,11 @@
 #include "vector.h"
 // 256 in most systems
 #define MAX_FILENAME_LEN 512
+#define DIR_SIZE_TOO_LARGE (-2)
+#define DIR_SIZE_VIRTUAL_FS (-3)
+#define DIR_SIZE_PENDING (-4)
+#define DIR_SIZE_PERMISSION_DENIED (-5)
+#define DIR_SIZE_REQUEST_DELAY_NS 200000000L
 
 typedef struct FileAttributes* FileAttr;
 
@@ -29,5 +34,10 @@ void edit_file_in_terminal(WINDOW *window,
 
 char* format_file_size(char *buffer, size_t size);
 long get_directory_size(const char *dir_path);
+long get_directory_size_peek(const char *dir_path);
+void dir_size_cache_start(void);
+void dir_size_cache_stop(void);
+void dir_size_note_user_activity(void);
+bool dir_size_can_enqueue(void);
 
 #endif // FILES_H

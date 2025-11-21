@@ -42,6 +42,13 @@ WINDOW *previewwin = NULL;
 
 VecStack directoryStack;
 
+// Input handling tuning
+#define INPUT_FLUSH_THRESHOLD_NS 150000000L // 150ms
+#define DIRECTORY_TREE_MAX_DEPTH 4
+#define DIRECTORY_TREE_MAX_TOTAL 1500
+
+static bool tree_limit_hit = false;
+
 // Typedefs and Structures
 typedef struct {
     SIZE start;
@@ -70,6 +77,16 @@ typedef struct {
 
 // Forward declaration of fix_cursor
 void fix_cursor(CursorAndSlice *cas);
+
+static void maybe_flush_input(struct timespec loop_start_time) {
+    struct timespec loop_end_time;
+    clock_gettime(CLOCK_MONOTONIC, &loop_end_time);
+    long loop_duration_ns = (loop_end_time.tv_sec - loop_start_time.tv_sec) * 1000000000L +
+                            (loop_end_time.tv_nsec - loop_start_time.tv_nsec);
+    if (loop_duration_ns > INPUT_FLUSH_THRESHOLD_NS) {
+        flushinp();
+    }
+}
 
 // Function Implementations
 static const char* keycode_to_string(int keycode) {
@@ -119,8 +136,6 @@ static const char* keycode_to_string(int keycode) {
  * @param line_count pointer to the current line count
  */
 void count_directory_tree_lines(const char *dir_path, int level, int *line_count) {
-    // Don't count header line (it's always visible at fixed position)
-
     DIR *dir = opendir(dir_path);
     if (!dir) return;
 
@@ -144,10 +159,16 @@ void count_directory_tree_lines(const char *dir_path, int level, int *line_count
         if (lstat(full_path, &statbuf) == -1) continue;
 
         (*line_count)++; // Count this entry
+        if (*line_count >= DIRECTORY_TREE_MAX_TOTAL) {
+            break;
+        }
 
-        // Recurse into directories
-        if (S_ISDIR(statbuf.st_mode)) {
+        if (S_ISDIR(statbuf.st_mode) &&
+            level < DIRECTORY_TREE_MAX_DEPTH) {
             count_directory_tree_lines(full_path, level + 1, line_count);
+            if (*line_count >= DIRECTORY_TREE_MAX_TOTAL) {
+                break;
+            }
         }
     }
 
@@ -177,6 +198,9 @@ int get_directory_tree_total_lines(const char *dir_path) {
  * @param current_count pointer to track the current line count (for scrolling)
  */
 void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num, int max_y, int max_x, int start_line, int *current_count) {
+    if (level == 0) {
+        tree_limit_hit = false;
+    }
     if (level == 0) {
         // Always display header (it's at a fixed position)
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
@@ -252,10 +276,20 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
     // Display collected entries
     for (int i = 0; i < entry_count && *line_num < max_y - 1; i++) {
         // Skip lines until we reach start_line
+        if (*current_count >= DIRECTORY_TREE_MAX_TOTAL) {
+            tree_limit_hit = true;
+            break;
+        }
+
         if (*current_count < start_line) {
             (*current_count)++;
+            if (*current_count >= DIRECTORY_TREE_MAX_TOTAL) {
+                tree_limit_hit = true;
+                break;
+            }
             // Still need to recurse into directories to count their lines
-            if (entries[i].is_dir) {
+            if (entries[i].is_dir &&
+                level < DIRECTORY_TREE_MAX_DEPTH) {
                 size_t name_len = strlen(entries[i].name);
                 if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
                     strcpy(full_path, dir_path);
@@ -264,6 +298,9 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                     }
                     strcat(full_path, entries[i].name);
                     show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
+                    if (tree_limit_hit) {
+                        break;
+                    }
                 }
             }
             continue;
@@ -341,17 +378,31 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         mvwprintw(window, *line_num, max_x - 10, "%s", perm);
         (*line_num)++;
         (*current_count)++;
+        if (*current_count >= DIRECTORY_TREE_MAX_TOTAL) {
+            tree_limit_hit = true;
+            break;
+        }
 
         // Only recurse into directories if we have space
-        if (entries[i].is_dir && *line_num < max_y - 1) {
+        if (entries[i].is_dir &&
+            *line_num < max_y - 1 &&
+            level < DIRECTORY_TREE_MAX_DEPTH) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
                 show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
+                if (tree_limit_hit) {
+                    break;
+                }
             }
         }
     }
 
     if (magic_cookie) {
         magic_close(magic_cookie);
+    }
+
+    if (level == 0 && tree_limit_hit && *line_num < max_y - 1) {
+        mvwprintw(window, *line_num, 2, "[Preview truncated]");
+        (*line_num)++;
     }
 }
 
@@ -443,19 +494,24 @@ void draw_directory_window(
             int name_len = strlen(name);
             int target_len = is_symlink ? strlen(symlink_target) : 0;
             int display_len = name_len + (is_symlink ? (4 + target_len) : 0); // " -> " + target
-            int max_name_len = cols - 4; // Adjusted to fit within window width
+            // Account for: border(1) + emoji(~2) + space(1) + ellipsis(3) + border(1) = ~8
+            int max_name_len = cols - 8;
             
             if (display_len > max_name_len) {
                 // Truncate if needed
-                int available = max_name_len - (is_symlink ? 4 : 0);
+                int available = max_name_len - (is_symlink ? 4 : 0); // 4 for " -> "
                 if (is_symlink && target_len > 0) {
                     // Show name and truncated target
                     int name_part = available / 2;
-                    int target_part = available - name_part - 4;
+                    int target_part = available - name_part - 7; // 7 for " -> " + "..."
+                    if (target_part < 0) target_part = 0;
                     mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji, 
                              name_part, name, target_part, symlink_target);
                 } else {
-                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+                    // Account for emoji + space + "..."
+                    int max_chars = max_name_len - 3; // 3 for "..."
+                    if (max_chars < 1) max_chars = 1;
+                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_chars, name);
                 }
             } else {
                 if (is_symlink && target_len > 0) {
@@ -512,19 +568,24 @@ void draw_directory_window(
             int name_len = strlen(name);
             int target_len = is_symlink ? strlen(symlink_target) : 0;
             int display_len = name_len + (is_symlink ? (4 + target_len) : 0); // " -> " + target
-            int max_name_len = cols - 4; // Adjusted to fit within window width
+            // Account for: border(1) + emoji(~2) + space(1) + ellipsis(3) + border(1) = ~8
+            int max_name_len = cols - 8;
             
             if (display_len > max_name_len) {
                 // Truncate if needed
-                int available = max_name_len - (is_symlink ? 4 : 0);
+                int available = max_name_len - (is_symlink ? 4 : 0); // 4 for " -> "
                 if (is_symlink && target_len > 0) {
                     // Show name and truncated target
                     int name_part = available / 2;
-                    int target_part = available - name_part - 4;
+                    int target_part = available - name_part - 7; // 7 for " -> " + "..."
+                    if (target_part < 0) target_part = 0;
                     mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji, 
                              name_part, name, target_part, symlink_target);
                 } else {
-                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_name_len - 3, name);
+                    // Account for emoji + space + "..."
+                    int max_chars = max_name_len - 3; // 3 for "..."
+                    if (max_chars < 1) max_chars = 1;
+                    mvwprintw(window, i + 1, 1, "%s %.*s...", emoji, max_chars, name);
                 }
             } else {
                 if (is_symlink && target_len > 0) {
@@ -577,11 +638,38 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     // Display file size or directory size with emoji
     char fileSizeStr[20];
     if (S_ISDIR(file_stat.st_mode)) {
-        long dir_size = get_directory_size(file_path);
+        static char last_preview_size_path[MAX_PATH_LENGTH] = "";
+        static struct timespec last_preview_size_change = {0};
+        static bool last_preview_size_initialized = false;
+
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        bool path_changed = !last_preview_size_initialized ||
+                            strncmp(last_preview_size_path, file_path, MAX_PATH_LENGTH) != 0;
+        if (path_changed) {
+            strncpy(last_preview_size_path, file_path, MAX_PATH_LENGTH - 1);
+            last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
+            last_preview_size_change = now;
+            last_preview_size_initialized = true;
+        }
+
+        long elapsed_ns = (now.tv_sec - last_preview_size_change.tv_sec) * 1000000000L +
+                          (now.tv_nsec - last_preview_size_change.tv_nsec);
+        bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
+
+        long dir_size = allow_enqueue ? get_directory_size(file_path)
+                                      : get_directory_size_peek(file_path);
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
-        } else if (dir_size == -2) {
+        } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
+        } else if (dir_size == DIR_SIZE_TOO_LARGE) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+        } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
+        } else if (dir_size == DIR_SIZE_PENDING) {
+            snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
         } else {
             format_file_size(fileSizeStr, dir_size);
         }
@@ -1310,6 +1398,7 @@ int main() {
     // Use lazy loading for initial directory load
     reload_directory_lazy(&state.files, state.current_directory, 
                          &state.lazy_load.files_loaded, &state.lazy_load.total_files);
+    dir_size_cache_start();
 
     state.dir_window_cas = (CursorAndSlice){
             .start = 0,
@@ -1341,9 +1430,12 @@ int main() {
 
     int ch;
     while ((ch = getch()) != kb.key_exit) {
+        struct timespec loop_start_time;
+        clock_gettime(CLOCK_MONOTONIC, &loop_start_time);
         if (resized) {
             resized = 0;
             redraw_all_windows(&state);
+            maybe_flush_input(loop_start_time);
             continue;
         }
         // Check if enough time has passed to update the banner
@@ -1370,6 +1462,7 @@ int main() {
         }
 
         if (ch != ERR) {
+            dir_size_note_user_activity();
 
             // 1) UP
             if (ch == kb.key_up) {
@@ -1698,6 +1791,21 @@ int main() {
 
         wrefresh(mainwin);
         wrefresh(notifwin);
+        // Highlight the active window
+        if (active_window == DIRECTORY_WIN_ACTIVE) {
+            wattron(dirwin, A_REVERSE);
+            mvwprintw(dirwin, state.dir_window_cas.cursor - state.dir_window_cas.start + 1, 1, "%s", FileAttr_get_name(state.files.el[state.dir_window_cas.cursor]));
+            wattroff(dirwin, A_REVERSE);
+        } else {
+            wattron(previewwin, A_REVERSE);
+            mvwprintw(previewwin, 1, 1, "Preview Window Active");
+            wattroff(previewwin, A_REVERSE);
+        }
+
+        wrefresh(mainwin);
+        wrefresh(notifwin);
+
+        maybe_flush_input(loop_start_time);
     }
 
     // Clean up
@@ -1718,6 +1826,7 @@ int main() {
     delwin(bannerwin);
     endwin();
     cleanup_temp_files();
+    dir_size_cache_stop();
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);
