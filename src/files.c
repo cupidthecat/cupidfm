@@ -890,7 +890,6 @@ void edit_file_in_terminal(WINDOW *window,
         wrefresh(notification_window);
         pthread_mutex_unlock(&banner_mutex);
         fclose(file);
-        close(fd);
         return;
     }
     
@@ -904,6 +903,15 @@ void edit_file_in_terminal(WINDOW *window,
     text_buffer.capacity = 100; 
     text_buffer.num_lines = 0;
     text_buffer.lines = malloc(sizeof(char*) * text_buffer.capacity);
+    if (!text_buffer.lines) {
+        pthread_mutex_lock(&banner_mutex);
+        mvwprintw(notification_window, 1, 2, "Memory allocation error");
+        wrefresh(notification_window);
+        pthread_mutex_unlock(&banner_mutex);
+        fclose(file);
+        close(fd);
+        return;
+    }
 
     // Read the file into our text buffer
     bool is_empty = true;
@@ -919,14 +927,15 @@ void edit_file_in_terminal(WINDOW *window,
         }
         if (text_buffer.num_lines >= text_buffer.capacity) {
             text_buffer.capacity *= 2;
-            text_buffer.lines = realloc(text_buffer.lines, 
+            char **tmp = realloc(text_buffer.lines, 
                             sizeof(char*) * text_buffer.capacity);
-            if (!text_buffer.lines) {
+            if (!tmp) {
                 mvwprintw(notification_window, 1, 2, "Memory allocation error");
                 wrefresh(notification_window);
                 fclose(file);
                 return;
             }
+            text_buffer.lines = tmp;
         }
         text_buffer.lines[text_buffer.num_lines++] = strdup(line);
     }
@@ -1149,19 +1158,25 @@ void edit_file_in_terminal(WINDOW *window,
 
             // Split the line at cursor_col
             char *new_line = strdup(current_line + cursor_col);
+            if (!new_line) {
+                mvwprintw(notification_window, 1, 2, "Memory allocation error");
+                wrefresh(notification_window);
+                continue;
+            }
             current_line[cursor_col] = '\0';
 
             // Realloc if needed
             if (text_buffer.num_lines >= text_buffer.capacity) {
                 text_buffer.capacity *= 2;
-                text_buffer.lines = realloc(text_buffer.lines, 
+                char **tmp = realloc(text_buffer.lines, 
                                   sizeof(char*) * text_buffer.capacity);
-                if (!text_buffer.lines) {
+                if (!tmp) {
                     mvwprintw(notification_window, 1, 2, "Memory allocation error");
                     wrefresh(notification_window);
                     fclose(file);
                     return;
                 }
+                text_buffer.lines = tmp;
             }
 
             // Shift lines down
@@ -1189,9 +1204,15 @@ void edit_file_in_terminal(WINDOW *window,
                 int prev_len = strlen(text_buffer.lines[cursor_line - 1]);
                 int curr_len = strlen(text_buffer.lines[cursor_line]);
 
-                text_buffer.lines[cursor_line - 1] = realloc(
+                char *new_line = realloc(
                     text_buffer.lines[cursor_line - 1], prev_len + curr_len + 1
                 );
+                if (!new_line) {
+                    mvwprintw(notification_window, 1, 2, "Memory allocation error");
+                    wrefresh(notification_window);
+                    continue; // Skip this operation if realloc fails
+                }
+                text_buffer.lines[cursor_line - 1] = new_line;
                 strcat(text_buffer.lines[cursor_line - 1], text_buffer.lines[cursor_line]);
                 free(text_buffer.lines[cursor_line]);
 
@@ -1215,7 +1236,13 @@ void edit_file_in_terminal(WINDOW *window,
             int line_len = (int)strlen(curr_line);
 
             // Expand current line by 1 char
-            curr_line = realloc(curr_line, line_len + 2);
+            char *new_line = realloc(curr_line, line_len + 2);
+            if (!new_line) {
+                mvwprintw(notification_window, 1, 2, "Memory allocation error");
+                wrefresh(notification_window);
+                continue; // Skip this operation if realloc fails
+            }
+            curr_line = new_line;
             memmove(&curr_line[cursor_col + 1],
                     &curr_line[cursor_col],
                     line_len - cursor_col + 1);
