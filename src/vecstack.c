@@ -12,7 +12,8 @@
  * @return an empty VecStack
  */
 VecStack VecStack_empty() {
-    VecStack r = {Vector_new(0)};
+    // Pre-allocate capacity for 10 elements to reduce reallocations
+    VecStack r = {Vector_new(INITIAL_CAPACITY)};
     return r;
 }
 
@@ -23,9 +24,12 @@ VecStack VecStack_empty() {
  * @param el the element to push
  */
 void VecStack_push(VecStack *v, void *el) {
+    // Cache length to avoid multiple function calls
+    size_t len = Vector_len(v->v);
     Vector_add(&v->v, 1);
-    v->v.el[Vector_len(v->v)] = el;
-    Vector_set_len(&v->v, Vector_len(v->v) + 1);
+    v->v.el[len] = el;
+    // Use set_len_no_free since we're growing (no elements to free)
+    Vector_set_len_no_free(&v->v, len + 1);
 }
 
 /**
@@ -35,10 +39,12 @@ void VecStack_push(VecStack *v, void *el) {
  * @return the popped element
  */
 void *VecStack_pop(VecStack *v) {
-    if (Vector_len(v->v) < 1)
+    // Cache length to avoid multiple function calls
+    size_t len = Vector_len(v->v);
+    if (len < 1)
         return NULL;
-    void *r = v->v.el[Vector_len(v->v) - 1];
-    Vector_set_len_no_free(&v->v, Vector_len(v->v) - 1);
+    void *r = v->v.el[len - 1];
+    Vector_set_len_no_free(&v->v, len - 1);
     return r;
 }
 
@@ -58,7 +64,9 @@ void VecStack_bye(VecStack *v) {
  * @return the top element
  */
 void *VecStack_peek(VecStack *v) {
-    if (Vector_len(v->v) < 1)
+    // Cache length to avoid multiple function calls
+    size_t len = Vector_len(v->v);
+    if (len < 1)
         return NULL;
-    return v->v.el[Vector_len(v->v) - 1];
+    return v->v.el[len - 1];
 }
