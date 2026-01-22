@@ -78,6 +78,25 @@ typedef struct {
 // Forward declaration of fix_cursor
 void fix_cursor(CursorAndSlice *cas);
 
+// Helper to resync selection after directory reload
+static void resync_selection(AppState *s) {
+    s->dir_window_cas.num_files = Vector_len(s->files);
+
+    if (s->dir_window_cas.num_files == 0) {
+        s->dir_window_cas.cursor = 0;
+        s->dir_window_cas.start = 0;
+        s->selected_entry = "";
+        return;
+    }
+
+    if (s->dir_window_cas.cursor >= s->dir_window_cas.num_files) {
+        s->dir_window_cas.cursor = s->dir_window_cas.num_files - 1;
+    }
+
+    fix_cursor(&s->dir_window_cas);
+    s->selected_entry = FileAttr_get_name(s->files.el[s->dir_window_cas.cursor]);
+}
+
 static void maybe_flush_input(struct timespec loop_start_time) {
     struct timespec loop_end_time;
     clock_gettime(CLOCK_MONOTONIC, &loop_end_time);
@@ -150,11 +169,12 @@ void count_directory_tree_lines(const char *dir_path, int level, int *line_count
         size_t name_len = strlen(entry->d_name);
         if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
 
-        strcpy(full_path, dir_path);
-        if (full_path[dir_path_len - 1] != '/') {
-            strcat(full_path, "/");
+        if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
+            snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
+        } else {
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
         }
-        strcat(full_path, entry->d_name);
+        full_path[MAX_PATH_LENGTH - 1] = '\0';
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
@@ -238,11 +258,12 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         size_t name_len = strlen(entry->d_name);
         if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
 
-        strcpy(full_path, dir_path);
-        if (full_path[dir_path_len - 1] != '/') {
-            strcat(full_path, "/");
+        if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
+            snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
+        } else {
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
         }
-        strcat(full_path, entry->d_name);
+        full_path[MAX_PATH_LENGTH - 1] = '\0';
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
@@ -292,11 +313,12 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                 level < DIRECTORY_TREE_MAX_DEPTH) {
                 size_t name_len = strlen(entries[i].name);
                 if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                    strcpy(full_path, dir_path);
-                    if (full_path[dir_path_len - 1] != '/') {
-                        strcat(full_path, "/");
+                    if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
+                        snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
+                    } else {
+                        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
                     }
-                    strcat(full_path, entries[i].name);
+                    full_path[MAX_PATH_LENGTH - 1] = '\0';
                     show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
                     if (tree_limit_hit) {
                         break;
@@ -309,11 +331,12 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         // Reconstruct full path for symlink detection
         size_t name_len = strlen(entries[i].name);
         if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-            strcpy(full_path, dir_path);
-            if (full_path[dir_path_len - 1] != '/') {
-                strcat(full_path, "/");
+            if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
+                snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
+            } else {
+                snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
             }
-            strcat(full_path, entries[i].name);
+            full_path[MAX_PATH_LENGTH - 1] = '\0';
         }
 
         // Check if this is a symlink
@@ -388,6 +411,7 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             *line_num < max_y - 1 &&
             level < DIRECTORY_TREE_MAX_DEPTH) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
+                // full_path already constructed safely above
                 show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
                 if (tree_limit_hit) {
                     break;
@@ -996,7 +1020,7 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     // Check if the current directory is now an empty string
     if ((*current_directory)[0] == '\0') {
         // If empty, set it back to the root directory
-        strcpy(*current_directory, "/");
+        snprintf(*current_directory, MAX_PATH_LENGTH, "/");
         // Update lazy loading state
         if (state->lazy_load.directory_path) {
             free(state->lazy_load.directory_path);
@@ -1644,7 +1668,8 @@ int main() {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
                     copy_to_clipboard(full_path);
-                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
+                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH - 1);
+                    copied_filename[MAX_PATH_LENGTH - 1] = '\0';
                     werase(notifwin);
                     show_notification(notifwin, "Copied to clipboard: %s", state.selected_entry);
                     wrefresh(notifwin);
@@ -1657,7 +1682,7 @@ int main() {
                 if (active_window == DIRECTORY_WIN_ACTIVE && copied_filename[0] != '\0') {
                     paste_from_clipboard(state.current_directory, copied_filename);
                     reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    resync_selection(&state);
                     werase(notifwin);
                     show_notification(notifwin, "Pasted file: %s", copied_filename);
                     wrefresh(notifwin);
@@ -1670,15 +1695,19 @@ int main() {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
+                    char name_copy[MAX_PATH_LENGTH];
+                    strncpy(name_copy, state.selected_entry, MAX_PATH_LENGTH - 1);
+                    name_copy[MAX_PATH_LENGTH - 1] = '\0';
                     cut_and_paste(full_path);
-                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
+                    strncpy(copied_filename, name_copy, MAX_PATH_LENGTH - 1);
+                    copied_filename[MAX_PATH_LENGTH - 1] = '\0';
 
                     // Reload directory to reflect the cut file
                     reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    resync_selection(&state);
 
                     werase(notifwin);
-                    show_notification(notifwin, "Cut to clipboard: %s", state.selected_entry);
+                    show_notification(notifwin, "Cut to clipboard: %s", name_copy);
                     wrefresh(notifwin);
                     should_clear_notif = false;
                 }
@@ -1689,16 +1718,19 @@ int main() {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
+                    char name_copy[MAX_PATH_LENGTH];
+                    strncpy(name_copy, state.selected_entry, MAX_PATH_LENGTH - 1);
+                    name_copy[MAX_PATH_LENGTH - 1] = '\0';
 
                     bool should_delete = false;
-                    bool delete_result = confirm_delete(state.selected_entry, &should_delete);
+                    bool delete_result = confirm_delete(name_copy, &should_delete);
 
                     if (delete_result && should_delete) {
                         delete_item(full_path);
                         reload_directory(&state.files, state.current_directory);
-                        state.dir_window_cas.num_files = Vector_len(state.files);
+                        resync_selection(&state);
 
-                        show_notification(notifwin, "Deleted: %s", state.selected_entry);
+                        show_notification(notifwin, "Deleted: %s", name_copy);
                         should_clear_notif = false;
                     } else {
                         show_notification(notifwin, "Delete cancelled");
@@ -1718,15 +1750,7 @@ int main() {
 
                     // Reload to show changes
                     reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
-
-                    if (state.dir_window_cas.num_files > 0) {
-                        state.dir_window_cas.cursor = 0;
-                        state.dir_window_cas.start = 0;
-                        state.selected_entry = FileAttr_get_name(state.files.el[0]);
-                    } else {
-                        state.selected_entry = "";
-                    }
+                    resync_selection(&state);
                 }
             }
 
@@ -1735,25 +1759,15 @@ int main() {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
                     create_new_file(notifwin, state.current_directory);
                     reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
-
-                    if (state.dir_window_cas.num_files > 0) {
-                        state.dir_window_cas.cursor = 0;
-                        state.dir_window_cas.start = 0;
-                        state.selected_entry = FileAttr_get_name(state.files.el[0]);
-                    } else {
-                        state.selected_entry = "";
-                    }
+                    resync_selection(&state);
                 }
             }
 
             // 13 CREATE NEW DIR
             else if (ch == kb.key_new_dir) {
-                // implement
                 create_new_directory(notifwin, state.current_directory);
                 reload_directory(&state.files, state.current_directory);
-                state.dir_window_cas.num_files = Vector_len(state.files);
-
+                resync_selection(&state);
             }
         }
 

@@ -133,6 +133,52 @@ Error logs (if any) will be saved to `log.txt`.
 - Tab-based window switching between directory and preview panes
 - Configure keybinds
 
+## Performance
+
+CupidFM is optimized for speed and efficiency. Our comprehensive test suite (63 tests across 8 suites) and performance benchmarks demonstrate excellent performance characteristics:
+
+### Core Data Structure Performance
+
+- **Vector Operations:**
+  - Add 100 elements: **0.645 μs** (645 ns)
+  - Element access: **1.95 ns**
+  - Capacity management: **651-749 ns**
+
+- **VecStack Operations:**
+  - Push/pop: **0.167 μs** (166.5 ns) - **50% faster** after optimization
+  - Peek: **2.03 ns** (100x faster than push/pop, as expected)
+  - Large stack (1k elements): **15.6 μs**
+
+### File System Operations
+
+- **Path Join:** **38-138 ns** depending on complexity
+- **Directory Reading:**
+  - Small directories (`/tmp`): **42.6 μs** (hot cache)
+  - Medium directories (`/usr/lib`, 99 entries): **10.5 μs** (hot cache)
+  - Large directories (`/usr/bin`, 2,254 entries): **325.4 μs** (hot cache)
+- **Cold Cache Performance** (realistic browsing scenario):
+  - First read is **1.75-3.8x slower** than hot cache, demonstrating the importance of OS page caching
+  - Warm steady-state matches hot cache performance
+
+### Optimizations Applied
+
+1. **VecStack Optimizations** - Achieved **32% performance improvement**:
+   - Cached Vector length to eliminate redundant function calls
+   - Used `Vector_set_len_no_free` for push operations
+   - Pre-allocated capacity (10 elements) to reduce reallocations
+
+2. **Memory Safety** - All critical memory issues fixed:
+   - Safe `realloc` usage with temporary pointers
+   - Proper memory cleanup in all data structures
+   - Zero memory leaks (validated with AddressSanitizer and Valgrind)
+
+3. **String Operations:**
+   - `strlen`: **1.90 ns**
+   - `strncpy`: **7.34 ns**
+   - `snprintf`: **54.52 ns**
+
+For detailed performance analysis and test suite documentation, see [`TESTING_AND_PERFORMANCE.md`](TESTING_AND_PERFORMANCE.md).
+
 ## Configuration
 
 ### Default Keybindings

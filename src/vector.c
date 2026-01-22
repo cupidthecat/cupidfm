@@ -14,8 +14,13 @@
  * @return a new Vector
  */
 Vector Vector_new(size_t cap) {
+    void **el = malloc((cap + 1) * sizeof(void *));
+    if (!el) {
+        Vector v = {NULL, {.cap = 0, .len = 0}};
+        return v;
+    }
     Vector v = {
-        malloc((cap + 1) * sizeof(void *)),
+        el,
         {
             .cap = cap,
             .len = 0,
@@ -30,8 +35,11 @@ Vector Vector_new(size_t cap) {
  * @param v the Vector to free
  */
 void Vector_bye(Vector *v) {
-    for (size_t i = 0; v->el[i]; i++)
-        free(v->el[i]);
+    for (size_t i = 0; i < v->IMPL.len; i++) {
+        if (v->el[i]) {
+            free(v->el[i]);
+        }
+    }
     free(v->el);
 }
 /**
@@ -42,8 +50,13 @@ void Vector_bye(Vector *v) {
  */
 void Vector_add(Vector *v, size_t add) {
     if (v->IMPL.len + add > v->IMPL.cap) {
-        v->IMPL.cap = MAX(v->IMPL.cap * 2, v->IMPL.len + add);
-        v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
+        size_t new_cap = MAX(v->IMPL.cap * 2, v->IMPL.len + add);
+        void **new_el = realloc(v->el, (new_cap + 1) * sizeof(void *));
+        if (!new_el) {
+            return;
+        }
+        v->el = new_el;
+        v->IMPL.cap = new_cap;
     }
 }
 /**
@@ -63,9 +76,13 @@ void Vector_set_len_no_free(Vector *v, size_t len) {
  * @param len the new length of the Vector
  */
 void Vector_set_len(Vector *v, size_t len) {
-    if (len < v->IMPL.len)
-        for (size_t i = len; v->el[i]; i++)
-            free(v->el[i]);
+    if (len < v->IMPL.len) {
+        for (size_t i = len; i < v->IMPL.len; i++) {
+            if (v->el[i]) {
+                free(v->el[i]);
+            }
+        }
+    }
 
     Vector_set_len_no_free(v, len);
 }
@@ -86,8 +103,13 @@ size_t Vector_len(Vector v) {
  * @return the element at the specified index
  */
 void Vector_min_cap(Vector *v) {
-    v->IMPL.cap = v->IMPL.len;
-    v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
+    size_t new_cap = v->IMPL.len;
+    void **new_el = realloc(v->el, (new_cap + 1) * sizeof(void *));
+    if (!new_el) {
+        return;
+    }
+    v->el = new_el;
+    v->IMPL.cap = new_cap;
 }
 /**
  * Function to get the element at a specific index in the Vector
@@ -97,6 +119,11 @@ void Vector_min_cap(Vector *v) {
  * @return the element at the specified index
  */
 void Vector_sane_cap(Vector *v) {
-    v->IMPL.cap = v->IMPL.len * 2;
-    v->el = realloc(v->el, (v->IMPL.cap + 1) * sizeof(void *));
+    size_t new_cap = v->IMPL.len * 2;
+    void **new_el = realloc(v->el, (new_cap + 1) * sizeof(void *));
+    if (!new_el) {
+        return;
+    }
+    v->el = new_el;
+    v->IMPL.cap = new_cap;
 }
