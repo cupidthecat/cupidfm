@@ -20,6 +20,8 @@
 #include <pthread.h>   // For threading
 #include <locale.h>    // For setlocale
 #include <errno.h>     // For errno
+#include <pwd.h>       // For getpwuid, getpwnam
+#include <wordexp.h>   // For wordexp (tilde expansion)
 
 // Local includes
 #include "utils.h"
@@ -41,6 +43,16 @@ WINDOW *dirwin = NULL;
 WINDOW *previewwin = NULL;
 
 VecStack directoryStack;
+
+// Directory scroll position tracking
+typedef struct DirScrollPos {
+    char *path;
+    SIZE cursor;
+    SIZE start;
+    struct DirScrollPos *next;
+} DirScrollPos;
+
+static DirScrollPos *dir_scroll_positions = NULL;
 
 // Input handling tuning
 #define INPUT_FLUSH_THRESHOLD_NS 150000000L // 150ms
@@ -77,6 +89,103 @@ typedef struct {
 
 // Forward declaration of fix_cursor
 void fix_cursor(CursorAndSlice *cas);
+
+// --- Path / selection helpers ---------------------------------------------
+
+static void strip_trailing_slashes_inplace(char *p) {
+    if (!p) return;
+    size_t n = strlen(p);
+    while (n > 1 && p[n - 1] == '/') {
+        p[n - 1] = '\0';
+        n--;
+    }
+}
+
+static const char *path_last_component(const char *p) {
+    if (!p || !*p) return "";
+    const char *end = p + strlen(p);
+    while (end > p + 1 && end[-1] == '/') end--;
+    const char *s = end;
+    while (s > p && s[-1] != '/') s--;
+    return s; // points into p, NUL-terminated
+}
+
+static SIZE find_loaded_index_by_name(Vector *files, const char *name) {
+    if (!files || !name || !*name) return (SIZE)-1;
+    SIZE n = (SIZE)Vector_len(*files);
+    for (SIZE i = 0; i < n; i++) {
+        FileAttr fa = (FileAttr)files->el[i];
+        const char *nm = FileAttr_get_name(fa);
+        if (nm && strcmp(nm, name) == 0) return i;
+    }
+    return (SIZE)-1;
+}
+
+// Drives your lazy loader until the entry shows up (or no more entries load).
+static SIZE find_index_by_name_lazy(Vector *files,
+                                   const char *dir,
+                                   CursorAndSlice *cas,
+                                   LazyLoadState *lazy_load,
+                                   const char *name)
+{
+    if (!files || !dir || !cas || !lazy_load || !name || !*name) return (SIZE)-1;
+
+    for (int safety = 0; safety < 512; safety++) {
+        SIZE idx = find_loaded_index_by_name(files, name);
+        if (idx != (SIZE)-1) return idx;
+
+        size_t before = Vector_len(*files);
+        cas->num_files = before;
+        if (before == 0) return (SIZE)-1;
+
+        // Force "near end" so load_more_files_if_needed actually loads
+        cas->cursor = (SIZE)(before - 1);
+
+        load_more_files_if_needed(files, dir, cas,
+                                  &lazy_load->files_loaded,
+                                  lazy_load->total_files);
+
+        size_t after = Vector_len(*files);
+        cas->num_files = after;
+
+        if (after == before) break; // nothing more loaded
+    }
+
+    return (SIZE)-1;
+}
+
+// Ensure lazy-loaded directory has at least (target_index+1) entries loaded.
+static void load_until_index(Vector *files,
+                             const char *current_directory,
+                             CursorAndSlice *cas,
+                             LazyLoadState *lazy_load,
+                             SIZE target_index)
+{
+    // If directory is empty or target is already loaded, nothing to do.
+    cas->num_files = Vector_len(*files);
+    if (cas->num_files == 0 || target_index < cas->num_files) return;
+
+    // Safety cap to avoid infinite loops if something goes wrong.
+    for (int safety = 0; safety < 512; safety++) {
+        size_t before = Vector_len(*files);
+
+        // Drive lazy loader by pretending we're at the end of what's currently loaded.
+        cas->num_files = before;
+        cas->cursor = (before > 0) ? (before - 1) : 0;
+
+        load_more_files_if_needed(files,
+                                  current_directory,
+                                  cas,
+                                  &lazy_load->files_loaded,
+                                  lazy_load->total_files);
+
+        size_t after = Vector_len(*files);
+        cas->num_files = after;
+
+        if (after == before) break;                 // no more data loaded
+        if (target_index < (SIZE)after) break;       // target now available
+    }
+}
 
 // Helper to resync selection after directory reload
 static void resync_selection(AppState *s) {
@@ -316,7 +425,10 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                     if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
                         snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
                     } else {
-                        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+                        int ret = snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+                        if (ret >= (int)sizeof(full_path)) {
+                            full_path[sizeof(full_path) - 1] = '\0'; // Ensure null termination
+                        }
                     }
                     full_path[MAX_PATH_LENGTH - 1] = '\0';
                     show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
@@ -334,7 +446,10 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
                 snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
             } else {
-                snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+                int ret = snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
+                if (ret >= (int)sizeof(full_path)) {
+                    full_path[sizeof(full_path) - 1] = '\0'; // Ensure null termination
+                }
             }
             full_path[MAX_PATH_LENGTH - 1] = '\0';
         }
@@ -651,12 +766,38 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     path_join(file_path, current_directory, selected_entry);
     mvwprintw(window, 0, 2, "Selected Entry: %.*s", max_x - 4, file_path);
 
-    // Attempt to retrieve file information
+    // Attempt to retrieve file information (use lstat for POSIX-correct symlink handling)
     struct stat file_stat;
-    if (stat(file_path, &file_stat) == -1) {
-        mvwprintw(window, 2, 2, "Unable to retrieve file information");
+    if (lstat(file_path, &file_stat) == -1) {
+        if (errno == EACCES) {
+            mvwprintw(window, 2, 2, "Permission denied");
+        } else if (errno == ENOENT) {
+            mvwprintw(window, 2, 2, "File not found (it may have been removed)");
+        } else {
+            mvwprintw(window, 2, 2, "Unable to stat: %s", strerror(errno));
+        }
         wrefresh(window);
         return;
+    }
+    
+    // Show symlink target info if it's a symlink
+    if (S_ISLNK(file_stat.st_mode)) {
+        char link_target[MAX_PATH_LENGTH];
+        ssize_t target_len = readlink(file_path, link_target, sizeof(link_target) - 1);
+        if (target_len > 0) {
+            link_target[target_len] = '\0';
+            // Try to stat the target to show target info
+            struct stat target_stat;
+            if (stat(file_path, &target_stat) == 0) {
+                if (S_ISDIR(target_stat.st_mode)) {
+                    mvwprintw(window, 1, 2, "Symlink -> %s (directory)", link_target);
+                } else {
+                    mvwprintw(window, 1, 2, "Symlink -> %s (file, %ld bytes)", link_target, (long)target_stat.st_size);
+                }
+            } else {
+                mvwprintw(window, 1, 2, "Symlink -> %s (broken)", link_target);
+            }
+        }
     }
     
     // Display file size or directory size with emoji
@@ -730,6 +871,10 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, start_line, &current_count);
 
         // If the directory is empty, show a message
+      
+    } else if (is_archive_file(file_path)) {
+        // Display archive contents preview
+        display_archive_preview(window, file_path, start_line, max_y, max_x);
       
     } else if (is_supported_file_type(file_path)) {
         // Display file preview for supported types
@@ -1001,52 +1146,123 @@ void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_ent
  * @param state the application state
  */
 void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_window_cas, AppState *state) {
-    // Check if the current directory is the root directory
+    // Strip trailing slashes for consistent path handling
+    strip_trailing_slashes_inplace(*current_directory);
+    
+    // Save current directory's scroll position before navigating away
+    char *current_path = *current_directory;
+    DirScrollPos *pos = dir_scroll_positions;
+    DirScrollPos *prev = NULL;
+    while (pos && strcmp(pos->path, current_path) != 0) {
+        prev = pos;
+        pos = pos->next;
+    }
+    
+    if (pos) {
+        // Update existing position
+        pos->cursor = dir_window_cas->cursor;
+        pos->start = dir_window_cas->start;
+    } else {
+        // Create new position entry
+        pos = malloc(sizeof(DirScrollPos));
+        if (pos) {
+            pos->path = strdup(current_path);
+            pos->cursor = dir_window_cas->cursor;
+            pos->start = dir_window_cas->start;
+            pos->next = dir_scroll_positions;
+            dir_scroll_positions = pos;
+        }
+    }
+    
+    // Determine parent directory path
+    char parent_path[MAX_PATH_LENGTH];
     if (strcmp(*current_directory, "/") != 0) {
         // If not the root directory, move up one level
         char *last_slash = strrchr(*current_directory, '/');
         if (last_slash != NULL) {
-            *last_slash = '\0'; // Remove the last directory from the path
-            // Update lazy loading state
-            if (state->lazy_load.directory_path) {
-                free(state->lazy_load.directory_path);
+            size_t parent_len = last_slash - *current_directory;
+            if (parent_len == 0) {
+                // Parent is root
+                strncpy(parent_path, "/", sizeof(parent_path));
+            } else {
+                strncpy(parent_path, *current_directory, parent_len);
+                parent_path[parent_len] = '\0';
             }
-            state->lazy_load.directory_path = strdup(*current_directory);
-            reload_directory_lazy(files, *current_directory, 
-                                &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+        } else {
+            strncpy(parent_path, "/", sizeof(parent_path));
         }
+    } else {
+        strncpy(parent_path, "/", sizeof(parent_path));
+    }
+    
+    // Check if the parent directory is now an empty string
+    if (parent_path[0] == '\0') {
+        strncpy(parent_path, "/", sizeof(parent_path));
+    }
+    
+    // Update current_directory to parent
+    free(*current_directory);
+    *current_directory = strdup(parent_path);
+    
+    // Update lazy loading state
+    if (state->lazy_load.directory_path) {
+        free(state->lazy_load.directory_path);
+    }
+    state->lazy_load.directory_path = strdup(*current_directory);
+    reload_directory_lazy(files, *current_directory, 
+                        &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+
+    // Pop the last directory name from the stack (we'll reselect it in the parent)
+    char *child_name = VecStack_pop(&directoryStack);
+
+    // Use the actual dir window height (more accurate than LINES - 6)
+    {
+        int rows, cols;
+        getmaxyx(dirwin, rows, cols);
+        (void)cols;
+        dir_window_cas->num_lines = rows;
     }
 
-    // Check if the current directory is now an empty string
-    if ((*current_directory)[0] == '\0') {
-        // If empty, set it back to the root directory
-        snprintf(*current_directory, MAX_PATH_LENGTH, "/");
-        // Update lazy loading state
-        if (state->lazy_load.directory_path) {
-            free(state->lazy_load.directory_path);
-        }
-        state->lazy_load.directory_path = strdup(*current_directory);
-        reload_directory_lazy(files, *current_directory, 
-                            &state->lazy_load.files_loaded, &state->lazy_load.total_files);
-    }
-
-    // Pop the last directory from the stack
-    char *popped_dir = VecStack_pop(&directoryStack);
-    if (popped_dir) {
-        free(popped_dir);
-    }
-
-    // Reset cursor and start position
-    dir_window_cas->cursor = 0;
-    dir_window_cas->start = 0;
-    dir_window_cas->num_lines = LINES - 6;
     dir_window_cas->num_files = Vector_len(*files);
 
-    // Set selected_entry to the first file in the parent directory
-    if (dir_window_cas->num_files > 0) {
-        state->selected_entry = FileAttr_get_name(files->el[0]);
-    } else {
+    // Restore scroll position for the parent directory (and load enough entries first)
+    DirScrollPos *saved_pos = dir_scroll_positions;
+    while (saved_pos && strcmp(saved_pos->path, *current_directory) != 0) {
+        saved_pos = saved_pos->next;
+    }
+
+    if (saved_pos) {
+        int visible_lines = (int)dir_window_cas->num_lines - 2;
+        SIZE target = saved_pos->cursor;
+        if (visible_lines > 0) {
+            SIZE need = saved_pos->start + (SIZE)visible_lines;
+            if (need > 0) target = MAX(target, need - 1);
+        }
+
+        load_until_index(files, *current_directory, dir_window_cas, &state->lazy_load, target);
+        dir_window_cas->num_files = Vector_len(*files);
+    }
+
+    if (dir_window_cas->num_files == 0) {
+        dir_window_cas->cursor = 0;
+        dir_window_cas->start = 0;
         state->selected_entry = "";
+    } else if (saved_pos) {
+        dir_window_cas->cursor = (saved_pos->cursor < dir_window_cas->num_files)
+                                  ? saved_pos->cursor
+                                  : (dir_window_cas->num_files - 1);
+
+        dir_window_cas->start = saved_pos->start;
+        if (dir_window_cas->start >= dir_window_cas->num_files) {
+            dir_window_cas->start = 0;
+        }
+
+        fix_cursor(dir_window_cas);
+        state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
+    } else {
+        dir_window_cas->cursor = 0;
+        dir_window_cas->start = 0;
+        state->selected_entry = FileAttr_get_name(files->el[0]);
     }
 
     werase(notifwin);
@@ -1089,6 +1305,29 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         return;
     }
 
+    // Save CURRENT directory scroll position BEFORE leaving it (so parent restores on back)
+    {
+        const char *cur_path = *current_directory;
+        DirScrollPos *pos = dir_scroll_positions;
+        while (pos && strcmp(pos->path, cur_path) != 0) {
+            pos = pos->next;
+        }
+
+        if (pos) {
+            pos->cursor = dir_window_cas->cursor;
+            pos->start  = dir_window_cas->start;
+        } else {
+            pos = malloc(sizeof(DirScrollPos));
+            if (pos) {
+                pos->path = strdup(cur_path);
+                pos->cursor = dir_window_cas->cursor;
+                pos->start  = dir_window_cas->start;
+                pos->next   = dir_scroll_positions;
+                dir_scroll_positions = pos;
+            }
+        }
+    }
+
     // Push the selected directory name onto the stack
     char *new_entry = strdup(selected_entry);
     if (new_entry == NULL) {
@@ -1119,17 +1358,54 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
     reload_directory_lazy(files, *current_directory, 
                         &state->lazy_load.files_loaded, &state->lazy_load.total_files);
 
-    // Reset cursor and start position for the new directory
-    dir_window_cas->cursor = 0;
-    dir_window_cas->start = 0;
-    dir_window_cas->num_lines = LINES - 6;
+    // Use the actual dir window height for correct visible_lines math
+    {
+        int rows, cols;
+        getmaxyx(dirwin, rows, cols);
+        (void)cols;
+        dir_window_cas->num_lines = rows;
+    }
+
     dir_window_cas->num_files = Vector_len(*files);
 
-    // Set selected_entry to the first file in the new directory
-    if (dir_window_cas->num_files > 0) {
-        state->selected_entry = FileAttr_get_name(files->el[0]);
-    } else {
+    // Restore scroll position if we have one for this directory (and load enough entries first)
+    DirScrollPos *saved_pos = dir_scroll_positions;
+    while (saved_pos && strcmp(saved_pos->path, *current_directory) != 0) {
+        saved_pos = saved_pos->next;
+    }
+
+    if (saved_pos) {
+        int visible_lines = (int)dir_window_cas->num_lines - 2;
+        SIZE target = saved_pos->cursor;
+        if (visible_lines > 0) {
+            SIZE need = saved_pos->start + (SIZE)visible_lines;
+            if (need > 0) target = MAX(target, need - 1);
+        }
+
+        load_until_index(files, *current_directory, dir_window_cas, &state->lazy_load, target);
+        dir_window_cas->num_files = Vector_len(*files);
+    }
+
+    if (dir_window_cas->num_files == 0) {
+        dir_window_cas->cursor = 0;
+        dir_window_cas->start = 0;
         state->selected_entry = "";
+    } else if (saved_pos) {
+        dir_window_cas->cursor = (saved_pos->cursor < dir_window_cas->num_files)
+                                  ? saved_pos->cursor
+                                  : (dir_window_cas->num_files - 1);
+
+        dir_window_cas->start = saved_pos->start;
+        if (dir_window_cas->start >= dir_window_cas->num_files) {
+            dir_window_cas->start = 0;
+        }
+
+        fix_cursor(dir_window_cas);
+        state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
+    } else {
+        dir_window_cas->cursor = 0;
+        dir_window_cas->start = 0;
+        state->selected_entry = FileAttr_get_name(files->el[0]);
     }
 
     // If there's only one entry, automatically select it
@@ -1246,7 +1522,7 @@ void cleanup_temp_files() {
  * @param r the exit code
  * @param format the error message format
  */
-int main() {
+int main(int argc, char *argv[]) {
     // Initialize ncurses
     setlocale(LC_ALL, "");
     
@@ -1405,8 +1681,84 @@ int main() {
         die(1, "Memory allocation error");
     }
 
-    if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
-        die(1, "Unable to get current working directory");
+    // Check if a directory path was provided as an argument
+    if (argc > 1) {
+        char expanded_path[MAX_PATH_LENGTH];
+        wordexp_t p;
+        
+        // Expand tilde and other shell expansions
+        if (wordexp(argv[1], &p, 0) == 0) {
+            if (p.we_wordc > 0 && strlen(p.we_wordv[0]) < MAX_PATH_LENGTH) {
+                strncpy(expanded_path, p.we_wordv[0], MAX_PATH_LENGTH - 1);
+                expanded_path[MAX_PATH_LENGTH - 1] = '\0';
+            } else {
+                strncpy(expanded_path, argv[1], MAX_PATH_LENGTH - 1);
+                expanded_path[MAX_PATH_LENGTH - 1] = '\0';
+            }
+            wordfree(&p);
+        } else {
+            // Expansion failed, use argument as-is
+            strncpy(expanded_path, argv[1], MAX_PATH_LENGTH - 1);
+            expanded_path[MAX_PATH_LENGTH - 1] = '\0';
+        }
+        
+        // Try to resolve the path (handles relative paths, etc.)
+        char resolved_path[MAX_PATH_LENGTH];
+        char *final_path = NULL;
+        
+        if (realpath(expanded_path, resolved_path) != NULL) {
+            // realpath succeeded - use resolved path
+            final_path = resolved_path;
+        } else {
+            // realpath failed - try using expanded_path directly if it's absolute
+            // or construct absolute path from current directory
+            if (expanded_path[0] == '/') {
+                // Already absolute, use as-is
+                final_path = expanded_path;
+            } else {
+                // Relative path - try to make it absolute
+                char cwd[MAX_PATH_LENGTH];
+                if (getcwd(cwd, MAX_PATH_LENGTH) != NULL) {
+                    snprintf(resolved_path, MAX_PATH_LENGTH, "%s/%s", cwd, expanded_path);
+                    final_path = resolved_path;
+                } else {
+                    // Can't get cwd, use expanded_path as-is
+                    final_path = expanded_path;
+                }
+            }
+        }
+        
+        // Check if it's a directory
+        struct stat path_stat;
+        if (final_path && stat(final_path, &path_stat) == 0 && S_ISDIR(path_stat.st_mode)) {
+            strncpy(state.current_directory, final_path, MAX_PATH_LENGTH - 1);
+            state.current_directory[MAX_PATH_LENGTH - 1] = '\0';
+        } else {
+            // Not a directory or doesn't exist - fall back to current directory
+            if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
+                die(1, "Unable to get current working directory");
+            }
+            // Show error notification (but continue with current directory)
+            show_notification(notifwin, "Invalid directory: %s (using current directory)", argv[1]);
+            should_clear_notif = false;
+        }
+    } else {
+        // No argument provided - use current working directory
+        if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
+            die(1, "Unable to get current working directory");
+        }
+    }
+
+    // Strip trailing slashes for consistent path handling
+    strip_trailing_slashes_inplace(state.current_directory);
+
+    // Seed the stack so the first LEFT (after starting inside a dir) can reselect us in parent
+    if (strcmp(state.current_directory, "/") != 0) {
+        const char *leaf = path_last_component(state.current_directory);
+        if (leaf && *leaf) {
+            char *seed = strdup(leaf);
+            if (seed) VecStack_push(&directoryStack, seed);
+        }
     }
 
     state.selected_entry = "";
@@ -1844,6 +2196,16 @@ int main() {
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);
+    
+    // Free scroll position tracking
+    DirScrollPos *pos = dir_scroll_positions;
+    while (pos) {
+        DirScrollPos *next = pos->next;
+        free(pos->path);
+        free(pos);
+        pos = next;
+    }
+    dir_scroll_positions = NULL;
 
     return 0;
 }

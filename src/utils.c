@@ -253,8 +253,8 @@ bool is_directory(const char *path, const char *filename) {
     char full_path[MAX_PATH_LENGTH];
     snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
 
-    // Use lstat instead of stat - faster (doesn't follow symlinks) and sufficient for directory check
-    if (lstat(full_path, &path_stat) == 0)
+    // Use stat (not lstat) to follow symlinks - allows entering symlinks that point to directories
+    if (stat(full_path, &path_stat) == 0)
         return S_ISDIR(path_stat.st_mode);
 
     return false; // Correct: Do not assume it's a directory if stat fails

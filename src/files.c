@@ -20,6 +20,33 @@
 #include <sys/ioctl.h>             // For ioctl, TIOCGWINSZ, struct winsize
 #include <pthread.h>               // For background directory size worker
 #include <errno.h>                 // For permission errors
+#include "../cupidarchive/cupidarchive.h"  // For archive reading
+
+#ifdef __linux__
+#include <sys/vfs.h>               // statfs
+// Prefer linux/magic.h if available; otherwise define what we use.
+#if defined(__has_include)
+  #if __has_include(<linux/magic.h>)
+    #include <linux/magic.h>
+  #endif
+#endif
+
+#ifndef PROC_SUPER_MAGIC
+  #define PROC_SUPER_MAGIC 0x9fa0
+#endif
+#ifndef SYSFS_MAGIC
+  #define SYSFS_MAGIC 0x62656572
+#endif
+#ifndef TMPFS_MAGIC
+  #define TMPFS_MAGIC 0x01021994
+#endif
+#ifndef DEVPTS_SUPER_MAGIC
+  #define DEVPTS_SUPER_MAGIC 0x1cd1
+#endif
+#ifndef CGROUP2_SUPER_MAGIC
+  #define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
+#endif
 
 // Local includes
 #include "main.h"                  // for FileAttr, Vector, Vector_add, Vector_len, Vector_set_len
@@ -574,10 +601,36 @@ long get_directory_size_peek(const char *dir_path) {
 void display_file_info(WINDOW *window, const char *file_path, int max_x) {
     struct stat file_stat;
 
-    // Attempt to retrieve file statistics
-    if (stat(file_path, &file_stat) == -1) {
-        mvwprintw(window, 2, 2, "Unable to retrieve file information");
+    // Attempt to retrieve file statistics (use lstat for POSIX-correct symlink handling)
+    if (lstat(file_path, &file_stat) == -1) {
+        if (errno == EACCES) {
+            mvwprintw(window, 2, 2, "Permission denied");
+        } else if (errno == ENOENT) {
+            mvwprintw(window, 2, 2, "File not found (it may have been removed)");
+        } else {
+            mvwprintw(window, 2, 2, "Unable to stat: %s", strerror(errno));
+        }
         return;
+    }
+    
+    // Show symlink target info if it's a symlink
+    if (S_ISLNK(file_stat.st_mode)) {
+        char link_target[MAX_PATH_LENGTH];
+        ssize_t target_len = readlink(file_path, link_target, sizeof(link_target) - 1);
+        if (target_len > 0) {
+            link_target[target_len] = '\0';
+            // Try to stat the target to show target info
+            struct stat target_stat;
+            if (stat(file_path, &target_stat) == 0) {
+                if (S_ISDIR(target_stat.st_mode)) {
+                    mvwprintw(window, 1, 2, "Symlink -> %s (directory)", link_target);
+                } else {
+                    mvwprintw(window, 1, 2, "Symlink -> %s (file, %ld bytes)", link_target, (long)target_stat.st_size);
+                }
+            } else {
+                mvwprintw(window, 1, 2, "Symlink -> %s (broken)", link_target);
+            }
+        }
     }
 
     // NEW: get from KeyBindings or from wherever you store it:
@@ -1342,4 +1395,200 @@ bool is_supported_file_type(const char *filename) {
 
     magic_close(magic_cookie);
     return supported;
+}
+
+/**
+ * Check if a file is an archive that we can preview.
+ * 
+ * @param filename The filename to check
+ * @return true if the file is a supported archive, false otherwise
+ */
+bool is_archive_file(const char *filename) {
+    if (!filename) {
+        return false;
+    }
+    
+    size_t len = strlen(filename);
+    if (len == 0) {
+        return false;
+    }
+    
+    const char *ext = strrchr(filename, '.');
+    if (!ext) {
+        return false;
+    }
+    
+    // Check for ZIP archives
+    if (strcmp(ext, ".zip") == 0) {
+        return true;
+    }
+    
+    // Check for TAR archives (with or without compression)
+    // Note: strrchr finds the LAST dot, so for .tar.gz it finds .gz
+    // We need to check for multi-part extensions
+    
+    // Check single extensions first
+    if (strcmp(ext, ".tar") == 0 ||
+        strcmp(ext, ".tgz") == 0 ||
+        strcmp(ext, ".tbz2") == 0 ||
+        strcmp(ext, ".txz") == 0) {
+        return true;
+    }
+    
+    // Check for multi-part extensions like .tar.gz, .tar.bz2, .tar.xz
+    // For these, strrchr will find .gz/.bz2/.xz, so check if .tar comes before
+    if (strcmp(ext, ".gz") == 0 || strcmp(ext, ".bz2") == 0 || strcmp(ext, ".xz") == 0) {
+        // Check if it contains .tar before the compression extension
+        const char *tar_pos = strstr(filename, ".tar");
+        if (tar_pos && tar_pos < ext) {
+            return true; // It's a TAR archive (e.g., .tar.gz, .tar.bz2)
+        }
+        // If no .tar, it's a single compressed file (also treat as "archive" for preview)
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Display archive contents in the preview window.
+ * 
+ * @param window The preview window
+ * @param file_path Path to the archive file
+ * @param start_line Starting line for scrolling
+ * @param max_y Maximum Y coordinate
+ * @param max_x Maximum X coordinate
+ */
+void display_archive_preview(WINDOW *window, const char *file_path, int start_line, int max_y, int max_x) {
+    // Check if this is a single compressed file (not a TAR archive)
+    bool is_single_compressed = false;
+    const char *ext = strrchr(file_path, '.');
+    if (ext) {
+        if (strcmp(ext, ".gz") == 0 || strcmp(ext, ".bz2") == 0 || strcmp(ext, ".xz") == 0) {
+            // Check if it's NOT a .tar.gz, .tar.bz2, etc.
+            const char *tar_pos = strstr(file_path, ".tar");
+            if (!tar_pos || tar_pos >= ext) {
+                is_single_compressed = true;
+            }
+        }
+    }
+    
+    ArcReader *reader = arc_open_path(file_path);
+    if (!reader) {
+        // Show more detailed error message
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Unable to open archive: %s (errno: %s)", 
+                 file_path, strerror(errno));
+        mvwprintw(window, 7, 2, "%.*s", max_x - 4, error_msg);
+        return;
+    }
+    
+    // Display archive header (start after MIME type which is on line 5)
+    // For single compressed files, show a different header
+    if (is_single_compressed) {
+        mvwprintw(window, 6, 2, "📦 Compressed File Contents:");
+    } else {
+        mvwprintw(window, 6, 2, "📦 Archive Contents:");
+    }
+    mvwprintw(window, 7, 2, "─────────────────────────────────────");
+    
+    ArcEntry entry;
+    int line_num = 8;
+    int current_line = 0;
+    int entry_count = 0;
+    const int max_entries = 1000; // Limit entries to prevent UI overload
+    
+    // Skip entries until start_line (accounting for header lines)
+    int header_lines = 2; // "Archive Contents:" and separator line
+    int adjusted_start_line = start_line > header_lines ? start_line - header_lines : 0;
+    
+    while (current_line < adjusted_start_line && entry_count < max_entries) {
+        int ret = arc_next(reader, &entry);
+        if (ret != 0) {
+            break; // Done or error
+        }
+        arc_entry_free(&entry);
+        current_line++;
+        entry_count++;
+    }
+    
+    // Display entries
+    bool found_any = false;
+    while (line_num < max_y - 1 && entry_count < max_entries) {
+        int ret = arc_next(reader, &entry);
+        if (ret != 0) {
+            if (ret < 0) {
+                // Error reading - for single compressed files, don't show technical error
+
+                // For compressed files, silently fail (they're not really archives)
+            } else if (ret == 1 && !found_any) {
+                // EOF but no entries found
+                if (!is_single_compressed) {
+                    mvwprintw(window, line_num++, 2, "Archive appears empty (may be corrupted or invalid)");
+                }
+                // For compressed files, silently fail (they're not really archives)
+            }
+            break; // Done
+        }
+        
+        found_any = true;
+        
+        // Check if entry has a valid path
+        if (!entry.path) {
+            // Skip entries without paths (shouldn't happen, but be safe)
+            arc_entry_free(&entry);
+            entry_count++;
+            continue;
+        }
+        
+        // Format entry display
+        char entry_line[256];
+        const char *type_icon = "📄";
+        if (entry.type == ARC_ENTRY_DIR) {
+            type_icon = "📁";
+        } else if (entry.type == ARC_ENTRY_SYMLINK) {
+            type_icon = "🔗";
+        } else if (entry.type == ARC_ENTRY_HARDLINK) {
+            type_icon = "🔗";
+        }
+        
+        // Format size
+        char size_str[20];
+        if (entry.type == ARC_ENTRY_DIR) {
+            snprintf(size_str, sizeof(size_str), "<DIR>");
+        } else if (entry.size == 0) {
+            // Unknown size (e.g., compressed single files like .gz, .bz2)
+            // For compressed files, size is unknown until decompressed
+            // (or if ISIZE is available in gzip metadata)
+            snprintf(size_str, sizeof(size_str), "?");
+        } else {
+            format_file_size(size_str, entry.size);
+        }
+        
+        // Build display line
+        if (entry.type == ARC_ENTRY_SYMLINK && entry.link_target) {
+            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s -> %s",
+                     type_icon, entry.path ? entry.path : "(null)", size_str, entry.link_target);
+        } else {
+            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s",
+                     type_icon, entry.path ? entry.path : "(null)", size_str);
+        }
+        
+        // Truncate if too long
+        int max_display_width = max_x - 4;
+        if ((int)strlen(entry_line) > max_display_width) {
+            entry_line[max_display_width] = '\0';
+        }
+        
+        mvwprintw(window, line_num++, 2, "%.*s", max_display_width, entry_line);
+        
+        arc_entry_free(&entry);
+        entry_count++;
+    }
+    
+    if (entry_count >= max_entries) {
+        mvwprintw(window, line_num++, 2, "... (showing first %d entries)", max_entries);
+    }
+    
+    arc_close(reader);
 }
