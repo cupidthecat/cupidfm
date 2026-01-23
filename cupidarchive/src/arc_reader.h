@@ -35,6 +35,24 @@ typedef struct ArcEntry {
 typedef struct ArcReader ArcReader;
 
 /**
+ * Safety/resource limits for parsing and extraction.
+ * All limits are "best effort" and enforced where possible.
+ * A value of 0 means "use default".
+ */
+typedef struct ArcLimits {
+    uint64_t max_entries;            // Max number of entries in an archive (ZIP central dir, etc.)
+    uint64_t max_name;               // Max entry name/path bytes
+    uint64_t max_extra;              // Max extra field bytes
+    uint64_t max_uncompressed_bytes; // Max uncompressed bytes allowed (zip bombs)
+    uint64_t max_nested_depth;       // Max path depth (components) during extraction
+} ArcLimits;
+
+/**
+ * Return default limits (safe baseline).
+ */
+const ArcLimits *arc_default_limits(void);
+
+/**
  * Open an archive from a file path.
  * Automatically detects format and compression.
  * 
@@ -44,6 +62,12 @@ typedef struct ArcReader ArcReader;
 ArcReader *arc_open_path(const char *path);
 
 /**
+ * Open an archive from a file path with explicit limits.
+ * Passing NULL uses arc_default_limits().
+ */
+ArcReader *arc_open_path_ex(const char *path, const ArcLimits *limits);
+
+/**
  * Open an archive from a stream.
  * The stream must remain valid for the reader's lifetime.
  * 
@@ -51,6 +75,12 @@ ArcReader *arc_open_path(const char *path);
  * @return New reader, or NULL on error
  */
 ArcReader *arc_open_stream(ArcStream *stream);
+
+/**
+ * Open an archive from a stream with explicit limits.
+ * Passing NULL uses arc_default_limits().
+ */
+ArcReader *arc_open_stream_ex(ArcStream *stream, const ArcLimits *limits);
 
 /**
  * Get the next entry in the archive.

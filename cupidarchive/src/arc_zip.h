@@ -33,6 +33,12 @@
 ArcReader *arc_zip_open(ArcStream *stream);
 
 /**
+ * Internal function to create a ZIP reader with explicit limits.
+ * Called by arc_open_stream/_ex after format detection.
+ */
+ArcReader *arc_zip_open_ex(ArcStream *stream, const ArcLimits *limits);
+
+/**
  * Internal ZIP functions (exposed for arc_reader.c).
  */
 int arc_zip_next(ArcReader *reader, ArcEntry *entry);

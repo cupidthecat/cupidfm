@@ -11,14 +11,14 @@ OBJDIR = obj
 LIBDIR = .
 
 # Source files
-SOURCES = $(SRCDIR)/arc_stream.c $(SRCDIR)/arc_filter.c $(SRCDIR)/arc_tar.c $(SRCDIR)/arc_zip.c $(SRCDIR)/arc_compressed.c $(SRCDIR)/arc_reader.c $(SRCDIR)/arc_extract.c
-OBJECTS = $(OBJDIR)/arc_stream.o $(OBJDIR)/arc_filter.o $(OBJDIR)/arc_tar.o $(OBJDIR)/arc_zip.o $(OBJDIR)/arc_compressed.o $(OBJDIR)/arc_reader.o $(OBJDIR)/arc_extract.o
+SOURCES = $(SRCDIR)/arc_stream.c $(SRCDIR)/arc_filter.c $(SRCDIR)/arc_filter_xz.c $(SRCDIR)/arc_tar.c $(SRCDIR)/arc_zip.c $(SRCDIR)/arc_7z.c $(SRCDIR)/arc_compressed.c $(SRCDIR)/arc_reader.c $(SRCDIR)/arc_extract.c
+OBJECTS = $(OBJDIR)/arc_stream.o $(OBJDIR)/arc_filter.o $(OBJDIR)/arc_filter_xz.o $(OBJDIR)/arc_tar.o $(OBJDIR)/arc_zip.o $(OBJDIR)/arc_7z.o $(OBJDIR)/arc_compressed.o $(OBJDIR)/arc_reader.o $(OBJDIR)/arc_extract.o
 
 # Library
 LIBRARY = libcupidarchive.a
 
 # External libraries
-LIBS = -lz -lbz2
+LIBS = -lz -lbz2 -llzma
 
 # Default target
 all: $(LIBRARY)
@@ -38,7 +38,7 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 
 # Test program
 test-extract: $(LIBRARY) tests/test_extract.c
-	$(CC) $(CFLAGS) -I. -o test-extract tests/test_extract.c -L. -lcupidarchive -lz -lbz2
+	$(CC) $(CFLAGS) -I. -o test-extract tests/test_extract.c -L. -lcupidarchive -lz -lbz2 -llzma
 	@echo "Built test-extract"
 
 # Test target

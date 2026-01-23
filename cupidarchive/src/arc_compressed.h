@@ -42,6 +42,7 @@ void arc_compressed_set_original_stream(ArcReader *reader, ArcStream *original_s
 // Compression types
 #define ARC_COMPRESSED_GZIP  0
 #define ARC_COMPRESSED_BZIP2 1
+#define ARC_COMPRESSED_XZ    2
 
 #endif // ARC_COMPRESSED_H
 

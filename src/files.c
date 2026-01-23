@@ -1418,8 +1418,8 @@ bool is_archive_file(const char *filename) {
         return false;
     }
     
-    // Check for ZIP archives
-    if (strcmp(ext, ".zip") == 0) {
+    // Check for ZIP/7z archives
+    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".7z") == 0) {
         return true;
     }
     

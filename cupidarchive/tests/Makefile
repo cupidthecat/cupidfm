@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c11
 INCLUDES = -I../src -I..
-LIBS = -lz -lbz2
+LIBS = -lz -lbz2 -llzma
 ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 

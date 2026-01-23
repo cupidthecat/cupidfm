@@ -1148,6 +1148,14 @@ void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_ent
 void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_window_cas, AppState *state) {
     // Strip trailing slashes for consistent path handling
     strip_trailing_slashes_inplace(*current_directory);
+
+    // Keep a stable copy of the directory name we're leaving so we can reselect it in the parent.
+    // (We must duplicate now because *current_directory will be freed/overwritten below.)
+    char *fallback_child = NULL;
+    {
+        const char *leaf = path_last_component(*current_directory);
+        if (leaf && *leaf) fallback_child = strdup(leaf);
+    }
     
     // Save current directory's scroll position before navigating away
     char *current_path = *current_directory;
@@ -1215,6 +1223,15 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     // Pop the last directory name from the stack (we'll reselect it in the parent)
     char *child_name = VecStack_pop(&directoryStack);
 
+    // If the stack didn't have anything, fall back to the leaf of the dir we just left.
+    if (!child_name) {
+        child_name = fallback_child;
+        fallback_child = NULL; // ownership transferred
+    } else if (fallback_child) {
+        free(fallback_child);
+        fallback_child = NULL;
+    }
+
     // Use the actual dir window height (more accurate than LINES - 6)
     {
         int rows, cols;
@@ -1263,6 +1280,44 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
         dir_window_cas->cursor = 0;
         dir_window_cas->start = 0;
         state->selected_entry = FileAttr_get_name(files->el[0]);
+    }
+
+    // Prefer selecting the directory we just came from in the parent listing.
+    if (child_name && *child_name && dir_window_cas->num_files > 0) {
+        SIZE child_idx = find_index_by_name_lazy(files,
+                                                *current_directory,
+                                                dir_window_cas,
+                                                &state->lazy_load,
+                                                child_name);
+        if (child_idx != (SIZE)-1) {
+            dir_window_cas->num_files = Vector_len(*files);
+            dir_window_cas->cursor = child_idx;
+
+            int visible_lines = (int)dir_window_cas->num_lines - 2;
+            if (visible_lines < 1) visible_lines = 1;
+
+            if (dir_window_cas->cursor < dir_window_cas->start) {
+                dir_window_cas->start = dir_window_cas->cursor;
+            } else if (dir_window_cas->cursor >= dir_window_cas->start + (SIZE)visible_lines) {
+                dir_window_cas->start = dir_window_cas->cursor - (SIZE)visible_lines + 1;
+            }
+
+            SIZE max_start = 0;
+            if (dir_window_cas->num_files > (SIZE)visible_lines) {
+                max_start = dir_window_cas->num_files - (SIZE)visible_lines;
+            }
+            if (dir_window_cas->start > max_start) {
+                dir_window_cas->start = max_start;
+            }
+
+            fix_cursor(dir_window_cas);
+            state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
+        }
+    }
+
+    if (child_name) {
+        free(child_name);
+        child_name = NULL;
     }
 
     werase(notifwin);
