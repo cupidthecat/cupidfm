@@ -23,6 +23,11 @@ typedef struct {
     int key_save;    // e.g., Ctrl+S
     int key_new_dir; // e.g., Shift+N
     int key_search;  // e.g., Ctrl+F
+    int key_select_all; // e.g., Ctrl+A (Select all in current view)
+    int key_info;    // e.g., Ctrl+T (Quick file info)
+    int key_undo;    // e.g., Ctrl+Z (Undo last file op)
+    int key_redo;    // e.g., Ctrl+Y (Redo last file op)
+    int key_permissions; // e.g., Ctrl+P (Edit permissions)
 
     // Dedicated editing keys
     int edit_up;

@@ -35,8 +35,13 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->key_rename = 18; // Ctrl+R
     kb->key_new = 14;    // Ctrl+N
     kb->key_save = 19;   // Ctrl+S
+    kb->key_select_all = 1; // Ctrl+A (Select all in current view)
     kb->key_new_dir = 'N'; // Shift+N
     kb->key_search = 6;  // Ctrl+F
+    kb->key_info = 20;   // Ctrl+T (Quick file info)
+    kb->key_undo = 26;   // Ctrl+Z (Undo last file op)
+    kb->key_redo = 25;   // Ctrl+Y (Redo last file op)
+    kb->key_permissions = 16; // Ctrl+P (Edit permissions)
 
     // Editing keys
     kb->edit_up = KEY_UP;
@@ -138,6 +143,11 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "key_new", kb->key_new, "Create new file");
     write_kv_line(fp, "key_new_dir", kb->key_new_dir, "Create new directory");
     write_kv_line(fp, "key_search", kb->key_search, "Fuzzy search in directory list");
+    write_kv_line(fp, "key_select_all", kb->key_select_all, "Select all in current view");
+    write_kv_line(fp, "key_info", kb->key_info, "Quick file info popup");
+    write_kv_line(fp, "key_undo", kb->key_undo, "Undo last file operation");
+    write_kv_line(fp, "key_redo", kb->key_redo, "Redo last file operation");
+    write_kv_line(fp, "key_permissions", kb->key_permissions, "Edit file permissions (chmod)");
     write_kv_line(fp, "key_save", kb->key_save, "Save changes");
     fputc('\n', fp);
 
@@ -213,6 +223,11 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"key_save",    &kb->key_save},
         {"key_new_dir", &kb->key_new_dir},
         {"key_search",  &kb->key_search},
+        {"key_select_all", &kb->key_select_all},
+        {"key_info", &kb->key_info},
+        {"key_undo", &kb->key_undo},
+        {"key_redo", &kb->key_redo},
+        {"key_permissions", &kb->key_permissions},
 
         {"edit_up",        &kb->edit_up},
         {"edit_down",      &kb->edit_down},

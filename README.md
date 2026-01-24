@@ -181,6 +181,49 @@ For detailed performance analysis and test suite documentation, see [`TESTING_AN
 
 ## Configuration
 
+### Keybinds (Quick Reference)
+
+All keybinds are configurable via `~/.cupidfmrc`. These are the defaults.
+
+### Browser Mode (Directory/Preview)
+
+| Action | Default |
+| --- | --- |
+| Move up | `KEY_UP` |
+| Move down | `KEY_DOWN` |
+| Go to parent directory | `KEY_LEFT` |
+| Enter directory | `KEY_RIGHT` |
+| Switch Directory/Preview pane | `Tab` |
+| Exit | `F1` |
+| Edit file (from Preview pane) | `^E` |
+| Copy | `^C` |
+| Paste | `^V` |
+| Cut | `^X` |
+| Delete | `^D` |
+| Rename | `^R` |
+| New file | `^N` |
+| New directory | `Shift+N` |
+| Fuzzy search | `^F` |
+| Select all (current view) | `^A` |
+
+### Search Prompt
+
+| Action | Key |
+| --- | --- |
+| Move selection | `KEY_UP` / `KEY_DOWN` |
+| Page | `PageUp` / `PageDown` |
+| Accept (keep filtered list) | `Enter` |
+| Cancel (restore previous selection) | `Esc` |
+
+### Edit Mode
+
+| Action | Default |
+| --- | --- |
+| Move cursor | `KEY_UP` / `KEY_DOWN` / `KEY_LEFT` / `KEY_RIGHT` |
+| Save | `^G` |
+| Quit | `^Q` |
+| Backspace | `KEY_BACKSPACE` |
+
 ### Default Keybindings
 
 cupidfm comes with a set of **default keybindings**. On **first run**, if cupidfm cannot find a user configuration file, it will **auto-generate** one at:
@@ -194,7 +237,7 @@ Below is a screenshot showing the start up
 ![preview](img/startup.png)
 
 This auto-generated config file includes default bindings, for example:
-The default includes `key_search=^F` (Ctrl+F) for fuzzy search, and you can change it by editing `~/.cupidfmrc` and restarting CupidFM.
+The default includes `key_search=^F` (Ctrl+F) for fuzzy search and `key_new_dir=Shift+N` for creating directories, both of which you can change by editing `~/.cupidfmrc` and restarting CupidFM.
 
 ```
 key_up=KEY_UP
@@ -212,6 +255,11 @@ key_delete=^D
 key_rename=^R
 key_new=^N
 key_search=^F
+key_new_dir=Shift+N
+key_select_all=^A
+key_undo=^Z
+key_redo=^Y
+key_permissions=^P
 
 edit_up=KEY_UP
 edit_down=KEY_DOWN
@@ -296,10 +344,37 @@ After CupidFM creates this file, you are free to **edit** it to customize keybin
   - You can always delete `~/.cupidfmrc` and relaunch to regenerate a fresh config.
 
 With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`. If you ever lose or remove it, CupidFM will rewrite the default file and let you know on the next run!
+
+## Plugins (CupidScript)
+
+CupidFM can load Cupidscript plugins (`.cs`) on startup from:
+
+1. `~/.cupidfm/plugins`
+2. `./cupidfm/plugins`
+3. `./plugins`
+
+### Plugin Hooks
+
+- `fn on_load()`
+- `fn on_key(key)` -> return `true` to consume the keypress
+
+### CupidFM Script API
+
+- `fm.notify(msg)` / `fm.status(msg)` - show a notification
+- `fm.popup(title, msg)` - show a popup
+- `fm.cwd()` - current directory
+- `fm.selected_name()` / `fm.selected_path()` - current selection
+- `fm.bind(key, func_name)` - bind a key to a function (key can be `"^T"`, `"F5"`, `"KEY_UP"`, or a numeric keycode)
+- `fm.reload()` - request a directory reload
+- `fm.exit()` - request CupidFM to quit
+- `fm.key_name(code)` / `fm.key_code(name)` - convert between keycodes and names
+
+See `plugins/example.cs` for a working example.
+For full API documentation, see `CUPIDFM_CUPIDSCRIPT_API.md`.
 ## Todo
 
 ### High Priority
-- [ ] Custom plugin system with cupidscript a custom scripting lang
+- [X] Custom plugin system with cupidscript a custom scripting lang
 - [ ] Add file filtering options
 - [ ] Implement file/directory permissions editing
 - [ ] Add image preview (in house lib?)
@@ -448,22 +523,22 @@ The **Command Line Interface (CLI)** for **cupidfm** will introduce a powerful w
 - [X] **Create New File (Ctrl+N)**  
   - Create a new, empty file in the current directory.
 
-- [ ] **Create New Directory (Shift+N)**  
+- [X] **Create New Directory (Shift+N)**  
   - Create a new directory in the current directory.
 
-- [ ] **Select All (Ctrl+A)**  
+- [X] **Select All (Ctrl+A)**  
   - Select all files and directories in the current view.
 
-- [ ] **File Search (Ctrl+F)**  
+- [X] **File Search (Ctrl+F)**  
   - Search for files or directories by name or pattern.
 
-- [ ] **Quick File Info (Ctrl+I)**  
+- [X] **Quick File Info (Ctrl+T)**  
   - Display detailed information about the selected file or directory.
 
-- [ ] **Undo/Redo (Ctrl+Z / Ctrl+Y)**  
+- [X] **Undo/Redo (Ctrl+Z / Ctrl+Y)**  
   - Undo or redo the last file operation.
 
-- [ ] **File Permissions (Ctrl+P)**  
+- [X] **File Permissions (Ctrl+P)**  
   - Edit permissions of the selected file or directory.
 
 - [ ] **Quick Move (F2)**  

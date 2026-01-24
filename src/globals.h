@@ -31,4 +31,8 @@ extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;
 extern int banner_offset;  // Shared banner scroll offset for synchronization
+
+// If set, the notif bar should not be auto-cleared until this time.
+extern bool notification_hold_active;
+extern struct timespec notification_hold_until;
 #endif // GLOBALS_H
