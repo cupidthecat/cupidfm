@@ -22,6 +22,7 @@ typedef struct {
     int key_new;     // e.g., Ctrl+N
     int key_save;    // e.g., Ctrl+S
     int key_new_dir; // e.g., Shift+N
+    int key_search;  // e.g., Ctrl+F
 
     // Dedicated editing keys
     int edit_up;
@@ -52,6 +53,12 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
  * Loads default keybindings into the provided KeyBindings structure.
  */
 void load_default_keybindings(KeyBindings *kb);
+
+/**
+ * Writes a default configuration file to `filepath`, using the provided KeyBindings
+ * values for key assignments. Returns true on success.
+ */
+bool write_default_config_file(const char *filepath, const KeyBindings *kb, char *error_buffer, size_t buffer_size);
 
 // The macro stringifies the field name and, if it matches, assigns the parsed value.
 #define CUPID_CFGCMP(x) else if (strcasecmp(name, #x) == 0) { kb->x = parsed; }

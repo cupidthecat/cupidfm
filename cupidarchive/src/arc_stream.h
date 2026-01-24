@@ -95,7 +95,7 @@ void arc_stream_close(ArcStream *stream);
 
 /**
  * Create a file-backed stream.
- * 
+ *
  * @param fd File descriptor (must be open)
  * @param byte_limit Maximum bytes that can be read (0 = unlimited, not recommended)
  * @return New stream, or NULL on error

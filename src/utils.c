@@ -64,7 +64,8 @@ bool confirm_delete(const char *path, bool *should_delete) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
     
     // Capture user input
     int ch;
@@ -705,7 +706,8 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for the new directory name
     werase(win);
@@ -794,7 +796,8 @@ bool rename_item(WINDOW *win, const char *old_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for new name
     werase(win);
@@ -888,7 +891,8 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for the new file name
     werase(win);

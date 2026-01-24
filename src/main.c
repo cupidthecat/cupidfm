@@ -10,6 +10,7 @@
 #include <sys/types.h> // for types like SIZE
 #include <sys/stat.h>  // for struct stat
 #include <string.h>    // for strlen, strcpy, strdup, strrchr, strtok, strncmp
+#include <strings.h>   // for strcasecmp
 #include <signal.h>    // for signal, SIGWINCH
 #include <stdbool.h>   // for bool, true, false
 #include <ctype.h>     // for isspace, toupper
@@ -20,8 +21,6 @@
 #include <pthread.h>   // For threading
 #include <locale.h>    // For setlocale
 #include <errno.h>     // For errno
-#include <pwd.h>       // For getpwuid, getpwnam
-#include <wordexp.h>   // For wordexp (tilde expansion)
 
 // Local includes
 #include "utils.h"
@@ -43,16 +42,6 @@ WINDOW *dirwin = NULL;
 WINDOW *previewwin = NULL;
 
 VecStack directoryStack;
-
-// Directory scroll position tracking
-typedef struct DirScrollPos {
-    char *path;
-    SIZE cursor;
-    SIZE start;
-    struct DirScrollPos *next;
-} DirScrollPos;
-
-static DirScrollPos *dir_scroll_positions = NULL;
 
 // Input handling tuning
 #define INPUT_FLUSH_THRESHOLD_NS 150000000L // 150ms
@@ -85,43 +74,59 @@ typedef struct {
     const char *selected_entry;
     int preview_start_line;
     LazyLoadState lazy_load;  // Lazy loading state
+    // Fuzzy search "view" of the current directory list. This is a shallow list of
+    // FileAttr pointers owned by `files` (do not free elements in `search_files`).
+    bool search_active;
+    char search_query[MAX_PATH_LENGTH];
+    Vector search_files;
 } AppState;
+//! Search helpers
+typedef struct {
+    int score;      // lower is better
+    FileAttr entry; // pointer owned by AppState.files
+} FuzzyHit;
+
+static SIZE find_index_by_name_lazy(Vector *files,
+                                   const char *dir,
+                                   CursorAndSlice *cas,
+                                   LazyLoadState *lazy_load,
+                                   const char *name);
+static void draw_directory_window(WINDOW *window,
+                                  const char *directory,
+                                  Vector *files_vector,
+                                  CursorAndSlice *cas);
+static void draw_preview_window(WINDOW *window,
+                                const char *current_directory,
+                                const char *selected_entry,
+                                int start_line);
+static void sync_selection_from_active(AppState *state, CursorAndSlice *cas);
 
 // Forward declaration of fix_cursor
 void fix_cursor(CursorAndSlice *cas);
 
-// --- Path / selection helpers ---------------------------------------------
-
-static void strip_trailing_slashes_inplace(char *p) {
-    if (!p) return;
-    size_t n = strlen(p);
-    while (n > 1 && p[n - 1] == '/') {
-        p[n - 1] = '\0';
-        n--;
+static void maybe_flush_input(struct timespec loop_start_time) {
+    struct timespec loop_end_time;
+    clock_gettime(CLOCK_MONOTONIC, &loop_end_time);
+    long loop_duration_ns = (loop_end_time.tv_sec - loop_start_time.tv_sec) * 1000000000L +
+                            (loop_end_time.tv_nsec - loop_start_time.tv_nsec);
+    if (loop_duration_ns > INPUT_FLUSH_THRESHOLD_NS) {
+        flushinp();
     }
-}
-
-static const char *path_last_component(const char *p) {
-    if (!p || !*p) return "";
-    const char *end = p + strlen(p);
-    while (end > p + 1 && end[-1] == '/') end--;
-    const char *s = end;
-    while (s > p && s[-1] != '/') s--;
-    return s; // points into p, NUL-terminated
 }
 
 static SIZE find_loaded_index_by_name(Vector *files, const char *name) {
     if (!files || !name || !*name) return (SIZE)-1;
-    SIZE n = (SIZE)Vector_len(*files);
-    for (SIZE i = 0; i < n; i++) {
+    SIZE count = (SIZE)Vector_len(*files);
+    for (SIZE i = 0; i < count; i++) {
         FileAttr fa = (FileAttr)files->el[i];
         const char *nm = FileAttr_get_name(fa);
-        if (nm && strcmp(nm, name) == 0) return i;
+        if (nm && strcmp(nm, name) == 0) {
+            return i;
+        }
     }
     return (SIZE)-1;
 }
 
-// Drives your lazy loader until the entry shows up (or no more entries load).
 static SIZE find_index_by_name_lazy(Vector *files,
                                    const char *dir,
                                    CursorAndSlice *cas,
@@ -138,82 +143,384 @@ static SIZE find_index_by_name_lazy(Vector *files,
         cas->num_files = before;
         if (before == 0) return (SIZE)-1;
 
-        // Force "near end" so load_more_files_if_needed actually loads
         cas->cursor = (SIZE)(before - 1);
-
-        load_more_files_if_needed(files, dir, cas,
-                                  &lazy_load->files_loaded,
-                                  lazy_load->total_files);
-
-        size_t after = Vector_len(*files);
-        cas->num_files = after;
-
-        if (after == before) break; // nothing more loaded
-    }
-
-    return (SIZE)-1;
-}
-
-// Ensure lazy-loaded directory has at least (target_index+1) entries loaded.
-static void load_until_index(Vector *files,
-                             const char *current_directory,
-                             CursorAndSlice *cas,
-                             LazyLoadState *lazy_load,
-                             SIZE target_index)
-{
-    // If directory is empty or target is already loaded, nothing to do.
-    cas->num_files = Vector_len(*files);
-    if (cas->num_files == 0 || target_index < cas->num_files) return;
-
-    // Safety cap to avoid infinite loops if something goes wrong.
-    for (int safety = 0; safety < 512; safety++) {
-        size_t before = Vector_len(*files);
-
-        // Drive lazy loader by pretending we're at the end of what's currently loaded.
-        cas->num_files = before;
-        cas->cursor = (before > 0) ? (before - 1) : 0;
-
         load_more_files_if_needed(files,
-                                  current_directory,
+                                  dir,
                                   cas,
                                   &lazy_load->files_loaded,
                                   lazy_load->total_files);
 
         size_t after = Vector_len(*files);
         cas->num_files = after;
+        if (after == before) break;
+    }
 
-        if (after == before) break;                 // no more data loaded
-        if (target_index < (SIZE)after) break;       // target now available
+    return (SIZE)-1;
+}
+
+static int cupidfuzzy_score(const char *pattern, const char *text) {
+    if (!pattern || !*pattern || !text) return -1;
+    const char *scan = text;
+    const char *segment_start = text;
+    int score = 0;
+
+    for (const char *p = pattern; *p; p++) {
+        char target = tolower((unsigned char)*p);
+        bool matched = false;
+        while (*scan) {
+            if (tolower((unsigned char)*scan) == target) {
+                score += (int)(scan - segment_start);
+                segment_start = scan + 1;
+                scan = segment_start;
+                matched = true;
+                break;
+            }
+            scan++;
+        }
+        if (!matched) return -1;
+    }
+
+    return score;
+}
+
+static int fuzzyhit_cmp(const void *a, const void *b) {
+    const FuzzyHit *aa = (const FuzzyHit *)a;
+    const FuzzyHit *bb = (const FuzzyHit *)b;
+    if (aa->score != bb->score) return (aa->score < bb->score) ? -1 : 1;
+
+    const char *an = FileAttr_get_name(aa->entry);
+    const char *bn = FileAttr_get_name(bb->entry);
+    if (!an && !bn) return 0;
+    if (!an) return 1;
+    if (!bn) return -1;
+    return strcasecmp(an, bn);
+}
+
+static Vector *active_files(AppState *state) {
+    return (state && state->search_active) ? &state->search_files : &state->files;
+}
+
+static void search_clear(AppState *state) {
+    if (!state) return;
+    state->search_active = false;
+    state->search_query[0] = '\0';
+    if (state->search_files.el) {
+        Vector_set_len_no_free(&state->search_files, 0);
     }
 }
 
-// Helper to resync selection after directory reload
-static void resync_selection(AppState *s) {
-    s->dir_window_cas.num_files = Vector_len(s->files);
+static size_t search_rebuild(AppState *state, const char *query) {
+    if (!state || !state->search_files.el) return 0;
+    Vector_set_len_no_free(&state->search_files, 0);
 
-    if (s->dir_window_cas.num_files == 0) {
-        s->dir_window_cas.cursor = 0;
-        s->dir_window_cas.start = 0;
-        s->selected_entry = "";
+    if (!query || !*query) return 0;
+
+    size_t total = Vector_len(state->files);
+    if (total == 0) return 0;
+
+    FuzzyHit *hits = malloc(total * sizeof(*hits));
+    if (!hits) return 0;
+
+    size_t count = 0;
+    for (size_t i = 0; i < total; i++) {
+        FileAttr fa = (FileAttr)state->files.el[i];
+        const char *name = FileAttr_get_name(fa);
+        if (!name) continue;
+
+        int score = cupidfuzzy_score(query, name);
+        if (score < 0) continue;
+
+        hits[count].score = score;
+        hits[count].entry = fa;
+        count++;
+    }
+
+    if (count == 0) {
+        free(hits);
+        return 0;
+    }
+
+    qsort(hits, count, sizeof(*hits), fuzzyhit_cmp);
+
+    Vector_add(&state->search_files, count);
+    for (size_t i = 0; i < count; i++) {
+        state->search_files.el[i] = hits[i].entry;
+    }
+    Vector_set_len_no_free(&state->search_files, count);
+
+    free(hits);
+    return count;
+}
+
+static void search_before_reload(AppState *state, char saved_query[MAX_PATH_LENGTH]) {
+    if (!state) return;
+    if (saved_query) {
+        saved_query[0] = '\0';
+        if (state->search_query[0]) {
+            strncpy(saved_query, state->search_query, MAX_PATH_LENGTH - 1);
+            saved_query[MAX_PATH_LENGTH - 1] = '\0';
+        }
+    }
+    search_clear(state);
+}
+
+static void search_after_reload(AppState *state, CursorAndSlice *cas, const char *saved_query) {
+    if (!state || !cas) return;
+    if (saved_query && *saved_query) {
+        strncpy(state->search_query, saved_query, sizeof(state->search_query) - 1);
+        state->search_query[sizeof(state->search_query) - 1] = '\0';
+        state->search_active = true;
+        search_rebuild(state, state->search_query);
+        cas->cursor = 0;
+        cas->start = 0;
+    }
+    sync_selection_from_active(state, cas);
+}
+
+static void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas) {
+    if (!state || !cas) return;
+    if (!state->search_active) return;
+    if (state->lazy_load.total_files == 0) return;
+    if (state->lazy_load.files_loaded >= state->lazy_load.total_files) return;
+
+    // Throttle loading while typing so we don't continuously hammer the filesystem.
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long dt_ns = (now.tv_sec - state->lazy_load.last_load_time.tv_sec) * 1000000000L +
+                 (now.tv_nsec - state->lazy_load.last_load_time.tv_nsec);
+    if (state->lazy_load.last_load_time.tv_sec != 0 && dt_ns < 150000000L) {
         return;
     }
+    state->lazy_load.last_load_time = now;
 
-    if (s->dir_window_cas.cursor >= s->dir_window_cas.num_files) {
-        s->dir_window_cas.cursor = s->dir_window_cas.num_files - 1;
-    }
+    // Use a throwaway CursorAndSlice to convince lazy loading we're near the end.
+    CursorAndSlice tmp = *cas;
+    tmp.start = (SIZE)state->lazy_load.files_loaded;
+    tmp.cursor = tmp.start;
+    tmp.num_files = (SIZE)Vector_len(state->files);
 
-    fix_cursor(&s->dir_window_cas);
-    s->selected_entry = FileAttr_get_name(s->files.el[s->dir_window_cas.cursor]);
+    load_more_files_if_needed(&state->files,
+                              state->current_directory,
+                              &tmp,
+                              &state->lazy_load.files_loaded,
+                              state->lazy_load.total_files);
 }
 
-static void maybe_flush_input(struct timespec loop_start_time) {
-    struct timespec loop_end_time;
-    clock_gettime(CLOCK_MONOTONIC, &loop_end_time);
-    long loop_duration_ns = (loop_end_time.tv_sec - loop_start_time.tv_sec) * 1000000000L +
-                            (loop_end_time.tv_nsec - loop_start_time.tv_nsec);
-    if (loop_duration_ns > INPUT_FLUSH_THRESHOLD_NS) {
-        flushinp();
+static void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
+    if (!state || !cas) return;
+    Vector *files = active_files(state);
+    cas->num_files = (SIZE)Vector_len(*files);
+    if (cas->num_files <= 0) {
+        cas->cursor = 0;
+        cas->start = 0;
+        state->selected_entry = "";
+        return;
     }
+    if (cas->cursor >= (SIZE)cas->num_files) cas->cursor = (SIZE)cas->num_files - 1;
+    fix_cursor(cas);
+    state->selected_entry = FileAttr_get_name((FileAttr)files->el[cas->cursor]);
+}
+
+static bool prompt_fuzzy_search(AppState *state,
+                                CursorAndSlice *cas,
+                                WINDOW *win,
+                                WINDOW *dir_window,
+                                WINDOW *preview_window)
+{
+    if (!state || !cas || !win) return false;
+
+    char saved_selection[MAX_PATH_LENGTH] = {0};
+    if (state->selected_entry && *state->selected_entry) {
+        strncpy(saved_selection, state->selected_entry, sizeof(saved_selection) - 1);
+        saved_selection[sizeof(saved_selection) - 1] = '\0';
+    }
+
+    // Start with previous query (if any).
+    char query[MAX_PATH_LENGTH] = {0};
+    strncpy(query, state->search_query, sizeof(query) - 1);
+    query[sizeof(query) - 1] = '\0';
+    size_t index = strlen(query);
+
+    bool aborted = false;
+
+    // Make input non-blocking to allow banner updates, like rename/new prompts.
+    keypad(win, TRUE); // enable KEY_UP/KEY_DOWN on the notif/prompt window
+    wtimeout(win, 10);
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = (COLS - 2) +
+                              (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+
+    // Initialize (or clear) the active view from the current query.
+    state->search_query[0] = '\0';
+    if (query[0]) {
+        strncpy(state->search_query, query, sizeof(state->search_query) - 1);
+        state->search_query[sizeof(state->search_query) - 1] = '\0';
+        state->search_active = true;
+        search_rebuild(state, state->search_query);
+    } else {
+        search_clear(state);
+    }
+    cas->cursor = 0;
+    cas->start = 0;
+    sync_selection_from_active(state, cas);
+
+    while (true) {
+        // Keep the single-line prompt similar to rename/new file UX.
+        size_t shown = Vector_len(*active_files(state));
+        werase(win);
+        mvwprintw(win, 0, 0, "Search (Esc to cancel): %s [%zu]", query, shown);
+        wrefresh(win);
+
+        int ch = wgetch(win);
+        if (ch == ERR) {
+            struct timespec current_time;
+            clock_gettime(CLOCK_MONOTONIC, &current_time);
+            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = current_time;
+            }
+
+            maybe_load_more_for_search(state, cas);
+            if (state->search_active && state->search_query[0]) {
+                search_rebuild(state, state->search_query);
+                sync_selection_from_active(state, cas);
+                draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
+                draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+                wrefresh(dir_window);
+                wrefresh(preview_window);
+            }
+
+            napms(10);
+            continue;
+        }
+
+        if (ch == 27) { // Esc
+            aborted = true;
+            break;
+        }
+        if (ch == '\n') {
+            break;
+        }
+
+        // Allow browsing matches while the prompt is open.
+        if (ch == KEY_UP || ch == KEY_PPAGE) {
+            if (state->search_active && Vector_len(state->search_files) > 0) {
+                int step = (ch == KEY_PPAGE) ? MAX(1, cas->num_lines - 2) : 1;
+                SIZE len = (SIZE)Vector_len(state->search_files);
+                if (len <= 0) break;
+
+                SIZE next = cas->cursor - step;
+                while (next < 0) next += len;
+                cas->cursor = next;
+                fix_cursor(cas);
+                sync_selection_from_active(state, cas);
+                state->preview_start_line = 0;
+            }
+        } else if (ch == KEY_DOWN || ch == KEY_NPAGE) {
+            if (state->search_active && Vector_len(state->search_files) > 0) {
+                int step = (ch == KEY_NPAGE) ? MAX(1, cas->num_lines - 2) : 1;
+                SIZE len = (SIZE)Vector_len(state->search_files);
+                if (len <= 0) break;
+
+                cas->cursor = (cas->cursor + step) % len;
+                fix_cursor(cas);
+                sync_selection_from_active(state, cas);
+                state->preview_start_line = 0;
+            }
+        } else {
+            bool query_changed = false;
+            if (ch == KEY_BACKSPACE || ch == 127) {
+                if (index > 0) {
+                    index--;
+                    query[index] = '\0';
+                    query_changed = true;
+                }
+            } else if (isprint(ch) && index < MAX_PATH_LENGTH - 1) {
+                query[index++] = (char)ch;
+                query[index] = '\0';
+                query_changed = true;
+            }
+
+            if (query_changed) {
+                strncpy(state->search_query, query, sizeof(state->search_query) - 1);
+                state->search_query[sizeof(state->search_query) - 1] = '\0';
+                if (query[0] == '\0') {
+                    search_clear(state);
+                } else {
+                    state->search_active = true;
+                    search_rebuild(state, state->search_query);
+                }
+                cas->cursor = 0;
+                cas->start = 0;
+                sync_selection_from_active(state, cas);
+                state->preview_start_line = 0;
+            }
+        }
+
+        draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
+        draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        wrefresh(dir_window);
+        wrefresh(preview_window);
+    }
+
+    wtimeout(win, -1);
+    werase(win);
+    wrefresh(win);
+
+    if (aborted) {
+        // Restore full list and restore selection if possible.
+        search_clear(state);
+        cas->num_files = (SIZE)Vector_len(state->files);
+        cas->cursor = 0;
+        cas->start = 0;
+        if (saved_selection[0]) {
+            SIZE idx = find_index_by_name_lazy(&state->files,
+                                               state->current_directory,
+                                               cas,
+                                               &state->lazy_load,
+                                               saved_selection);
+            if (idx != (SIZE)-1) {
+                cas->cursor = idx;
+            }
+        }
+        sync_selection_from_active(state, cas);
+        draw_directory_window(dir_window, state->current_directory, &state->files, cas);
+        draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        wrefresh(dir_window);
+        wrefresh(preview_window);
+
+        show_notification(win, "Search canceled.");
+        should_clear_notif = false;
+        return false;
+    }
+
+    // If query is empty, treat it as "clear search".
+    if (query[0] == '\0') {
+        search_clear(state);
+        sync_selection_from_active(state, cas);
+        show_notification(win, "Search cleared.");
+        should_clear_notif = false;
+        return true;
+    }
+
+    // Keep filtered list active after Enter.
+    if (!state->search_active || Vector_len(state->search_files) == 0) {
+        show_notification(win, "No matches for \"%s\"", query);
+        should_clear_notif = false;
+        return false;
+    }
+
+    show_notification(win, "Search: %s", query);
+    should_clear_notif = false;
+    return true;
 }
 
 // Function Implementations
@@ -278,12 +585,11 @@ void count_directory_tree_lines(const char *dir_path, int level, int *line_count
         size_t name_len = strlen(entry->d_name);
         if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
 
-        if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
-            snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
-        } else {
-            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+        strcpy(full_path, dir_path);
+        if (full_path[dir_path_len - 1] != '/') {
+            strcat(full_path, "/");
         }
-        full_path[MAX_PATH_LENGTH - 1] = '\0';
+        strcat(full_path, entry->d_name);
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
@@ -367,12 +673,11 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         size_t name_len = strlen(entry->d_name);
         if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
 
-        if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
-            snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
-        } else {
-            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+        strcpy(full_path, dir_path);
+        if (full_path[dir_path_len - 1] != '/') {
+            strcat(full_path, "/");
         }
-        full_path[MAX_PATH_LENGTH - 1] = '\0';
+        strcat(full_path, entry->d_name);
 
         if (lstat(full_path, &statbuf) == -1) continue;
 
@@ -422,15 +727,11 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
                 level < DIRECTORY_TREE_MAX_DEPTH) {
                 size_t name_len = strlen(entries[i].name);
                 if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                    if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
-                        snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
-                    } else {
-                        int ret = snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
-                        if (ret >= (int)sizeof(full_path)) {
-                            full_path[sizeof(full_path) - 1] = '\0'; // Ensure null termination
-                        }
+                    strcpy(full_path, dir_path);
+                    if (full_path[dir_path_len - 1] != '/') {
+                        strcat(full_path, "/");
                     }
-                    full_path[MAX_PATH_LENGTH - 1] = '\0';
+                    strcat(full_path, entries[i].name);
                     show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
                     if (tree_limit_hit) {
                         break;
@@ -443,15 +744,11 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
         // Reconstruct full path for symlink detection
         size_t name_len = strlen(entries[i].name);
         if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-            if (dir_path_len == 0 || dir_path[dir_path_len - 1] == '/') {
-                snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entries[i].name);
-            } else {
-                int ret = snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entries[i].name);
-                if (ret >= (int)sizeof(full_path)) {
-                    full_path[sizeof(full_path) - 1] = '\0'; // Ensure null termination
-                }
+            strcpy(full_path, dir_path);
+            if (full_path[dir_path_len - 1] != '/') {
+                strcat(full_path, "/");
             }
-            full_path[MAX_PATH_LENGTH - 1] = '\0';
+            strcat(full_path, entries[i].name);
         }
 
         // Check if this is a symlink
@@ -526,7 +823,6 @@ void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *l
             *line_num < max_y - 1 &&
             level < DIRECTORY_TREE_MAX_DEPTH) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                // full_path already constructed safely above
                 show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
                 if (tree_limit_hit) {
                     break;
@@ -766,38 +1062,12 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     path_join(file_path, current_directory, selected_entry);
     mvwprintw(window, 0, 2, "Selected Entry: %.*s", max_x - 4, file_path);
 
-    // Attempt to retrieve file information (use lstat for POSIX-correct symlink handling)
+    // Attempt to retrieve file information
     struct stat file_stat;
-    if (lstat(file_path, &file_stat) == -1) {
-        if (errno == EACCES) {
-            mvwprintw(window, 2, 2, "Permission denied");
-        } else if (errno == ENOENT) {
-            mvwprintw(window, 2, 2, "File not found (it may have been removed)");
-        } else {
-            mvwprintw(window, 2, 2, "Unable to stat: %s", strerror(errno));
-        }
+    if (stat(file_path, &file_stat) == -1) {
+        mvwprintw(window, 2, 2, "Unable to retrieve file information");
         wrefresh(window);
         return;
-    }
-    
-    // Show symlink target info if it's a symlink
-    if (S_ISLNK(file_stat.st_mode)) {
-        char link_target[MAX_PATH_LENGTH];
-        ssize_t target_len = readlink(file_path, link_target, sizeof(link_target) - 1);
-        if (target_len > 0) {
-            link_target[target_len] = '\0';
-            // Try to stat the target to show target info
-            struct stat target_stat;
-            if (stat(file_path, &target_stat) == 0) {
-                if (S_ISDIR(target_stat.st_mode)) {
-                    mvwprintw(window, 1, 2, "Symlink -> %s (directory)", link_target);
-                } else {
-                    mvwprintw(window, 1, 2, "Symlink -> %s (file, %ld bytes)", link_target, (long)target_stat.st_size);
-                }
-            } else {
-                mvwprintw(window, 1, 2, "Symlink -> %s (broken)", link_target);
-            }
-        }
     }
     
     // Display file size or directory size with emoji
@@ -871,10 +1141,6 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, start_line, &current_count);
 
         // If the directory is empty, show a message
-      
-    } else if (is_archive_file(file_path)) {
-        // Display archive contents preview
-        display_archive_preview(window, file_path, start_line, max_y, max_x);
       
     } else if (is_supported_file_type(file_path)) {
         // Display file preview for supported types
@@ -1003,6 +1269,11 @@ void redraw_all_windows(AppState *state) {
     // Recreate all windows in order
     bannerwin = newwin(banner_height, new_cols, 0, 0);
     box(bannerwin, 0, 0);
+    if (BANNER_TEXT && BUILD_INFO) {
+        pthread_mutex_lock(&banner_mutex);
+        draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+        pthread_mutex_unlock(&banner_mutex);
+    }
 
     mainwin = newwin(main_height, new_cols, banner_height, 0);
     box(mainwin, 0, 0);
@@ -1022,7 +1293,7 @@ void redraw_all_windows(AppState *state) {
 
     // Update cursor and slice state with correct dimensions
     state->dir_window_cas.num_lines = inner_height;
-    fix_cursor(&state->dir_window_cas);
+    sync_selection_from_active(state, &state->dir_window_cas);
 
     // Draw borders for subwindows
     box(dirwin, 0, 0);
@@ -1032,7 +1303,7 @@ void redraw_all_windows(AppState *state) {
     draw_directory_window(
         dirwin,
         state->current_directory,
-        &state->files,
+        active_files(state),
         &state->dir_window_cas
     );
 
@@ -1060,12 +1331,15 @@ void redraw_all_windows(AppState *state) {
  */
 void navigate_up(CursorAndSlice *cas, Vector *files, const char **selected_entry,
                 const char *current_directory, LazyLoadState *lazy_load) {
+    cas->num_files = Vector_len(*files);
     if (cas->num_files > 0) {
         if (cas->cursor == 0) {
             // Wrap to bottom - need to ensure all files are loaded first
-            load_more_files_if_needed(files, current_directory, cas, 
-                                     &lazy_load->files_loaded, lazy_load->total_files);
-            cas->num_files = Vector_len(*files);
+            if (lazy_load && current_directory) {
+                load_more_files_if_needed(files, current_directory, cas,
+                                          &lazy_load->files_loaded, lazy_load->total_files);
+                cas->num_files = Vector_len(*files);
+            }
             
             cas->cursor = cas->num_files - 1;
             // Calculate visible window size (subtract 2 for borders)
@@ -1102,6 +1376,7 @@ void navigate_up(CursorAndSlice *cas, Vector *files, const char **selected_entry
  */
 void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_entry, 
                    const char *current_directory, LazyLoadState *lazy_load) {
+    cas->num_files = Vector_len(*files);
     if (cas->num_files > 0) {
         if (cas->cursor >= cas->num_files - 1) {
             // Wrap to top
@@ -1128,9 +1403,11 @@ void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_ent
         fix_cursor(cas);
         
         // Check if we need to load more files
-        load_more_files_if_needed(files, current_directory, cas, 
-                                  &lazy_load->files_loaded, lazy_load->total_files);
-        cas->num_files = Vector_len(*files);
+        if (lazy_load && current_directory) {
+            load_more_files_if_needed(files, current_directory, cas,
+                                      &lazy_load->files_loaded, lazy_load->total_files);
+            cas->num_files = Vector_len(*files);
+        }
         
         if (cas->num_files > 0) {
             *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
@@ -1146,178 +1423,55 @@ void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_ent
  * @param state the application state
  */
 void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_window_cas, AppState *state) {
-    // Strip trailing slashes for consistent path handling
-    strip_trailing_slashes_inplace(*current_directory);
+    // Leaving the directory clears any active search view (search results point into the old directory list).
+    search_clear(state);
 
-    // Keep a stable copy of the directory name we're leaving so we can reselect it in the parent.
-    // (We must duplicate now because *current_directory will be freed/overwritten below.)
-    char *fallback_child = NULL;
-    {
-        const char *leaf = path_last_component(*current_directory);
-        if (leaf && *leaf) fallback_child = strdup(leaf);
-    }
-    
-    // Save current directory's scroll position before navigating away
-    char *current_path = *current_directory;
-    DirScrollPos *pos = dir_scroll_positions;
-    DirScrollPos *prev = NULL;
-    while (pos && strcmp(pos->path, current_path) != 0) {
-        prev = pos;
-        pos = pos->next;
-    }
-    
-    if (pos) {
-        // Update existing position
-        pos->cursor = dir_window_cas->cursor;
-        pos->start = dir_window_cas->start;
-    } else {
-        // Create new position entry
-        pos = malloc(sizeof(DirScrollPos));
-        if (pos) {
-            pos->path = strdup(current_path);
-            pos->cursor = dir_window_cas->cursor;
-            pos->start = dir_window_cas->start;
-            pos->next = dir_scroll_positions;
-            dir_scroll_positions = pos;
-        }
-    }
-    
-    // Determine parent directory path
-    char parent_path[MAX_PATH_LENGTH];
+    // Check if the current directory is the root directory
     if (strcmp(*current_directory, "/") != 0) {
         // If not the root directory, move up one level
         char *last_slash = strrchr(*current_directory, '/');
         if (last_slash != NULL) {
-            size_t parent_len = last_slash - *current_directory;
-            if (parent_len == 0) {
-                // Parent is root
-                strncpy(parent_path, "/", sizeof(parent_path));
-            } else {
-                strncpy(parent_path, *current_directory, parent_len);
-                parent_path[parent_len] = '\0';
+            *last_slash = '\0'; // Remove the last directory from the path
+            // Update lazy loading state
+            if (state->lazy_load.directory_path) {
+                free(state->lazy_load.directory_path);
             }
-        } else {
-            strncpy(parent_path, "/", sizeof(parent_path));
+            state->lazy_load.directory_path = strdup(*current_directory);
+            reload_directory_lazy(files, *current_directory, 
+                                &state->lazy_load.files_loaded, &state->lazy_load.total_files);
         }
-    } else {
-        strncpy(parent_path, "/", sizeof(parent_path));
-    }
-    
-    // Check if the parent directory is now an empty string
-    if (parent_path[0] == '\0') {
-        strncpy(parent_path, "/", sizeof(parent_path));
-    }
-    
-    // Update current_directory to parent
-    free(*current_directory);
-    *current_directory = strdup(parent_path);
-    
-    // Update lazy loading state
-    if (state->lazy_load.directory_path) {
-        free(state->lazy_load.directory_path);
-    }
-    state->lazy_load.directory_path = strdup(*current_directory);
-    reload_directory_lazy(files, *current_directory, 
-                        &state->lazy_load.files_loaded, &state->lazy_load.total_files);
-
-    // Pop the last directory name from the stack (we'll reselect it in the parent)
-    char *child_name = VecStack_pop(&directoryStack);
-
-    // If the stack didn't have anything, fall back to the leaf of the dir we just left.
-    if (!child_name) {
-        child_name = fallback_child;
-        fallback_child = NULL; // ownership transferred
-    } else if (fallback_child) {
-        free(fallback_child);
-        fallback_child = NULL;
     }
 
-    // Use the actual dir window height (more accurate than LINES - 6)
-    {
-        int rows, cols;
-        getmaxyx(dirwin, rows, cols);
-        (void)cols;
-        dir_window_cas->num_lines = rows;
+    // Check if the current directory is now an empty string
+    if ((*current_directory)[0] == '\0') {
+        // If empty, set it back to the root directory
+        strcpy(*current_directory, "/");
+        // Update lazy loading state
+        if (state->lazy_load.directory_path) {
+            free(state->lazy_load.directory_path);
+        }
+        state->lazy_load.directory_path = strdup(*current_directory);
+        reload_directory_lazy(files, *current_directory, 
+                            &state->lazy_load.files_loaded, &state->lazy_load.total_files);
     }
 
+    // Pop the last directory from the stack
+    char *popped_dir = VecStack_pop(&directoryStack);
+    if (popped_dir) {
+        free(popped_dir);
+    }
+
+    // Reset cursor and start position
+    dir_window_cas->cursor = 0;
+    dir_window_cas->start = 0;
+    dir_window_cas->num_lines = LINES - 6;
     dir_window_cas->num_files = Vector_len(*files);
 
-    // Restore scroll position for the parent directory (and load enough entries first)
-    DirScrollPos *saved_pos = dir_scroll_positions;
-    while (saved_pos && strcmp(saved_pos->path, *current_directory) != 0) {
-        saved_pos = saved_pos->next;
-    }
-
-    if (saved_pos) {
-        int visible_lines = (int)dir_window_cas->num_lines - 2;
-        SIZE target = saved_pos->cursor;
-        if (visible_lines > 0) {
-            SIZE need = saved_pos->start + (SIZE)visible_lines;
-            if (need > 0) target = MAX(target, need - 1);
-        }
-
-        load_until_index(files, *current_directory, dir_window_cas, &state->lazy_load, target);
-        dir_window_cas->num_files = Vector_len(*files);
-    }
-
-    if (dir_window_cas->num_files == 0) {
-        dir_window_cas->cursor = 0;
-        dir_window_cas->start = 0;
-        state->selected_entry = "";
-    } else if (saved_pos) {
-        dir_window_cas->cursor = (saved_pos->cursor < dir_window_cas->num_files)
-                                  ? saved_pos->cursor
-                                  : (dir_window_cas->num_files - 1);
-
-        dir_window_cas->start = saved_pos->start;
-        if (dir_window_cas->start >= dir_window_cas->num_files) {
-            dir_window_cas->start = 0;
-        }
-
-        fix_cursor(dir_window_cas);
-        state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
-    } else {
-        dir_window_cas->cursor = 0;
-        dir_window_cas->start = 0;
+    // Set selected_entry to the first file in the parent directory
+    if (dir_window_cas->num_files > 0) {
         state->selected_entry = FileAttr_get_name(files->el[0]);
-    }
-
-    // Prefer selecting the directory we just came from in the parent listing.
-    if (child_name && *child_name && dir_window_cas->num_files > 0) {
-        SIZE child_idx = find_index_by_name_lazy(files,
-                                                *current_directory,
-                                                dir_window_cas,
-                                                &state->lazy_load,
-                                                child_name);
-        if (child_idx != (SIZE)-1) {
-            dir_window_cas->num_files = Vector_len(*files);
-            dir_window_cas->cursor = child_idx;
-
-            int visible_lines = (int)dir_window_cas->num_lines - 2;
-            if (visible_lines < 1) visible_lines = 1;
-
-            if (dir_window_cas->cursor < dir_window_cas->start) {
-                dir_window_cas->start = dir_window_cas->cursor;
-            } else if (dir_window_cas->cursor >= dir_window_cas->start + (SIZE)visible_lines) {
-                dir_window_cas->start = dir_window_cas->cursor - (SIZE)visible_lines + 1;
-            }
-
-            SIZE max_start = 0;
-            if (dir_window_cas->num_files > (SIZE)visible_lines) {
-                max_start = dir_window_cas->num_files - (SIZE)visible_lines;
-            }
-            if (dir_window_cas->start > max_start) {
-                dir_window_cas->start = max_start;
-            }
-
-            fix_cursor(dir_window_cas);
-            state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
-        }
-    }
-
-    if (child_name) {
-        free(child_name);
-        child_name = NULL;
+    } else {
+        state->selected_entry = "";
     }
 
     werase(notifwin);
@@ -1335,10 +1489,17 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
  * @param files the list of files
  * @param dir_window_cas the cursor and slice state
  */
-void navigate_right(AppState *state, char **current_directory, const char *selected_entry, Vector *files, CursorAndSlice *dir_window_cas) {
-    // Verify if the selected entry is a directory
-    FileAttr current_file = files->el[dir_window_cas->cursor];
-    if (!FileAttr_is_dir(current_file)) {
+void navigate_right(AppState *state, char **current_directory, Vector *files_view, CursorAndSlice *dir_window_cas) {
+    if (!state || !current_directory || !*current_directory || !dir_window_cas) return;
+
+    Vector *view = files_view ? files_view : &state->files;
+    if (Vector_len(*view) == 0) return;
+    if (dir_window_cas->cursor < 0 || (size_t)dir_window_cas->cursor >= Vector_len(*view)) return;
+
+    // Verify if the selected entry is a directory (use the current visible list).
+    FileAttr current_file = (FileAttr)view->el[dir_window_cas->cursor];
+    const char *selected_entry = FileAttr_get_name(current_file);
+    if (!FileAttr_is_dir(current_file) || !selected_entry) {
         werase(notifwin);
         show_notification(notifwin, "Selected entry is not a directory");
         should_clear_notif = false;
@@ -1358,29 +1519,6 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         should_clear_notif = false;
         wrefresh(notifwin);
         return;
-    }
-
-    // Save CURRENT directory scroll position BEFORE leaving it (so parent restores on back)
-    {
-        const char *cur_path = *current_directory;
-        DirScrollPos *pos = dir_scroll_positions;
-        while (pos && strcmp(pos->path, cur_path) != 0) {
-            pos = pos->next;
-        }
-
-        if (pos) {
-            pos->cursor = dir_window_cas->cursor;
-            pos->start  = dir_window_cas->start;
-        } else {
-            pos = malloc(sizeof(DirScrollPos));
-            if (pos) {
-                pos->path = strdup(cur_path);
-                pos->cursor = dir_window_cas->cursor;
-                pos->start  = dir_window_cas->start;
-                pos->next   = dir_scroll_positions;
-                dir_scroll_positions = pos;
-            }
-        }
     }
 
     // Push the selected directory name onto the stack
@@ -1403,69 +1541,36 @@ void navigate_right(AppState *state, char **current_directory, const char *selec
         return;
     }
 
+    // Leaving this directory clears any active search view (search results point into the old directory list).
+    search_clear(state);
+
     // Update lazy loading state for new directory
     if (state->lazy_load.directory_path) {
         free(state->lazy_load.directory_path);
     }
     state->lazy_load.directory_path = strdup(*current_directory);
+    state->lazy_load.last_load_time = (struct timespec){0};
     
     // Reload directory contents in the new path (lazy loading)
-    reload_directory_lazy(files, *current_directory, 
-                        &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+    reload_directory_lazy(&state->files, *current_directory,
+                          &state->lazy_load.files_loaded, &state->lazy_load.total_files);
 
-    // Use the actual dir window height for correct visible_lines math
-    {
-        int rows, cols;
-        getmaxyx(dirwin, rows, cols);
-        (void)cols;
-        dir_window_cas->num_lines = rows;
-    }
+    // Reset cursor and start position for the new directory
+    dir_window_cas->cursor = 0;
+    dir_window_cas->start = 0;
+    dir_window_cas->num_lines = LINES - 6;
+    dir_window_cas->num_files = Vector_len(state->files);
 
-    dir_window_cas->num_files = Vector_len(*files);
-
-    // Restore scroll position if we have one for this directory (and load enough entries first)
-    DirScrollPos *saved_pos = dir_scroll_positions;
-    while (saved_pos && strcmp(saved_pos->path, *current_directory) != 0) {
-        saved_pos = saved_pos->next;
-    }
-
-    if (saved_pos) {
-        int visible_lines = (int)dir_window_cas->num_lines - 2;
-        SIZE target = saved_pos->cursor;
-        if (visible_lines > 0) {
-            SIZE need = saved_pos->start + (SIZE)visible_lines;
-            if (need > 0) target = MAX(target, need - 1);
-        }
-
-        load_until_index(files, *current_directory, dir_window_cas, &state->lazy_load, target);
-        dir_window_cas->num_files = Vector_len(*files);
-    }
-
-    if (dir_window_cas->num_files == 0) {
-        dir_window_cas->cursor = 0;
-        dir_window_cas->start = 0;
-        state->selected_entry = "";
-    } else if (saved_pos) {
-        dir_window_cas->cursor = (saved_pos->cursor < dir_window_cas->num_files)
-                                  ? saved_pos->cursor
-                                  : (dir_window_cas->num_files - 1);
-
-        dir_window_cas->start = saved_pos->start;
-        if (dir_window_cas->start >= dir_window_cas->num_files) {
-            dir_window_cas->start = 0;
-        }
-
-        fix_cursor(dir_window_cas);
-        state->selected_entry = FileAttr_get_name(files->el[dir_window_cas->cursor]);
+    // Set selected_entry to the first file in the new directory
+    if (dir_window_cas->num_files > 0) {
+        state->selected_entry = FileAttr_get_name(state->files.el[0]);
     } else {
-        dir_window_cas->cursor = 0;
-        dir_window_cas->start = 0;
-        state->selected_entry = FileAttr_get_name(files->el[0]);
+        state->selected_entry = "";
     }
 
     // If there's only one entry, automatically select it
     if (dir_window_cas->num_files == 1) {
-        state->selected_entry = FileAttr_get_name(files->el[0]);
+        state->selected_entry = FileAttr_get_name(state->files.el[0]);
     }
 
     werase(notifwin);
@@ -1494,20 +1599,22 @@ void handle_winch(int sig) {
  * @param offset the current offset for scrolling
  */
 void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_info, int offset) {
-    struct timespec current_time;
-    clock_gettime(CLOCK_MONOTONIC, &current_time);
-    
-    // Only update banner if enough time has passed
-    long time_diff = (current_time.tv_sec - last_scroll_time.tv_sec) * 1000000 +
-                    (current_time.tv_nsec - last_scroll_time.tv_nsec) / 1000;
-        
-    if (time_diff < BANNER_SCROLL_INTERVAL) {
-        return;  // Skip update if not enough time has passed
-    }
-    
+    // Include local date/time in the banner (fixed width so the scroll math stays stable).
+    time_t t = time(NULL);
+    struct tm tm_local;
+    localtime_r(&t, &tm_local);
+    char time_buf[32] = {0};
+    strftime(time_buf, sizeof(time_buf), BANNER_TIME_FORMAT, &tm_local);
+
+    char build_with_time[256];
+    snprintf(build_with_time, sizeof(build_with_time), "%s%s%s",
+             build_info ? build_info : "",
+             BANNER_TIME_PREFIX,
+             time_buf);
+
     int width = COLS - 2;
     int text_len = strlen(text);
-    int build_len = strlen(build_info);
+    int build_len = (int)strlen(build_with_time);
     
     // Calculate total length including padding
     int total_len = width + text_len + build_len + 4;
@@ -1523,7 +1630,7 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
     for (int i = 0; i < 2; i++) {
         int pos = i * total_len;
         memcpy(scroll_text + pos, text, text_len);
-        memcpy(scroll_text + pos + text_len + 2, build_info, build_len);
+        memcpy(scroll_text + pos + text_len + 2, build_with_time, build_len);
     }
     
     // Draw the banner
@@ -1533,9 +1640,6 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
     wrefresh(window);
     
     free(scroll_text);
-    
-    // Update last scroll time
-    last_scroll_time = current_time;
 }
 
 // Function to handle banner scrolling in a separate thread
@@ -1545,7 +1649,8 @@ void *banner_scrolling_thread(void *arg) {
     struct timespec last_update_time;
     clock_gettime(CLOCK_MONOTONIC, &last_update_time);
 
-    int total_scroll_length = COLS + strlen(BANNER_TEXT) + strlen(BUILD_INFO) + 4;
+    int total_scroll_length = (COLS - 2) + (int)strlen(BANNER_TEXT) + (int)strlen(BUILD_INFO) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     while (1) {
         struct timespec current_time;
@@ -1577,7 +1682,7 @@ void cleanup_temp_files() {
  * @param r the exit code
  * @param format the error message format
  */
-int main(int argc, char *argv[]) {
+int main() {
     // Initialize ncurses
     setlocale(LC_ALL, "");
     
@@ -1662,44 +1767,9 @@ int main(int argc, char *argv[]) {
     if (config_errors == 0) {
         // Configuration loaded successfully
         show_notification(notifwin, "Configuration loaded successfully.");
-    } else if (config_errors == 1 && strstr(error_buffer, "Configuration file not found")) {
+    } else if (config_errors == 1) {
         // Configuration file not found; create a default config file
-        FILE *fp = fopen(config_path, "w");
-        if (fp) {
-            fprintf(fp, "# CupidFM Configuration File\n");
-            fprintf(fp, "# Automatically generated on first run.\n\n");
-
-            // Navigation Keys
-            fprintf(fp, "key_up=KEY_UP\n");
-            fprintf(fp, "key_down=KEY_DOWN\n");
-            fprintf(fp, "key_left=KEY_LEFT\n");
-            fprintf(fp, "key_right=KEY_RIGHT\n");
-            fprintf(fp, "key_tab=Tab\n");
-            fprintf(fp, "key_exit=F1\n");
-
-            // File Management
-            fprintf(fp, "key_edit=^E  # Enter edit mode\n");
-            fprintf(fp, "key_copy=^C  # Copy selected file\n");
-            fprintf(fp, "key_paste=^V  # Paste copied file\n");
-            fprintf(fp, "key_cut=^X  # Cut (move) file\n");
-            fprintf(fp, "key_delete=^D  # Delete selected file\n");
-            fprintf(fp, "key_rename=^R  # Rename file\n");
-            fprintf(fp, "key_new=^N  # Create new file\n");
-            fprintf(fp, "key_save=^S  # Save changes\n\n");
-            fprintf(fp, "key_new_dir=Shift+N  # Create new directory\n");
-            // Editing Mode Keys
-            fprintf(fp, "edit_up=KEY_UP\n");
-            fprintf(fp, "edit_down=KEY_DOWN\n");
-            fprintf(fp, "edit_left=KEY_LEFT\n");
-            fprintf(fp, "edit_right=KEY_RIGHT\n");
-            fprintf(fp, "edit_save=^S # Save in editor\n");
-            fprintf(fp, "edit_quit=^Q # Quit editor\n");
-            fprintf(fp, "edit_backspace=KEY_BACKSPACE\n");
-
-            fprintf(fp, "info_label_width=15");
-
-            fclose(fp);
-
+        if (write_default_config_file(config_path, &kb, error_buffer, sizeof(error_buffer))) {
             // Notify the user about the creation of the default config file
             show_popup("First Run Setup",
                 "No config was found.\n"
@@ -1708,8 +1778,7 @@ int main(int argc, char *argv[]) {
                 "Press any key to continue...",
                 config_path);
         } else {
-            // Failed to create the config file
-            show_notification(notifwin, "Failed to create default configuration file.");
+            show_notification(notifwin, "Failed to create default config: %s", error_buffer);
         }
     } else {
         // Configuration file exists but has errors; display the error messages
@@ -1736,95 +1805,23 @@ int main(int argc, char *argv[]) {
         die(1, "Memory allocation error");
     }
 
-    // Check if a directory path was provided as an argument
-    if (argc > 1) {
-        char expanded_path[MAX_PATH_LENGTH];
-        wordexp_t p;
-        
-        // Expand tilde and other shell expansions
-        if (wordexp(argv[1], &p, 0) == 0) {
-            if (p.we_wordc > 0 && strlen(p.we_wordv[0]) < MAX_PATH_LENGTH) {
-                strncpy(expanded_path, p.we_wordv[0], MAX_PATH_LENGTH - 1);
-                expanded_path[MAX_PATH_LENGTH - 1] = '\0';
-            } else {
-                strncpy(expanded_path, argv[1], MAX_PATH_LENGTH - 1);
-                expanded_path[MAX_PATH_LENGTH - 1] = '\0';
-            }
-            wordfree(&p);
-        } else {
-            // Expansion failed, use argument as-is
-            strncpy(expanded_path, argv[1], MAX_PATH_LENGTH - 1);
-            expanded_path[MAX_PATH_LENGTH - 1] = '\0';
-        }
-        
-        // Try to resolve the path (handles relative paths, etc.)
-        char resolved_path[MAX_PATH_LENGTH];
-        char *final_path = NULL;
-        
-        if (realpath(expanded_path, resolved_path) != NULL) {
-            // realpath succeeded - use resolved path
-            final_path = resolved_path;
-        } else {
-            // realpath failed - try using expanded_path directly if it's absolute
-            // or construct absolute path from current directory
-            if (expanded_path[0] == '/') {
-                // Already absolute, use as-is
-                final_path = expanded_path;
-            } else {
-                // Relative path - try to make it absolute
-                char cwd[MAX_PATH_LENGTH];
-                if (getcwd(cwd, MAX_PATH_LENGTH) != NULL) {
-                    snprintf(resolved_path, MAX_PATH_LENGTH, "%s/%s", cwd, expanded_path);
-                    final_path = resolved_path;
-                } else {
-                    // Can't get cwd, use expanded_path as-is
-                    final_path = expanded_path;
-                }
-            }
-        }
-        
-        // Check if it's a directory
-        struct stat path_stat;
-        if (final_path && stat(final_path, &path_stat) == 0 && S_ISDIR(path_stat.st_mode)) {
-            strncpy(state.current_directory, final_path, MAX_PATH_LENGTH - 1);
-            state.current_directory[MAX_PATH_LENGTH - 1] = '\0';
-        } else {
-            // Not a directory or doesn't exist - fall back to current directory
-            if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
-                die(1, "Unable to get current working directory");
-            }
-            // Show error notification (but continue with current directory)
-            show_notification(notifwin, "Invalid directory: %s (using current directory)", argv[1]);
-            should_clear_notif = false;
-        }
-    } else {
-        // No argument provided - use current working directory
-        if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
-            die(1, "Unable to get current working directory");
-        }
-    }
-
-    // Strip trailing slashes for consistent path handling
-    strip_trailing_slashes_inplace(state.current_directory);
-
-    // Seed the stack so the first LEFT (after starting inside a dir) can reselect us in parent
-    if (strcmp(state.current_directory, "/") != 0) {
-        const char *leaf = path_last_component(state.current_directory);
-        if (leaf && *leaf) {
-            char *seed = strdup(leaf);
-            if (seed) VecStack_push(&directoryStack, seed);
-        }
+    if (getcwd(state.current_directory, MAX_PATH_LENGTH) == NULL) {
+        die(1, "Unable to get current working directory");
     }
 
     state.selected_entry = "";
 
     state.files = Vector_new(10);
+    state.search_active = false;
+    state.search_query[0] = '\0';
+    state.search_files = Vector_new(10);
     
     // Initialize lazy loading state
     state.lazy_load.directory_path = strdup(state.current_directory);
     state.lazy_load.files_loaded = 0;
     state.lazy_load.total_files = 0;
     state.lazy_load.is_loading = false;
+    state.lazy_load.last_load_time = (struct timespec){0};
     
     // Use lazy loading for initial directory load
     reload_directory_lazy(&state.files, state.current_directory, 
@@ -1857,7 +1854,8 @@ int main(int argc, char *argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &last_update_time);
 
     // Calculate the total scroll length for the banner
-    int total_scroll_length = COLS + strlen(BANNER_TEXT) + strlen(BUILD_INFO) + 4;
+    int total_scroll_length = (COLS - 2) + (int)strlen(BANNER_TEXT) + (int)strlen(BUILD_INFO) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     int ch;
     while ((ch = getch()) != kb.key_exit) {
@@ -1877,7 +1875,9 @@ int main(int argc, char *argv[]) {
 
         if (time_diff >= BANNER_SCROLL_INTERVAL) {
             // Update banner with current offset
+            pthread_mutex_lock(&banner_mutex);
             draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+            pthread_mutex_unlock(&banner_mutex);
             banner_offset = (banner_offset + 1) % total_scroll_length;
             last_update_time = current_time;
         }
@@ -1898,8 +1898,11 @@ int main(int argc, char *argv[]) {
             // 1) UP
             if (ch == kb.key_up) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
-                    navigate_up(&state.dir_window_cas, &state.files, &state.selected_entry,
-                               state.current_directory, &state.lazy_load);
+                    navigate_up(&state.dir_window_cas,
+                                active_files(&state),
+                                &state.selected_entry,
+                                state.current_directory,
+                                state.search_active ? NULL : &state.lazy_load);
                     state.preview_start_line = 0;
                     werase(notifwin);
                     show_notification(notifwin, "Moved up");
@@ -1919,8 +1922,11 @@ int main(int argc, char *argv[]) {
             // 2) DOWN
             else if (ch == kb.key_down) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
-                    navigate_down(&state.dir_window_cas, &state.files, &state.selected_entry,
-                                 state.current_directory, &state.lazy_load);
+                    navigate_down(&state.dir_window_cas,
+                                  active_files(&state),
+                                  &state.selected_entry,
+                                  state.current_directory,
+                                  state.search_active ? NULL : &state.lazy_load);
                     state.preview_start_line = 0;
                     werase(notifwin);
                     show_notification(notifwin, "Moved down");
@@ -1977,28 +1983,11 @@ int main(int argc, char *argv[]) {
             // 4) RIGHT
             else if (ch == kb.key_right) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
-                    if (FileAttr_is_dir(state.files.el[state.dir_window_cas.cursor])) {
-                        navigate_right(&state,
-                                    &state.current_directory,
-                                    state.selected_entry,
-                                    &state.files,
-                                    &state.dir_window_cas);
-                        state.preview_start_line = 0;
-
-                        // If there's only one file in the directory, auto-select it
-                        if (state.dir_window_cas.num_files == 1) {
-                            state.selected_entry = FileAttr_get_name(state.files.el[0]);
-                        }
-                        werase(notifwin);
-                        show_notification(notifwin, "Entered directory: %s", state.selected_entry);
-                        wrefresh(notifwin);
-                        should_clear_notif = false;
-                    } else {
-                        werase(notifwin);
-                        show_notification(notifwin, "Selected entry is not a directory");
-                        wrefresh(notifwin);
-                        should_clear_notif = false;
-                    }
+                    navigate_right(&state,
+                                   &state.current_directory,
+                                   active_files(&state),
+                                   &state.dir_window_cas);
+                    state.preview_start_line = 0;
                 }
             }
 
@@ -2045,7 +2034,7 @@ int main(int argc, char *argv[]) {
                     draw_directory_window(
                         dirwin,
                         state.current_directory,
-                        &state.files,
+                        active_files(&state),
                         &state.dir_window_cas
                     );
                     
@@ -2075,8 +2064,7 @@ int main(int argc, char *argv[]) {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
                     copy_to_clipboard(full_path);
-                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH - 1);
-                    copied_filename[MAX_PATH_LENGTH - 1] = '\0';
+                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
                     werase(notifwin);
                     show_notification(notifwin, "Copied to clipboard: %s", state.selected_entry);
                     wrefresh(notifwin);
@@ -2088,8 +2076,13 @@ int main(int argc, char *argv[]) {
             else if (ch == kb.key_paste) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && copied_filename[0] != '\0') {
                     paste_from_clipboard(state.current_directory, copied_filename);
+                    char saved_query[MAX_PATH_LENGTH];
+                    search_before_reload(&state, saved_query);
                     reload_directory(&state.files, state.current_directory);
-                    resync_selection(&state);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.lazy_load.files_loaded = Vector_len(state.files);
+                    state.lazy_load.total_files = state.lazy_load.files_loaded;
+                    search_after_reload(&state, &state.dir_window_cas, saved_query);
                     werase(notifwin);
                     show_notification(notifwin, "Pasted file: %s", copied_filename);
                     wrefresh(notifwin);
@@ -2102,19 +2095,20 @@ int main(int argc, char *argv[]) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
-                    char name_copy[MAX_PATH_LENGTH];
-                    strncpy(name_copy, state.selected_entry, MAX_PATH_LENGTH - 1);
-                    name_copy[MAX_PATH_LENGTH - 1] = '\0';
                     cut_and_paste(full_path);
-                    strncpy(copied_filename, name_copy, MAX_PATH_LENGTH - 1);
-                    copied_filename[MAX_PATH_LENGTH - 1] = '\0';
+                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
 
                     // Reload directory to reflect the cut file
+                    char saved_query[MAX_PATH_LENGTH];
+                    search_before_reload(&state, saved_query);
                     reload_directory(&state.files, state.current_directory);
-                    resync_selection(&state);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.lazy_load.files_loaded = Vector_len(state.files);
+                    state.lazy_load.total_files = state.lazy_load.files_loaded;
+                    search_after_reload(&state, &state.dir_window_cas, saved_query);
 
                     werase(notifwin);
-                    show_notification(notifwin, "Cut to clipboard: %s", name_copy);
+                    show_notification(notifwin, "Cut to clipboard: %s", state.selected_entry);
                     wrefresh(notifwin);
                     should_clear_notif = false;
                 }
@@ -2125,19 +2119,21 @@ int main(int argc, char *argv[]) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
                     char full_path[MAX_PATH_LENGTH];
                     path_join(full_path, state.current_directory, state.selected_entry);
-                    char name_copy[MAX_PATH_LENGTH];
-                    strncpy(name_copy, state.selected_entry, MAX_PATH_LENGTH - 1);
-                    name_copy[MAX_PATH_LENGTH - 1] = '\0';
 
                     bool should_delete = false;
-                    bool delete_result = confirm_delete(name_copy, &should_delete);
+                    bool delete_result = confirm_delete(state.selected_entry, &should_delete);
 
                     if (delete_result && should_delete) {
                         delete_item(full_path);
+                        char saved_query[MAX_PATH_LENGTH];
+                        search_before_reload(&state, saved_query);
                         reload_directory(&state.files, state.current_directory);
-                        resync_selection(&state);
+                        state.dir_window_cas.num_files = Vector_len(state.files);
+                        state.lazy_load.files_loaded = Vector_len(state.files);
+                        state.lazy_load.total_files = state.lazy_load.files_loaded;
+                        search_after_reload(&state, &state.dir_window_cas, saved_query);
 
-                        show_notification(notifwin, "Deleted: %s", name_copy);
+                        show_notification(notifwin, "Deleted: %s", state.selected_entry);
                         should_clear_notif = false;
                     } else {
                         show_notification(notifwin, "Delete cancelled");
@@ -2156,8 +2152,36 @@ int main(int argc, char *argv[]) {
                     rename_item(notifwin, full_path);
 
                     // Reload to show changes
+                    char saved_query[MAX_PATH_LENGTH];
+                    search_before_reload(&state, saved_query);
                     reload_directory(&state.files, state.current_directory);
-                    resync_selection(&state);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.lazy_load.files_loaded = Vector_len(state.files);
+                    state.lazy_load.total_files = state.lazy_load.files_loaded;
+                    state.dir_window_cas.cursor = 0;
+                    state.dir_window_cas.start = 0;
+                    search_after_reload(&state, &state.dir_window_cas, saved_query);
+
+                    if (!state.search_active) {
+                        if (state.dir_window_cas.num_files > 0) {
+                            state.selected_entry = FileAttr_get_name(state.files.el[0]);
+                        } else {
+                            state.selected_entry = "";
+                        }
+                    }
+                }
+            }
+
+            else if (ch == kb.key_search) {
+                if (active_window == DIRECTORY_WIN_ACTIVE) {
+                    prompt_fuzzy_search(&state,
+                                        &state.dir_window_cas,
+                                        notifwin,
+                                        dirwin,
+                                        previewwin);
+                } else {
+                    show_notification(notifwin, "Switch to directory window to search");
+                    should_clear_notif = false;
                 }
             }
 
@@ -2165,16 +2189,38 @@ int main(int argc, char *argv[]) {
             else if (ch == kb.key_new) {
                 if (active_window == DIRECTORY_WIN_ACTIVE) {
                     create_new_file(notifwin, state.current_directory);
+                    char saved_query[MAX_PATH_LENGTH];
+                    search_before_reload(&state, saved_query);
                     reload_directory(&state.files, state.current_directory);
-                    resync_selection(&state);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.lazy_load.files_loaded = Vector_len(state.files);
+                    state.lazy_load.total_files = state.lazy_load.files_loaded;
+                    state.dir_window_cas.cursor = 0;
+                    state.dir_window_cas.start = 0;
+                    search_after_reload(&state, &state.dir_window_cas, saved_query);
+
+                    if (!state.search_active) {
+                        if (state.dir_window_cas.num_files > 0) {
+                            state.selected_entry = FileAttr_get_name(state.files.el[0]);
+                        } else {
+                            state.selected_entry = "";
+                        }
+                    }
                 }
             }
 
             // 13 CREATE NEW DIR
             else if (ch == kb.key_new_dir) {
+                // implement
                 create_new_directory(notifwin, state.current_directory);
+                char saved_query[MAX_PATH_LENGTH];
+                search_before_reload(&state, saved_query);
                 reload_directory(&state.files, state.current_directory);
-                resync_selection(&state);
+                state.dir_window_cas.num_files = Vector_len(state.files);
+                state.lazy_load.files_loaded = Vector_len(state.files);
+                state.lazy_load.total_files = state.lazy_load.files_loaded;
+                search_after_reload(&state, &state.dir_window_cas, saved_query);
+
             }
         }
 
@@ -2188,7 +2234,7 @@ int main(int argc, char *argv[]) {
         draw_directory_window(
                 dirwin,
                 state.current_directory,
-                &state.files,
+                active_files(&state),
                 &state.dir_window_cas
         );
 
@@ -2202,7 +2248,15 @@ int main(int argc, char *argv[]) {
         // Highlight the active window
         if (active_window == DIRECTORY_WIN_ACTIVE) {
             wattron(dirwin, A_REVERSE);
-            mvwprintw(dirwin, state.dir_window_cas.cursor - state.dir_window_cas.start + 1, 1, "%s", FileAttr_get_name(state.files.el[state.dir_window_cas.cursor]));
+            Vector *view = active_files(&state);
+            if (view && Vector_len(*view) > 0 && state.dir_window_cas.cursor >= 0 &&
+                (size_t)state.dir_window_cas.cursor < Vector_len(*view)) {
+                mvwprintw(dirwin,
+                          state.dir_window_cas.cursor - state.dir_window_cas.start + 1,
+                          1,
+                          "%s",
+                          FileAttr_get_name((FileAttr)view->el[state.dir_window_cas.cursor]));
+            }
             wattroff(dirwin, A_REVERSE);
         } else {
             wattron(previewwin, A_REVERSE);
@@ -2215,7 +2269,15 @@ int main(int argc, char *argv[]) {
         // Highlight the active window
         if (active_window == DIRECTORY_WIN_ACTIVE) {
             wattron(dirwin, A_REVERSE);
-            mvwprintw(dirwin, state.dir_window_cas.cursor - state.dir_window_cas.start + 1, 1, "%s", FileAttr_get_name(state.files.el[state.dir_window_cas.cursor]));
+            Vector *view = active_files(&state);
+            if (view && Vector_len(*view) > 0 && state.dir_window_cas.cursor >= 0 &&
+                (size_t)state.dir_window_cas.cursor < Vector_len(*view)) {
+                mvwprintw(dirwin,
+                          state.dir_window_cas.cursor - state.dir_window_cas.start + 1,
+                          1,
+                          "%s",
+                          FileAttr_get_name((FileAttr)view->el[state.dir_window_cas.cursor]));
+            }
             wattroff(dirwin, A_REVERSE);
         } else {
             wattron(previewwin, A_REVERSE);
@@ -2236,6 +2298,11 @@ int main(int argc, char *argv[]) {
     }
     Vector_set_len_no_free(&state.files, 0);
     Vector_bye(&state.files);
+    // `search_files` is a shallow view into `files`, so only free its backing array.
+    if (state.search_files.el) {
+        free(state.search_files.el);
+        state.search_files.el = NULL;
+    }
     free(state.current_directory);
     if (state.lazy_load.directory_path) {
         free(state.lazy_load.directory_path);
@@ -2251,16 +2318,6 @@ int main(int argc, char *argv[]) {
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);
-    
-    // Free scroll position tracking
-    DirScrollPos *pos = dir_scroll_positions;
-    while (pos) {
-        DirScrollPos *next = pos->next;
-        free(pos->path);
-        free(pos);
-        pos = next;
-    }
-    dir_scroll_positions = NULL;
 
     return 0;
 }

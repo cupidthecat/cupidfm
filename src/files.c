@@ -583,6 +583,26 @@ void dir_size_cache_stop(void) {
     pthread_mutex_unlock(&dir_size_mutex);
 }
 
+void format_dir_size_pending_animation(char *buffer, size_t len, bool reset) {
+    if (len == 0 || buffer == NULL) {
+        return;
+    }
+    static size_t estimate = 0;
+    const size_t start_estimate = 5 * 1024; // 5 KB
+    const size_t max_estimate = 1ULL << 40; // 1 TiB cap for animation
+    if (reset || estimate == 0) {
+        estimate = start_estimate;
+    } else {
+        estimate = estimate + estimate / 2 + 1024; // grow by ~1.5x each frame
+        if (estimate > max_estimate) {
+            estimate = max_estimate;
+        }
+    }
+    char formatted[32];
+    format_file_size(formatted, estimate);
+    snprintf(buffer, len, "Calculating... %s", formatted);
+}
+
 // Recursive function to calculate directory size with guard rails to keep UI responsive (legacy fallback)
 long get_directory_size(const char *dir_path) {
     return dir_size_get_result(dir_path, true);
@@ -660,7 +680,7 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
 
         long dir_size = dir_size_get_result(file_path, allow_enqueue);
         
-        char fileSizeStr[20] = "-";
+        char fileSizeStr[32] = "-";
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
         } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
@@ -670,7 +690,11 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
         } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
         } else if (dir_size == DIR_SIZE_PENDING) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
+            if (allow_enqueue) {
+                format_dir_size_pending_animation(fileSizeStr, sizeof(fileSizeStr), path_changed);
+            } else {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Waiting...");
+            }
         } else {
             format_file_size(fileSizeStr, dir_size);
         }

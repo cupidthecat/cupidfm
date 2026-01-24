@@ -18,12 +18,12 @@ The library is designed with safety as a primary concern:
 
 ## Current Support
 
-- **Formats:** TAR (ustar + pax + GNU long name extensions), ZIP (central directory + streaming mode, ZIP64 support), 7z (single-file, LZMA/LZMA2)
+- **Formats:** TAR (ustar + pax + GNU long name extensions), ZIP (central directory + streaming mode, ZIP64 support), 7z (single-file, LZMA/LZMA2), compressed single files (.gz, .bz2, .xz as virtual archives)
 - **Compression:** gzip (zlib), bzip2 (libbz2), deflate (zlib, for ZIP), xz/lzma (liblzma)
 - **Entry Types:** Regular files, directories, symlinks, hardlinks (TAR only), files and directories (ZIP)
 - **Operations:** Reading, previewing, and **extraction**
 
-With the new XZ filter you can treat `.tar.xz` as a native archive, and `.xz` / `.txz` single files appear as a pseudo archive (one entry) in `arc_compressed.c`, just like `.gz` and `.bz2` files.
+With XZ filter support you can treat `.tar.xz` as a native archive, and `.xz` / `.txz` single files appear as pseudo archives (one entry) through `arc_compressed.c`, just like `.gz` and `.bz2` files. All compressed single files are presented as virtual archives with a single entry.
 
 ### Notable Features
 

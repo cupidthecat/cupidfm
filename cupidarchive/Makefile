@@ -48,11 +48,12 @@ test:
 # Clean
 clean:
 	rm -rf $(OBJDIR) $(LIBRARY) test-extract
-	$(MAKE) -C tests clean
+	if [ -d tests ]; then \
+		$(MAKE) -C tests clean; \
+	fi
 
 # Install (optional)
 install: $(LIBRARY)
 	@echo "To install, copy $(LIBRARY) and headers to your system library path"
 
 .PHONY: all clean install test-extract test
-

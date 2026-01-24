@@ -194,6 +194,7 @@ Below is a screenshot showing the start up
 ![preview](img/startup.png)
 
 This auto-generated config file includes default bindings, for example:
+The default includes `key_search=^F` (Ctrl+F) for fuzzy search, and you can change it by editing `~/.cupidfmrc` and restarting CupidFM.
 
 ```
 key_up=KEY_UP
@@ -210,6 +211,7 @@ key_cut=^X
 key_delete=^D
 key_rename=^R
 key_new=^N
+key_search=^F
 
 edit_up=KEY_UP
 edit_down=KEY_DOWN
@@ -258,6 +260,9 @@ After CupidFM creates this file, you are free to **edit** it to customize keybin
    - CupidFM loads **hard-coded defaults** (arrow keys, F1, etc.) 
    - Automatically **writes** a new file to `~/.cupidfmrc`, which you can later edit.
 
+3. **Config exists but can’t be loaded?**  
+   - CupidFM keeps defaults and shows a **Configuration Errors** popup instead of overwriting your config.
+
 ### Common Changes to the Config
 
 - **Changing the Exit Key**  
@@ -294,56 +299,29 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 ## Todo
 
 ### High Priority
-- [X] Fix directory preview not scrolling 
+- [ ] Custom plugin system with cupidscript a custom scripting lang
+- [ ] Add file filtering options
+- [ ] Implement file/directory permissions editing
+- [ ] Add image preview (in house lib?)
 - [ ] Write custom magic library for in-house MIME type detection
-- [ ] Implement proper memory management and cleanup for file attributes and vectors
-- [ ] Add error handling for failed memory allocations
-- [ ] Optimize file loading performance for large directories
-- [ ] Optimize scrolling, also make sure tree preview is optimized 
-- [ ] Use tree command to rewrite tree preview
-- [ ] Use YSAP make-diagram program to learn more about files
-- [X] Fixed cursor issue in directory window scroll
-- [X] Fix dir size calc not working (wont calc files inside)
-- [ ] Fix long preview file names
-
-### Edit Mode Issues
-- [X] Banner marquee not rotating correctly when rotating in edit mode
-  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
-- [X] Fix banner not rotating when prompted eg. (new file or dir)
-  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
-- [X] Fix sig winch handling breaking while in edit mode
-- [X] Fix cursor showing up at the bottom of the text editing buffer
-- [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
 
 ### Features
-- [X] Enable scrolling for tree preview in the preview window when tabbed over
-- [ ] Add preview support for `.zip` and `.tar` files
-- [ ] Implement syntax highlighting for supported file types
-- [X] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [ ] Implement syntax highlighting for supported file types (use config system like micro)
 - [ ] Implement text editing shortcuts:
   - [ ] Shift+arrow for selection
   - [ ] Ctrl+arrow for faster cursor movement
   - [ ] Standard shortcuts (Ctrl+X, Ctrl+C, Ctrl+V)
   - [ ] Add undo/redo functionality in edit mode
   - [ ] Implement proper text selection in edit mode
-- [X] Add file operations:
-  - [X] Copy/paste files and directories
-  - [X] Create new file/directory
-  - [X] Delete file/directory
-  - [X] Rename file/directory
 - [ ] Add a quick select feature for selecting file names, dir names, and current directory
-- [ ] Implement file search functionality
-- [ ] Add file filtering options
-- [ ] Implement file/directory permissions editing
 - [X] Add configuration file support for customizing:
   - [X] Key bindings
   - [ ] Color schemes
   - [ ] Default text editor (using in house editor)
   - [ ] File associations
   - [ ] Change default text preview files
-- [ ] Add image preview
 - [ ] Basic file dialog for web and other applications
-- [ ] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
+- [ ] Use YSAP make-diagram program to learn more about files
 
 ### Todo List for Command Line Feature
 
@@ -356,13 +334,6 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Develop custom cupidfm commands (`tree`, `info`, etc.).
 - [ ] Integrate with system shell commands.
 - [ ] Allow user-defined aliases in a configuration file.
-
-### Performance Improvements
-- [ ] Implement lazy loading for large directories
-- [ ] Optimize memory usage for file preview
-- [ ] Cache directory contents for faster navigation
-- [ ] Improve MIME type detection performance
-- [ ] Implement background loading for directory contents
 
 ### Completed
 - [X] Fallback to extension-based detection instead of MIME type when detection fails
@@ -385,6 +356,40 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [X] Add tree structure visualization with proper icons and indentation
 - [X] File info not using emojis
 - [X] Add text display on tree preview when user enters an empty dir and on dir preview
+- [X] Enable scrolling for tree preview in the preview window when tabbed over
+- [X] Add preview support for `.zip` and `.tar` files - implemented via cupidarchive
+- [X] Fix directory preview not scrolling 
+- [X] Implement proper memory management and cleanup for file attributes and vectors
+- [X] Add error handling for failed memory allocations
+- [X] Optimize file loading performance for large directories
+- [X] Optimize scrolling, also make sure tree preview is optimized 
+- [?] Use tree command to rewrite tree preview
+- [X] Fixed cursor issue in directory window scroll
+- [X] Fix dir size calc not working (wont calc files inside)
+- [X] Fix long preview file names
+- [X] Add file operations:
+  - [X] Copy/paste files and directories
+  - [X] Create new file/directory
+  - [X] Delete file/directory
+  - [X] Rename file/directory
+- [X] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [X] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
+- [X] Implement file search functionality (fuzzy search)
+- [X] Implement lazy loading for large directories
+- [X] Optimize memory usage for file preview
+- [X] Cache directory contents for faster navigation
+- [X] Improve MIME type detection performance
+- [X] Implement background loading for directory contents
+- [X] Banner bug when its going lefct the fisrst tick it goes in it goes to the right one tick then back like normal 
+
+### Edit Mode Issues
+- [X] Banner marquee not rotating correctly when rotating in edit mode
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix banner not rotating when prompted eg. (new file or dir)
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix sig winch handling breaking while in edit mode
+- [X] Fix cursor showing up at the bottom of the text editing buffer
+- [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
 
 ### Key Features to Implement
 
