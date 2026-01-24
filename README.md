@@ -4,20 +4,7 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
-<details>
-<summary>▶ Demo Video (mp4) – Click to expand</summary>
-
-<br>
-
-<div align="center">
-
-<video src="img/demo.mp4" controls width="600" style="display:block; margin:auto;">
-  Sorry, your browser doesn't support embedded videos. [Download video](img/demo.mp4)
-</video>
-
-</div>
-
-</details>
+<video src="img/demo.mp4" width="320" height="240" controls></video>
 
 ### Terminal Requirements
 
