@@ -95,6 +95,7 @@ typedef enum {
 typedef struct DirSizeEntry {
     char path[MAX_PATH_LENGTH];
     long size;
+    long progress;
     DirSizeCacheStatus status;
     bool job_enqueued;
     struct DirSizeEntry *next;
@@ -122,6 +123,7 @@ static void dir_size_cache_clear_locked(void);
 static void *dir_size_worker(void *arg);
 static void ensure_dir_size_worker(void);
 static long compute_directory_size_full(const char *dir_path);
+static long compute_directory_size_full_progress(const char *dir_path, const char *job_path);
 static long dir_size_get_result(const char *dir_path, bool allow_enqueue);
 static bool dir_size_user_idle(void);
 
@@ -282,12 +284,14 @@ static void *dir_size_worker(void *arg) {
         free(job);
 
         pthread_mutex_unlock(&dir_size_mutex);
-        long size = compute_directory_size_full(path);
+        // Compute size with periodic progress updates for UI.
+        long size = compute_directory_size_full_progress(path, path);
         pthread_mutex_lock(&dir_size_mutex);
 
         DirSizeEntry *entry = dir_size_find_entry(path);
         if (entry) {
             entry->size = size;
+            if (size >= 0) entry->progress = size;
             entry->status = DIR_SIZE_STATUS_READY;
             entry->job_enqueued = false;
         }
@@ -549,6 +553,7 @@ static long dir_size_get_result(const char *dir_path, bool allow_enqueue) {
     strncpy(new_entry->path, dir_path, MAX_PATH_LENGTH - 1);
     new_entry->path[MAX_PATH_LENGTH - 1] = '\0';
     new_entry->size = DIR_SIZE_PENDING;
+    new_entry->progress = 0;
     new_entry->status = DIR_SIZE_STATUS_PENDING;
     new_entry->job_enqueued = false;
     new_entry->next = dir_size_cache_head;
@@ -557,6 +562,19 @@ static long dir_size_get_result(const char *dir_path, bool allow_enqueue) {
     dir_size_enqueue_job_locked(dir_path);
     pthread_mutex_unlock(&dir_size_mutex);
     return DIR_SIZE_PENDING;
+}
+
+long dir_size_get_progress(const char *dir_path) {
+    if (!dir_path || !*dir_path) return 0;
+    pthread_mutex_lock(&dir_size_mutex);
+    DirSizeEntry *entry = dir_size_find_entry(dir_path);
+    long p = 0;
+    if (entry && entry->status == DIR_SIZE_STATUS_PENDING) {
+        p = entry->progress;
+        if (p < 0) p = 0;
+    }
+    pthread_mutex_unlock(&dir_size_mutex);
+    return p;
 }
 
 void dir_size_cache_start(void) {
@@ -601,6 +619,134 @@ void format_dir_size_pending_animation(char *buffer, size_t len, bool reset) {
     char formatted[32];
     format_file_size(formatted, estimate);
     snprintf(buffer, len, "Calculating... %s", formatted);
+}
+
+typedef struct {
+    const char *job_path;
+    long *total;
+    long last_update_ns;
+    int items_since_update;
+} DirSizeProgressCtx;
+
+static void dir_size_progress_maybe_update(DirSizeProgressCtx *ctx) {
+    if (!ctx || !ctx->job_path || !ctx->total) return;
+
+    // Throttle updates: at most ~20Hz or every N entries to keep mutex overhead low.
+    const long UPDATE_INTERVAL_NS = 50L * 1000 * 1000; // 50ms
+    const int UPDATE_ITEM_BATCH = 128;
+
+    ctx->items_since_update++;
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long now_ns = now.tv_sec * 1000000000L + now.tv_nsec;
+
+    if (ctx->items_since_update < UPDATE_ITEM_BATCH &&
+        (ctx->last_update_ns != 0) &&
+        (now_ns - ctx->last_update_ns) < UPDATE_INTERVAL_NS) {
+        return;
+    }
+
+    ctx->items_since_update = 0;
+    ctx->last_update_ns = now_ns;
+
+    pthread_mutex_lock(&dir_size_mutex);
+    DirSizeEntry *entry = dir_size_find_entry(ctx->job_path);
+    if (entry && entry->status == DIR_SIZE_STATUS_PENDING) {
+        entry->progress = *ctx->total;
+    }
+    pthread_mutex_unlock(&dir_size_mutex);
+}
+
+static long compute_directory_size_full_progress_inner(const char *dir_path, DirSizeProgressCtx *ctx) {
+    if (strncmp(dir_path, "/proc", 5) == 0 ||
+        strncmp(dir_path, "/sys", 4) == 0 ||
+        strncmp(dir_path, "/dev", 4) == 0 ||
+        strncmp(dir_path, "/run", 4) == 0) {
+        return DIR_SIZE_VIRTUAL_FS;
+    }
+
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        if (errno == EACCES) {
+            return DIR_SIZE_PERMISSION_DENIED;
+        }
+        return -1;
+    }
+
+    const long MAX_SIZE_THRESHOLD = 1000L * 1024 * 1024 * 1024 * 1024; // 1000 TiB
+    struct dirent *entry;
+    struct stat statbuf;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char path[MAX_PATH_LENGTH];
+        if (strlen(dir_path) + strlen(entry->d_name) + 1 < sizeof(path)) {
+            snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
+        } else {
+            continue;
+        }
+
+        if (lstat(path, &statbuf) == -1) {
+            continue;
+        }
+
+        if (S_ISDIR(statbuf.st_mode)) {
+            long rc = compute_directory_size_full_progress_inner(path, ctx);
+            if (rc == DIR_SIZE_VIRTUAL_FS || rc == DIR_SIZE_PERMISSION_DENIED) {
+                closedir(dir);
+                return rc;
+            } else if (rc == DIR_SIZE_TOO_LARGE) {
+                closedir(dir);
+                return DIR_SIZE_TOO_LARGE;
+            } else if (rc < 0) {
+                // unreadable dir: skip
+            }
+        } else {
+            *ctx->total += statbuf.st_size;
+            if (*ctx->total > MAX_SIZE_THRESHOLD) {
+                closedir(dir);
+                return DIR_SIZE_TOO_LARGE;
+            }
+            dir_size_progress_maybe_update(ctx);
+        }
+    }
+
+    closedir(dir);
+    return 0;
+}
+
+static long compute_directory_size_full_progress(const char *dir_path, const char *job_path) {
+    long total = 0;
+    DirSizeProgressCtx ctx = {
+        .job_path = job_path,
+        .total = &total,
+        .last_update_ns = 0,
+        .items_since_update = 0,
+    };
+
+    // Initialize progress to 0.
+    pthread_mutex_lock(&dir_size_mutex);
+    DirSizeEntry *entry = dir_size_find_entry(job_path);
+    if (entry && entry->status == DIR_SIZE_STATUS_PENDING) {
+        entry->progress = 0;
+    }
+    pthread_mutex_unlock(&dir_size_mutex);
+
+    long rc = compute_directory_size_full_progress_inner(dir_path, &ctx);
+    if (rc < 0) return rc;
+
+    // Final progress push.
+    pthread_mutex_lock(&dir_size_mutex);
+    entry = dir_size_find_entry(job_path);
+    if (entry && entry->status == DIR_SIZE_STATUS_PENDING) {
+        entry->progress = total;
+    }
+    pthread_mutex_unlock(&dir_size_mutex);
+    return total;
 }
 
 // Recursive function to calculate directory size with guard rails to keep UI responsive (legacy fallback)
@@ -680,7 +826,7 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
 
         long dir_size = dir_size_get_result(file_path, allow_enqueue);
         
-        char fileSizeStr[32] = "-";
+        char fileSizeStr[64] = "-";
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
         } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
@@ -690,7 +836,12 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
         } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
         } else if (dir_size == DIR_SIZE_PENDING) {
-            if (allow_enqueue) {
+            long p = dir_size_get_progress(file_path);
+            if (p > 0) {
+                char tmp[32];
+                format_file_size(tmp, (size_t)p);
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
+            } else if (allow_enqueue) {
                 format_dir_size_pending_animation(fileSizeStr, sizeof(fileSizeStr), path_changed);
             } else {
                 snprintf(fileSizeStr, sizeof(fileSizeStr), "Waiting...");

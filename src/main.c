@@ -597,6 +597,31 @@ static const char* keycode_to_string(int keycode) {
     }
 }
 
+static int initial_banner_offset_for_center(const char *text, const char *build_info) {
+    // draw_scrolling_banner() builds: [text][2 spaces][build_with_time], then pads with spaces.
+    // To start "centered", we start the viewport inside the trailing-space region so the
+    // first frame shows leading spaces, then the text.
+    int width = COLS - 2;
+    if (width <= 0) return 0;
+
+    int text_len = (int)strlen(text ? text : "");
+
+    // build_with_time = build_info + " | " + "YYYY-MM-DD HH:MM:SS"
+    int build_len = (int)strlen(build_info ? build_info : "") + BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN;
+
+    int content_len = text_len + 2 + build_len;
+    int start_pad = (width - content_len) / 2;
+    if (start_pad <= 0) return 0;
+
+    int total_len = width + text_len + build_len + 4;
+    if (total_len <= 0) return 0;
+
+    int off = total_len - start_pad;
+    off %= total_len;
+    if (off < 0) off += total_len;
+    return off;
+}
+
 /** Function to count total lines in a directory tree recursively
  *
  * @param dir_path the path of the directory to count
@@ -1115,7 +1140,7 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     }
     
     // Display file size or directory size with emoji
-    char fileSizeStr[20];
+    char fileSizeStr[64];
     if (S_ISDIR(file_stat.st_mode)) {
         static char last_preview_size_path[MAX_PATH_LENGTH] = "";
         static struct timespec last_preview_size_change = {0};
@@ -1148,7 +1173,14 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
         } else if (dir_size == DIR_SIZE_PENDING) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
+            long p = dir_size_get_progress(file_path);
+            if (p > 0) {
+                char tmp[32];
+                format_file_size(tmp, (size_t)p);
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
+            } else {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
+            }
         } else {
             format_file_size(fileSizeStr, dir_size);
         }
@@ -1186,6 +1218,9 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
 
         // If the directory is empty, show a message
       
+    } else if (is_archive_file(file_path)) {
+        // Display archive contents using cupidarchive
+        display_archive_preview(window, file_path, start_line, max_y, max_x);
     } else if (is_supported_file_type(file_path)) {
         // Display file preview for supported types
         FILE *file = fopen(file_path, "r");
@@ -1222,6 +1257,8 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         } else {
             mvwprintw(window, 7, 2, "Unable to open file for preview");
         }
+    } else {
+        mvwprintw(window, 7, 2, "No preview available");
     }
 
     // Refresh to show changes
@@ -1850,6 +1887,8 @@ int main() {
 
     // Assign to global BANNER_TEXT
     BANNER_TEXT = banner_text_buffer;
+    // Start the marquee centered on first render.
+    banner_offset = initial_banner_offset_for_center(BANNER_TEXT, BUILD_INFO);
 
     // Initialize application state
     AppState state;
@@ -2682,7 +2721,16 @@ int main() {
                     char size_buf[64] = "-";
                     if (S_ISDIR(st.st_mode)) {
                         long dir_size = get_directory_size_peek(file_path);
-                        if (dir_size == DIR_SIZE_PENDING) snprintf(size_buf, sizeof(size_buf), "Calculating...");
+                        if (dir_size == DIR_SIZE_PENDING) {
+                            long p = dir_size_get_progress(file_path);
+                            if (p > 0) {
+                                char tmp[32];
+                                format_file_size(tmp, (size_t)p);
+                                snprintf(size_buf, sizeof(size_buf), "Calculating... %s", tmp);
+                            } else {
+                                snprintf(size_buf, sizeof(size_buf), "Calculating...");
+                            }
+                        }
                         else if (dir_size == DIR_SIZE_VIRTUAL_FS) snprintf(size_buf, sizeof(size_buf), "Virtual FS");
                         else if (dir_size == DIR_SIZE_TOO_LARGE) snprintf(size_buf, sizeof(size_buf), "Too large");
                         else if (dir_size == DIR_SIZE_PERMISSION_DENIED) snprintf(size_buf, sizeof(size_buf), "Permission denied");

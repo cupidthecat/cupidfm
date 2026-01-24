@@ -4,6 +4,21 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
+<details>
+<summary>▶ Demo Video (mp4) – Click to expand</summary>
+
+<br>
+
+<div align="center">
+
+<video src="img/demo.mp4" controls width="600" style="display:block; margin:auto;">
+  Sorry, your browser doesn't support embedded videos. [Download video](img/demo.mp4)
+</video>
+
+</div>
+
+</details>
+
 ### Terminal Requirements
 
 For proper emoji display:
@@ -370,13 +385,10 @@ CupidFM can load Cupidscript plugins (`.cs`) on startup from:
 - `fm.key_name(code)` / `fm.key_code(name)` - convert between keycodes and names
 
 See `plugins/example.cs` for a working example.
-For full API documentation, see `CUPIDFM_CUPIDSCRIPT_API.md`.
 ## Todo
 
 ### High Priority
-- [X] Custom plugin system with cupidscript a custom scripting lang
 - [ ] Add file filtering options
-- [ ] Implement file/directory permissions editing
 - [ ] Add image preview (in house lib?)
 - [ ] Write custom magic library for in-house MIME type detection
 
@@ -465,7 +477,8 @@ For full API documentation, see `CUPIDFM_CUPIDSCRIPT_API.md`.
 - [X] Fix sig winch handling breaking while in edit mode
 - [X] Fix cursor showing up at the bottom of the text editing buffer
 - [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
-
+- [X] Custom plugin system with cupidscript a custom scripting lang
+- [X] Implement file/directory permissions editing
 ### Key Features to Implement
 
 ## Command Line Interface (CLI) Feature
