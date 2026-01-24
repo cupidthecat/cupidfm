@@ -4,7 +4,10 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
-<video src="img/demo.mp4" width="320" height="240" controls></video>
+## demo running on WSL2
+<p align="center" width="100%">
+<video src="https://github.com/user-attachments/assets/cff79286-74e9-4946-82cf-da790616d636" width="80%" controls></video>
+</p>
 
 ### Terminal Requirements
 
