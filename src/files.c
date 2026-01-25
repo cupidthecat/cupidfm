@@ -1,6 +1,8 @@
 // File: files.c
 // -----------------------
-#define _POSIX_C_SOURCE 200112L    // for strdup
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdlib.h>                // for malloc, free
 #include <stddef.h>                // for NULL
 #include <sys/types.h>             // for ino_t

@@ -1,12 +1,167 @@
-# CupidFM Cupidscript API
+# CupidFM Cupidscript API (with New Features)
 
-CupidFM can load Cupidscript plugins (`.cs`) at startup and expose a small `fm.*` API so scripts can interact with the file manager.
+CupidFM supports plugin scripting via [CupidScript](#cupidscript), a lightweight, embeddable scripting language and VM written in C99. This document details plugin loading, the plugin architecture, the `fm.*` API exposed to scripts in CupidFM, and a comprehensive overview of the latest CupidScript language features.
 
-This document describes the currently-implemented API surface in this repository.
+---
 
-## Plugin Locations
+# CupidScript
 
-CupidFM loads `*.cs` plugins from these folders (in this order):
+CupidScript is a compact, embeddable scripting VM (C99), designed for fast integration. It provides a simple C API for host embedding, plugin scripting, and seamless extension with native functions.
+
+---
+
+## What's Included
+
+- **Core runtime:** Lexer, parser, AST, virtual machine, and a minimal standard library.
+- **Sample CLI and main (`src/main.c`):** Demonstrates embedding, native API registration (e.g., `fm.*`).
+- **Public headers** for C API (`src/cupidscript.h`, etc).
+- **Examples/tests** covering all language features, host extension, and API use.
+
+---
+
+## Language Overview
+
+CupidScript: small, dynamic, with a modern feature set. Tree-walk interpreter; strong runtime error reporting; simple types.
+
+### Syntax Example
+
+```cs
+let name = expr;           // declaration
+name = expr;               // assignment
+
+fn add(a, b) { return a + b; }
+
+if (cond) { ... } else { ... }
+while (cond) { ... }
+return expr;
+```
+- **Operators:** `||`, `&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `%`, unary `!`, `-`
+- **Types/Values:** `nil`, `true`/`false`, int, string, list, map, function, native
+
+### Recent Language Features
+
+- **Anonymous Functions & Closures**
+  ```cs
+  let double = fn(x) { return x*2; };
+  let add_fn = fn(a,b) { return a+b; };
+  fn make_counter() {
+    let n = 0;
+    return fn() { n=n+1; return n; };
+  }
+  ```
+- **First-Class Functions:** Pass/return/assign functions; store in containers.
+- **Short-Circuit Logic:** `&&`, `||`
+- **String Concatenation:** Use `+`, e.g., `"foo" + 123`
+- **Modern Errors:** Stack traces, rich source location.
+- **Indexed map access (`m[k]`), map key querying (`keys(m)`)**
+- **Optional trailing commas in lists/maps**
+- **Improved error/stack reporting, with precise line/col info**
+- **Unpack syntax for lists:**  
+  ```cs
+  let [a, b, ...rest] = arr;
+  ```
+- **Top-level await** (if host uses async)
+- **`typeof` returns detailed type names ("native", "function", etc)**
+- **String interpolation**:  
+  ```cs
+  print("The value is: $(x)");
+  ```
+- **`fmt` supports more specifiers (`%b`, `%v` etc)**
+- **`assert_eq`, `assert_ne` (testing stdlib)**
+
+---
+
+## Built-In Types: Lists and Maps
+
+Lists and maps are built-in, dynamic and mutable.
+
+```cs
+let xs = list();
+push(xs, 10);
+push(xs, 20);
+xs[1] = 99;
+print(xs[0], xs[1], len(xs)); // 10 99 2
+
+let m = map();
+m["answer"] = 42;
+print(m["answer"], keys(m)); // 42 ["answer"]
+```
+- Lists index by integer; maps index by string.
+- Assign as `xs[i]=`, `m["key"]=value`
+- Use `keys(map)` to enumerate (as a list of strings).
+- Maps: string keys only. Lists: integer indices only.
+
+---
+
+## Multi-File Scripts
+
+- `load("path")` — always executes (like `#include`)
+- `require("path")` — only executes the first time (like JS `require`)
+- **New**: Loads use per-VM cache; relative to current file/script.
+
+---
+
+## Directory Overview
+
+- `src/cs_value.c`, `src/cs_lexer.c`, `src/cs_parser.c`, `src/cs_vm.c`, `src/cs_stdlib.c` – core runtime, VM, and stdlib
+- `src/main.c` – CLI/embedding demo and entry point
+- `src/cupidscript.h` (embedding API header)
+- Build system: `Makefile`
+---
+
+## Build Instructions
+
+**Requires:** C99 compiler (gcc/clang), POSIX tools.
+
+### With `make`:
+
+```sh
+make all
+```
+Outputs:  
+- `bin/libcupidscript.a` (static library)  
+- `bin/cupidscript` (CLI interpreter)
+
+### Manual:
+
+See README for explicit build commands if not using make.
+
+---
+
+## Using CupidScript in C Hosts
+
+Typical embedding workflow:
+
+1. Create and configure VM:
+   ```c
+   cs_vm* vm = cs_vm_new();
+   cs_register_stdlib(vm);
+   cs_register_native(vm, "fm.notify", my_cb, NULL);
+   ```
+2. Execute scripts:
+   ```c
+   cs_vm_run_file(vm, "script.cs");
+   ```
+3. Invoke function from C:
+   ```c
+   cs_call(vm, "myfunc", argc, argv, &out);
+   ```
+4. Query last error (as string):
+   ```c
+   const char* err = cs_vm_last_error(vm);
+   ```
+Refer to the header for refcounted string/lists API, type checking, etc.
+
+---
+
+## CupidFM Plugins
+
+CupidFM exposes a native scripting API (`fm.*`) to plugins via CupidScript.
+Place `.cs` plugin scripts in designated directories and CupidFM will autoload them at startup.
+
+### Plugin Locations
+
+Load order (per session):
 
 1. `~/.cupidfm/plugins`
 2. `~/.cupidfm/plugin` (legacy)
@@ -14,101 +169,310 @@ CupidFM loads `*.cs` plugins from these folders (in this order):
 4. `./cupidfm/plugin` (legacy)
 5. `./plugins`
 
-## Plugin Hooks
+All `.cs` scripts in these are loaded.
 
-Plugins are regular Cupidscript files. CupidFM calls:
+---
 
-- `fn on_load()` (optional) once after the plugin file is executed.
-- `fn on_key(key)` (optional) on every keypress.
-  - Return `true` to consume the keypress (CupidFM will not handle it).
-  - Return `false` to let CupidFM handle it normally.
+## Plugin Structure, Events & Lifecycle
 
-You can also bind specific keys to a function using `fm.bind(...)` (see below).
+Plugins = Any CupidScript `.cs` file with optional hooks:
 
-## Key Format
+- `fn on_load()` — after file loads (like init)
+- `fn on_key(key)` — after keypress (return true/false to block/pass)
+- `fn on_dir_change(new_cwd, old_cwd)` — when the panel dir changes
+- `fn on_selection_change(new_name, old_name)` — selection changed
 
-CupidFM passes keys to plugins as **strings**, such as:
+**New:**
+- **Plugin API can export additional custom entry points.**
+- **Error in hook?** Stacktrace with file/line/col will display in notification area.
 
-- `"^T"` for Ctrl+T
-- `"F5"` for function keys
-- `"KEY_UP"`, `"KEY_DOWN"`, `"KEY_LEFT"`, `"KEY_RIGHT"`
+---
+
+## Key Format and Helpers
+
+Keys use **string names**, e.g.:
+
+- `"^T"` = Ctrl+T
+- `"F5"`
+- `"KEY_UP"` / `"KEY_DOWN"`
 - `"Tab"`
-- `"a"` for printable characters
+- Any printable char (e.g., `"a"`)
 
-If you need a numeric keycode, use `fm.key_code(name)`.
+Helpers for mapping:
 
-## fm.* API
+- `fm.key_code(name)` — string→int
+- `fm.key_name(code)` — int→string
+
+---
+
+## fm.* API (Plugin Scripting API)
+
+CupidFM hosts these native functions for scripts:
 
 ### UI
 
 - `fm.notify(msg)`
-- `fm.status(msg)`
-  - Show a message in the bottom notification bar.
-  - `fm.status` is an alias of `fm.notify`.
-
+- `fm.status(msg)` (**alias**)
 - `fm.popup(title, msg)`
-  - Show a blocking popup window with a title and message.
+- `fm.console_print(msg)` / `fm.console(msg)`
+  - Append a line to CupidFM's in-app console log (open with `key_console`, default `^O`).
+- `fm.prompt(title, initial) -> string|nil`
+  - Modal input box. Returns the entered string, or `nil` if cancelled.
+- `fm.confirm(title, msg) -> bool`
+  - Modal yes/no box.
+- `fm.menu(title, items) -> int`
+  - Modal menu. `items` is a list of strings. Returns selected index, or `-1` if cancelled.
 
-### Context
+Async variants (callback-based):
+- `fm.prompt_async(title, initial, cb) -> bool`
+- `fm.confirm_async(title, msg, cb) -> bool`
+- `fm.menu_async(title, items, cb) -> bool`
+  - Queues a modal UI action and calls `cb(result)` after it completes.
+  - `cb` may be a function value OR a function name string.
 
-- `fm.cwd() -> string`
-  - Current directory path (the directory panel).
+### Query Context
 
-- `fm.selected_name() -> string`
-  - Name of the currently selected entry (file/dir) in the directory panel, or `""` if none.
+- `fm.cwd()` — current directory (left pane)
+- `fm.selected_name()` — selection (filename or `""`)
+- `fm.selected_path()`
+- `fm.entries() -> list`
+  - Returns the current visible directory listing (search-filtered when `fm.search_active()` is true).
+  - Each entry is a map: `{name,is_dir,size,mtime,mode,mime}`.
+- `fm.cursor()` — index or -1
+- `fm.count()` — count of files/items
+- `fm.search_active()` — true if search open
+- `fm.search_query()`
+- `fm.pane()` — string ("directory" or "preview")
 
-- `fm.selected_path() -> string`
-  - Full path to the currently selected entry (cwd + selected_name), or `""` if none.
+### Search Control
 
-### Key Binding / Events
+(Async: these actions run **after** script hook completes.)
 
-- `fm.bind(key, func_name) -> bool`
-  - Register a function to be called when `key` is pressed.
-  - `key` can be:
-    - a string like `"^T"`, `"F5"`, `"KEY_UP"`, `"Tab"`, `"a"`, etc.
-    - or an integer numeric keycode
-  - `func_name` must be the name of a function defined in your plugin.
-  - The function will be called as `fn your_func(key) -> bool`, where `key` is the key string.
-  - Return `true` to consume the keypress.
+- `fm.set_search(query) -> bool`
+  - Sets CupidFM's fuzzy filter/search query. Passing `""` clears search.
+- `fm.clear_search() -> bool`
+  - Clears CupidFM's fuzzy filter/search query.
 
-- `fm.key_name(code:int) -> string`
-  - Convert a numeric keycode into the string name CupidFM uses.
+### Key Bindings & Events
 
-- `fm.key_code(name:string) -> int`
-  - Convert a key name (like `"^T"` or `"F5"`) into a numeric keycode.
-  - Returns `-1` if unknown.
+- `fm.bind(key, func_name)` — bind a key to your function (fn receives key string, return true to block)
+- `fm.key_name(code)`
+- `fm.key_code(name)`
 
-### Control
+### UI & System Control
 
-- `fm.reload()`
-  - Ask CupidFM to reload the directory listing (like refreshing the directory panel).
+- `fm.reload()` — refresh/reload panel UI
+- `fm.exit()` — exit CupidFM
 
-- `fm.exit()`
-  - Ask CupidFM to exit.
+### File Navigation/Selection
+
+(Async: these actions run **after** script hook completes.)
+
+- `fm.cd(path)`
+- `fm.select(name)`
+- `fm.select_index(i)`
+- `fm.open_selected() -> bool`
+  - Opens the selected entry (enters directory if `is_dir`, otherwise opens editor for the selected file).
+- `fm.enter_dir() -> bool`
+  - Enters the selected directory (no-op if selection is not a directory).
+- `fm.parent_dir() -> bool`
+  - Navigates to the parent directory.
+
+### File Operations + Undo Integration
+
+(Async: these actions run **after** script hook completes.)
+
+These operations are applied by CupidFM and recorded in CupidFM's undo stack, so plugin-triggered
+actions work with `fm.undo()` / `fm.redo()`.
+
+Path args:
+- For `path`, you can pass either a single string OR a list of strings.
+- Relative paths are resolved under `fm.cwd()`.
+
+- `fm.copy(path, dst_dir) -> bool`
+  - Copy files/dirs into `dst_dir` (destination name uses the source basename).
+  - `path` may be a string or a list of strings.
+
+- `fm.move(path, dst_dir) -> bool`
+  - Move files/dirs into `dst_dir`.
+  - `path` may be a string or a list of strings.
+
+- `fm.rename(path, new_name) -> bool`
+  - Rename/move a single path.
+  - If `new_name` is relative, it stays in the same parent dir as `path`.
+  - If `new_name` is absolute, it is used as the full destination path.
+
+- `fm.delete(path) -> bool`
+  - Soft-delete by moving into CupidFM's per-session trash (undoable).
+  - `path` may be a string or a list of strings.
+
+- `fm.mkdir(name_or_path) -> bool`
+  - Create a directory (relative paths are under `fm.cwd()`).
+
+- `fm.touch(name_or_path) -> bool`
+  - Create an empty file (relative paths are under `fm.cwd()`).
+
+Bulk helpers:
+- `fm.selected_paths() -> list`
+  - Returns a list of selected paths (currently at most one: the current selection).
+
+- `fm.each_selected(fn_or_name)`
+  - Calls your function once per selected path (currently at most once).
+  - `fn_or_name` can be a function value OR the name of a function as a string.
+
+Undo/redo:
+- `fm.undo() -> bool`
+- `fm.redo() -> bool`
+
+---
 
 ## Minimal Example Plugin
 
-Save this as `~/.cupidfm/plugins/example.cs`:
+Save as `~/.cupidfm/plugins/example.cs`:
 
 ```cs
 fn on_load() {
-  fm.notify("example plugin loaded");
-  fm.bind("^T", "on_ctrl_t");
+  fm.notify("plugin loaded!");
+  fm.bind("^K", "go_parent");
+  fm.bind("^J", "select_readme");
+  fm.bind("^D", "trash_selected");
 }
 
-fn on_ctrl_t(key) {
-  fm.popup("Example", "Selected: " + fm.selected_path());
+fn go_parent(key) {
+  fm.parent_dir();
+  return true;
+}
+
+fn select_readme(key) {
+  fm.select("README.md");
+  return true;
+}
+
+fn trash_selected(key) {
+  fm.delete(fm.selected_path());
   return true;
 }
 
 fn on_key(key) {
-  return false;
+  return false; // let CupidFM handle
+}
+
+fn on_dir_change(new_cwd, old_cwd) {
+  fm.status(fmt("dir: %s -> %s", old_cwd, new_cwd));
+}
+
+// optional:
+fn on_selection_change(new_name, old_name) {
+  // handle selection moved
 }
 ```
 
-## Notes / Limitations
+### Example: API demo plugin
 
-- Plugins run in-process inside CupidFM via the Cupidscript VM.
-- The API is intentionally small right now; it can be extended with more `fm.*` functions over time.
-- If a plugin function errors, CupidFM will show the VM error in the notification bar (and then clear it).
+File: `plugins/examples/api_demo.cs`
 
+- Logs the first few results from `fm.entries()` with `fm.console`.
+- Drives fuzzy search from scripts via `fm.set_search(query)` and `fm.clear_search()`.
+- Drives navigation using `fm.open_selected()`, `fm.enter_dir()`, and `fm.parent_dir()`.
+- Binds the console-friendly commands to F8–F12 so you can "stress-test" the new helpers.
+
+---
+
+## Notes & Limitations
+
+- Plugins run in their own VMs, synchronously.
+- Side effects (cd, select) happen **after** event/handler returns.
+- Errors/exceptions: shown in the notification bar; full stack traces included.
+- API is intentionally minimal; expect (and request!) expansion.
+
+---
+
+## CupidScript Standard Library & New Features
+
+Registered by calling `cs_register_stdlib(vm)`:
+
+- **Core:** `print`, `assert`, `assert_eq`, `assert_ne`, `typeof`, `getenv`
+- **Lists/Maps:** `list`, `map`, `len`, `push`, `pop`, `mget`, `mset`, `mhas`, `keys`
+- **String utils:** `str_find`, `str_replace`, `str_split`, string interpolation `$(...)`
+- **Path utils:** `path_join`, `path_dirname`, `path_basename`, `path_ext`
+- **Formatting:** `fmt` supports `%d`, `%s`, `%b`, `%v`, `%%`
+- **Time/helpers:** `now_ms`, `sleep`
+- **Multi-file:** `load(path)`, `require(path)`
+- **Test helpers:** `assert_eq`, `assert_ne`
+- **New features:**
+    - Anonymous functions/closures
+    - First-class functions (can pass/store/call)
+    - Precise error stacktraces with file:line:col
+    - String refcounting (safe for hosting APIs)
+    - Top-level `await` support (host opt-in)
+    - Plugin state via lists/maps
+    - Async actions (navigation, selection happen after handlers)
+    - Host can register arbitrary new natives (see API)
+
+---
+
+## Error Reporting
+
+Parse/runtime errors provide `file:line:col` and a **full stacktrace**:
+
+```text
+Runtime error at examples/stacktrace.cs:3:15: division by zero
+Stack trace:
+  at inner (examples/stacktrace.cs:8:16)
+  at outer (examples/stacktrace.cs:11:7)
+```
+`cs_vm_last_error(vm)` gives the last error message.
+
+---
+
+## Embedding & C Native Extensions
+
+To add new host→script functions (native API):
+
+```c
+static int my_native(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+  // check, return result via *out (if used)
+  if (out) *out = cs_nil();
+  return 0; // return nonzero or use cs_error() on error
+}
+cs_register_native(vm, "my.native", my_native, NULL);
+```
+You may pass/retain `cs_value` (function refs, data) between script and C.
+
+---
+
+## CupidScript API Reference/Quick Snapshots
+
+Types: `nil`, `bool`, `int`, `string`, `list`, `map`, `function`, `native function`
+
+- **Lists/maps:** `list`, `push`, `pop`, `len`, `map`, `mget`, `mset`, `keys`, `mhas`
+- **Strings:** `"..."` (with `\n`, `\t`, `\\`, `\"` escapes), concatenation, indexing
+- **Functions/closures:**  
+  ```cs
+  fn make_counter() {
+    let n = 0;
+    return fn() { n=n+1; return n; };
+  }
+  ```
+- **String interpolation:** `"count: $(n)"` (inject vars into strings)
+- **List/map destructuring:** `let [a,b,...rest] = xs;` (new)
+- **Top-level await:** (host opt-in) `await sleep(100);` (new)
+
+---
+
+## Design Notes
+
+- Compact and fast stack/call VM.
+- All plugin natives registered via public C API.
+- String memory is refcounted.
+- Plugin VMs are fully isolated (no data sharing by default).
+- Modern scripting features and error handling.
+
+---
+
+## License
+
+CupidFM and CupidScript are licensed under the GNU General Public License v3.  
+See [`LICENSE`](LICENSE) or https://www.gnu.org/licenses/gpl-3.0.html for details.
+
+---

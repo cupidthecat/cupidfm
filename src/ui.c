@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdarg.h>    // For va_list, va_start, va_end, vw_printw
 #include <ncurses.h>   // For WINDOW, werase, wmove, vw_printw, wrefresh
 #include <stdio.h>     // For vsnprintf, snprintf

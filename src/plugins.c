@@ -1,5 +1,7 @@
 // plugins.c
-#define _POSIX_C_SOURCE 200112L
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 
 #include "plugins.h"
 
@@ -12,12 +14,14 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <time.h>
+#include <magic.h>
 
 #include "globals.h"
 #include "main.h"   // show_notification, draw_scrolling_banner globals
 #include "ui.h"     // show_popup
 #include "utils.h"  // path_join
 #include "console.h"
+#include "files.h"
 
 #include "cupidscript.h"
 #include "cs_vm.h"
@@ -51,6 +55,7 @@ struct PluginManager {
     bool search_active;
     char search_query[MAX_PATH_LENGTH];
     int active_pane; // 1=directory, 2=preview
+    const Vector *view; // current visible listing (not owned)
     bool context_initialized;
 
     bool reload_requested;
@@ -64,6 +69,14 @@ struct PluginManager {
 
     bool select_index_requested;
     int select_index;
+
+    bool open_selected_requested;
+    bool enter_dir_requested;
+    bool parent_dir_requested;
+
+    bool set_search_requested;
+    char requested_search_query[MAX_PATH_LENGTH];
+    bool clear_search_requested;
 
     bool fileop_requested;
     PluginFileOp op;
@@ -965,6 +978,186 @@ static int nf_fm_search_query(cs_vm *vm, void *ud, int argc, const cs_value *arg
     return 0;
 }
 
+static int map_ensure_local(cs_map_obj *m, size_t need) {
+    if (!m) return 0;
+    if (need <= m->cap) return 1;
+    size_t nc = m->cap ? m->cap : 8;
+    while (nc < need) nc *= 2;
+    cs_map_entry *ne = (cs_map_entry *)realloc(m->entries, nc * sizeof(cs_map_entry));
+    if (!ne) return 0;
+    for (size_t i = m->cap; i < nc; i++) {
+        ne[i].key = NULL;
+        ne[i].val = cs_nil();
+    }
+    m->entries = ne;
+    m->cap = nc;
+    return 1;
+}
+
+static int map_put_move_local(cs_vm *vm, cs_value *map_val, const char *key, cs_value *v) {
+    (void)vm;
+    if (!map_val || map_val->type != CS_T_MAP || !key || !v) return 0;
+    cs_map_obj *m = (cs_map_obj *)map_val->as.p;
+    if (!m) return 0;
+    if (!map_ensure_local(m, m->len + 1)) return 0;
+    cs_string *ks = cs_str_new(key);
+    if (!ks) return 0;
+    m->entries[m->len].key = ks;
+    m->entries[m->len].val = *v;
+    m->len++;
+    *v = cs_nil();
+    return 1;
+}
+
+static int nf_fm_entries(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)argc;
+    (void)argv;
+    PluginManager *pm = (PluginManager *)ud;
+    if (!out) return 0;
+
+    cs_value list = cs_list(vm);
+    if (!list.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
+    const Vector *view = (pm ? pm->view : NULL);
+    if (!pm || !view || !view->el) {
+        *out = list;
+        return 0;
+    }
+
+    magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
+    if (mc && magic_load(mc, NULL) != 0) {
+        magic_close(mc);
+        mc = NULL;
+    }
+
+    size_t n = Vector_len(*view);
+    for (size_t i = 0; i < n; i++) {
+        FileAttr fa = (FileAttr)view->el[i];
+        const char *name = FileAttr_get_name(fa);
+        if (!name) name = "";
+        bool is_dir = FileAttr_is_dir(fa);
+
+        char full[MAX_PATH_LENGTH];
+        full[0] = '\0';
+        if (pm->cwd[0] && name[0]) {
+            path_join(full, pm->cwd, name);
+        }
+
+        struct stat st;
+        memset(&st, 0, sizeof(st));
+        if (full[0]) {
+            (void)lstat(full, &st);
+        }
+
+        const char *mime = "unknown";
+        if (is_dir) {
+            mime = "inode/directory";
+        } else if (mc && full[0]) {
+            const char *m = magic_file(mc, full);
+            if (m && *m) mime = m;
+        }
+
+        cs_value m = cs_map(vm);
+        cs_value v = cs_nil();
+        if (!m.as.p) goto oom;
+        v = cs_str(vm, name);
+        if (!map_put_move_local(vm, &m, "name", &v)) goto oom;
+        v = cs_bool(is_dir ? 1 : 0);
+        if (!map_put_move_local(vm, &m, "is_dir", &v)) goto oom;
+        v = cs_int((int64_t)st.st_size);
+        if (!map_put_move_local(vm, &m, "size", &v)) goto oom;
+        v = cs_int((int64_t)st.st_mtime);
+        if (!map_put_move_local(vm, &m, "mtime", &v)) goto oom;
+        v = cs_int((int64_t)st.st_mode);
+        if (!map_put_move_local(vm, &m, "mode", &v)) goto oom;
+        v = cs_str(vm, mime);
+        if (!map_put_move_local(vm, &m, "mime", &v)) goto oom;
+
+        if (!list_push_local((cs_list_obj *)list.as.p, m)) goto oom;
+        cs_value_release(m);
+        continue;
+
+    oom:
+        cs_value_release(v);
+        cs_value_release(m);
+        if (mc) magic_close(mc);
+        cs_value_release(list);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
+    if (mc) magic_close(mc);
+    *out = list;
+    return 0;
+}
+
+static int nf_fm_open_selected(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)argc; (void)argv;
+    PluginManager *pm = (PluginManager *)ud;
+    int ok = 0;
+    if (pm && pm->selected[0]) {
+        pm->open_selected_requested = true;
+        ok = 1;
+    }
+    if (out) *out = cs_bool(ok);
+    return 0;
+}
+
+static int nf_fm_enter_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)argc; (void)argv;
+    PluginManager *pm = (PluginManager *)ud;
+    int ok = 0;
+    if (pm && pm->selected[0]) {
+        pm->enter_dir_requested = true;
+        ok = 1;
+    }
+    if (out) *out = cs_bool(ok);
+    return 0;
+}
+
+static int nf_fm_parent_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)argc; (void)argv;
+    PluginManager *pm = (PluginManager *)ud;
+    int ok = 0;
+    if (pm && pm->cwd[0]) {
+        pm->parent_dir_requested = true;
+        ok = 1;
+    }
+    if (out) *out = cs_bool(ok);
+    return 0;
+}
+
+static int nf_fm_set_search(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    PluginManager *pm = (PluginManager *)ud;
+    int ok = 0;
+    if (pm && argc == 1 && argv[0].type == CS_T_STR) {
+        const char *q = cs_to_cstr(argv[0]);
+        if (!q) q = "";
+        strncpy(pm->requested_search_query, q, sizeof(pm->requested_search_query) - 1);
+        pm->requested_search_query[sizeof(pm->requested_search_query) - 1] = '\0';
+        pm->set_search_requested = true;
+        ok = 1;
+    }
+    if (out) *out = cs_bool(ok);
+    return 0;
+}
+
+static int nf_fm_clear_search(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)argc; (void)argv;
+    PluginManager *pm = (PluginManager *)ud;
+    int ok = 0;
+    if (pm) {
+        pm->clear_search_requested = true;
+        ok = 1;
+    }
+    if (out) *out = cs_bool(ok);
+    return 0;
+}
+
 static int nf_fm_pane(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)argc; (void)argv;
     PluginManager *pm = (PluginManager *)ud;
@@ -1126,12 +1319,18 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.count", nf_fm_count, pm);
     cs_register_native(vm, "fm.search_active", nf_fm_search_active, pm);
     cs_register_native(vm, "fm.search_query", nf_fm_search_query, pm);
+    cs_register_native(vm, "fm.set_search", nf_fm_set_search, pm);
+    cs_register_native(vm, "fm.clear_search", nf_fm_clear_search, pm);
     cs_register_native(vm, "fm.pane", nf_fm_pane, pm);
+    cs_register_native(vm, "fm.entries", nf_fm_entries, pm);
     cs_register_native(vm, "fm.reload", nf_fm_reload, pm);
     cs_register_native(vm, "fm.exit", nf_fm_exit, pm);
     cs_register_native(vm, "fm.cd", nf_fm_cd, pm);
     cs_register_native(vm, "fm.select", nf_fm_select, pm);
     cs_register_native(vm, "fm.select_index", nf_fm_select_index, pm);
+    cs_register_native(vm, "fm.open_selected", nf_fm_open_selected, pm);
+    cs_register_native(vm, "fm.enter_dir", nf_fm_enter_dir, pm);
+    cs_register_native(vm, "fm.parent_dir", nf_fm_parent_dir, pm);
     cs_register_native(vm, "fm.copy", nf_fm_copy, pm);
     cs_register_native(vm, "fm.move", nf_fm_move, pm);
     cs_register_native(vm, "fm.rename", nf_fm_rename, pm);
@@ -1216,6 +1415,7 @@ static void plugins_init(PluginManager *pm) {
     pm->cursor_index = -1;
     pm->list_count = 0;
     pm->active_pane = 0;
+    pm->view = NULL;
     pm->context_initialized = false;
     pm->cd_path[0] = '\0';
     pm->select_name[0] = '\0';
@@ -1236,6 +1436,13 @@ static void plugins_init(PluginManager *pm) {
     pm->ui_cb_is_name = false;
     pm->ui_cb_name[0] = '\0';
     pm->ui_cb = cs_nil();
+
+    pm->open_selected_requested = false;
+    pm->enter_dir_requested = false;
+    pm->parent_dir_requested = false;
+    pm->set_search_requested = false;
+    pm->requested_search_query[0] = '\0';
+    pm->clear_search_requested = false;
 
     // Candidate plugin dirs:
     // 1) ~/.cupidfm/plugins
@@ -1311,6 +1518,13 @@ static void plugins_shutdown(PluginManager *pm) {
     pm->search_active = false;
     pm->search_query[0] = '\0';
     pm->active_pane = 0;
+    pm->view = NULL;
+    pm->open_selected_requested = false;
+    pm->enter_dir_requested = false;
+    pm->parent_dir_requested = false;
+    pm->set_search_requested = false;
+    pm->requested_search_query[0] = '\0';
+    pm->clear_search_requested = false;
     pm->fileop_requested = false;
     fileop_clear(&pm->op);
     if (pm->ui_pending) {
@@ -1354,6 +1568,7 @@ void plugins_set_context(PluginManager *pm, const char *cwd, const char *selecte
         .search_active = false,
         .search_query = "",
         .active_pane = 0,
+        .view = NULL,
     };
     plugins_set_context_ex(pm, &ctx);
 }
@@ -1407,6 +1622,7 @@ void plugins_set_context_ex(PluginManager *pm, const PluginsContext *ctx) {
     strncpy(pm->search_query, ctx->search_query ? ctx->search_query : "", sizeof(pm->search_query) - 1);
     pm->search_query[sizeof(pm->search_query) - 1] = '\0';
     pm->active_pane = ctx->active_pane;
+    pm->view = ctx->view;
 
     if (!pm->context_initialized) {
         // Don't fire change hooks during the initial startup context population
@@ -1569,6 +1785,44 @@ bool plugins_take_select_index_request(PluginManager *pm, int *out_index) {
     pm->select_index_requested = false;
     pm->select_index = -1;
     return true;
+}
+
+bool plugins_take_open_selected_request(PluginManager *pm) {
+    if (!pm) return false;
+    bool v = pm->open_selected_requested;
+    pm->open_selected_requested = false;
+    return v;
+}
+
+bool plugins_take_enter_dir_request(PluginManager *pm) {
+    if (!pm) return false;
+    bool v = pm->enter_dir_requested;
+    pm->enter_dir_requested = false;
+    return v;
+}
+
+bool plugins_take_parent_dir_request(PluginManager *pm) {
+    if (!pm) return false;
+    bool v = pm->parent_dir_requested;
+    pm->parent_dir_requested = false;
+    return v;
+}
+
+bool plugins_take_set_search_request(PluginManager *pm, char *out_query, size_t out_len) {
+    if (!pm || !out_query || out_len == 0) return false;
+    if (!pm->set_search_requested) return false;
+    strncpy(out_query, pm->requested_search_query, out_len - 1);
+    out_query[out_len - 1] = '\0';
+    pm->set_search_requested = false;
+    pm->requested_search_query[0] = '\0';
+    return true;
+}
+
+bool plugins_take_clear_search_request(PluginManager *pm) {
+    if (!pm) return false;
+    bool v = pm->clear_search_requested;
+    pm->clear_search_requested = false;
+    return v;
 }
 
 bool plugins_take_fileop_request(PluginManager *pm, PluginFileOp *out) {

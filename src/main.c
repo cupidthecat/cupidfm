@@ -1,7 +1,9 @@
 // File: main.c
 // -----------------------
 #define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdio.h>     // for snprintf
 #include <stdlib.h>    // for free, malloc
 #include <unistd.h>    // for getenv
@@ -243,8 +245,35 @@ static void plugins_update_context(AppState *state, int active_window) {
         .search_active = state->search_active,
         .search_query = state->search_query,
         .active_pane = active_window,
+        .view = view,
     };
     plugins_set_context_ex(state->plugins, &ctx);
+}
+
+static void redraw_frame_after_edit(AppState *state,
+                                   WINDOW *dirwin,
+                                   WINDOW *previewwin,
+                                   WINDOW *mainwin,
+                                   WINDOW *notifwin) {
+    if (!state) return;
+    if (bannerwin) {
+        box(bannerwin, 0, 0);
+        wrefresh(bannerwin);
+    }
+    if (mainwin) {
+        box(mainwin, 0, 0);
+        wrefresh(mainwin);
+    }
+    if (dirwin) {
+        draw_directory_window(dirwin, state->current_directory, active_files(state), &state->dir_window_cas);
+    }
+    if (previewwin) {
+        draw_preview_window(previewwin, state->current_directory, state->selected_entry, state->preview_start_line);
+    }
+    if (notifwin) {
+        box(notifwin, 0, 0);
+        wrefresh(notifwin);
+    }
 }
 
 static bool ensure_parent_dir_local(const char *path) {
@@ -995,6 +1024,22 @@ void draw_directory_window(
     int cols;
     int rows;
     getmaxyx(window, rows, cols);  // Get window dimensions
+
+    // Defensive: keep CursorAndSlice consistent with the actual vector length.
+    // A stale/invalid `cas->num_files` or `cas->start` can cause out-of-bounds reads
+    // (leading to invalid FileAttr pointers and crashes in strlen/path_join).
+    size_t vec_len = files_vector ? Vector_len(*files_vector) : 0;
+    cas->num_files = (SIZE)vec_len;
+    if (cas->num_files < 0) cas->num_files = 0;
+    if (cas->start < 0) cas->start = 0;
+    if (cas->cursor < 0) cas->cursor = 0;
+    if (cas->num_files == 0) {
+        cas->start = 0;
+        cas->cursor = 0;
+    } else {
+        if (cas->start >= cas->num_files) cas->start = 0;
+        if (cas->cursor >= cas->num_files) cas->cursor = cas->num_files - 1;
+    }
     
     // Clear the window and draw border
     werase(window);
@@ -2147,7 +2192,7 @@ int main() {
             }
 
             char sel_req[MAX_PATH_LENGTH];
-            if (plugins_take_select_request(state.plugins, sel_req, sizeof(sel_req))) {
+	            if (plugins_take_select_request(state.plugins, sel_req, sizeof(sel_req))) {
                 SIZE idx = (SIZE)-1;
                 if (state.search_active) {
                     Vector *view = active_files(&state);
@@ -2169,13 +2214,89 @@ int main() {
                     show_notification(notifwin, "Not found: %s", sel_req);
                     should_clear_notif = false;
                 }
-                plugins_update_context(&state, active_window);
-                goto input_done;
-            }
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
 
-            PluginFileOp op;
-            memset(&op, 0, sizeof(op));
-            if (plugins_take_fileop_request(state.plugins, &op)) {
+	            if (plugins_take_clear_search_request(state.plugins)) {
+	                state.select_all_active = false;
+	                g_select_all_highlight = false;
+	                search_clear(&state);
+	                state.dir_window_cas.cursor = 0;
+	                state.dir_window_cas.start = 0;
+	                sync_selection_from_active(&state, &state.dir_window_cas);
+	                state.preview_start_line = 0;
+	                show_notification(notifwin, "Search cleared.");
+	                should_clear_notif = false;
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
+
+	            char search_req[MAX_PATH_LENGTH];
+	            if (plugins_take_set_search_request(state.plugins, search_req, sizeof(search_req))) {
+	                state.select_all_active = false;
+	                g_select_all_highlight = false;
+	                strncpy(state.search_query, search_req, sizeof(state.search_query) - 1);
+	                state.search_query[sizeof(state.search_query) - 1] = '\0';
+	                if (state.search_query[0] == '\0') {
+	                    search_clear(&state);
+	                    show_notification(notifwin, "Search cleared.");
+	                } else {
+	                    state.search_active = true;
+	                    search_rebuild(&state, state.search_query);
+	                    show_notification(notifwin, "Search: %s", state.search_query);
+	                }
+	                should_clear_notif = false;
+	                state.dir_window_cas.cursor = 0;
+	                state.dir_window_cas.start = 0;
+	                sync_selection_from_active(&state, &state.dir_window_cas);
+	                state.preview_start_line = 0;
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
+
+	            if (plugins_take_parent_dir_request(state.plugins)) {
+	                navigate_left(&state.current_directory, &state.files, &state.dir_window_cas, &state);
+	                state.preview_start_line = 0;
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
+
+	            if (plugins_take_enter_dir_request(state.plugins)) {
+	                navigate_right(&state, &state.current_directory, active_files(&state), &state.dir_window_cas);
+	                state.preview_start_line = 0;
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
+
+	            if (plugins_take_open_selected_request(state.plugins)) {
+	                Vector *view = active_files(&state);
+	                if (view && Vector_len(*view) > 0 && state.dir_window_cas.cursor >= 0 &&
+	                    (size_t)state.dir_window_cas.cursor < Vector_len(*view)) {
+	                    FileAttr current_file = (FileAttr)view->el[state.dir_window_cas.cursor];
+	                    if (FileAttr_is_dir(current_file)) {
+	                        navigate_right(&state, &state.current_directory, view, &state.dir_window_cas);
+	                        state.preview_start_line = 0;
+	                    } else {
+	                        char file_path[MAX_PATH_LENGTH];
+	                        path_join(file_path, state.current_directory, state.selected_entry);
+	                        edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
+	                        state.preview_start_line = 0;
+	                        redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
+	                        show_notification(notifwin, "Editing file: %s", state.selected_entry);
+	                        should_clear_notif = false;
+	                    }
+	                } else {
+	                    show_notification(notifwin, "No selection");
+	                    should_clear_notif = false;
+	                }
+	                plugins_update_context(&state, active_window);
+	                goto input_done;
+	            }
+
+	            PluginFileOp op;
+	            memset(&op, 0, sizeof(op));
+	            if (plugins_take_fileop_request(state.plugins, &op)) {
                 bool ok = false;
                 char err[256] = {0};
 
@@ -2592,53 +2713,21 @@ int main() {
             }
 
             // 6) EDIT 
-            else if (ch == kb.key_edit) {
-                if (active_window == PREVIEW_WIN_ACTIVE) {
-                    char file_path[MAX_PATH_LENGTH];
-                    path_join(file_path, state.current_directory, state.selected_entry);
-                    edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
-                    state.preview_start_line = 0;
-                    
-                    // After exiting edit mode, redraw all windows with borders
-                    // Redraw banner
-                    if (bannerwin) {
-                        box(bannerwin, 0, 0);
-                        wrefresh(bannerwin);
-                    }
-                    
-                    // Redraw main window with border
-                    if (mainwin) {
-                        box(mainwin, 0, 0);
-                        wrefresh(mainwin);
-                    }
-                    
-                    // Redraw directory and preview windows (they draw their own borders)
-                    draw_directory_window(
-                        dirwin,
-                        state.current_directory,
-                        active_files(&state),
-                        &state.dir_window_cas
-                    );
-                    
-                    draw_preview_window(
-                        previewwin,
-                        state.current_directory,
-                        state.selected_entry,
-                        state.preview_start_line
-                    );
-                    
-                    // Redraw notification window
-                    if (notifwin) {
-                        box(notifwin, 0, 0);
-                        wrefresh(notifwin);
-                    }
-                    
-                    werase(notifwin);
-                    show_notification(notifwin, "Editing file: %s", state.selected_entry);
-                    wrefresh(notifwin);
-                    should_clear_notif = false;
-                }
-            }
+	            else if (ch == kb.key_edit) {
+	                if (active_window == PREVIEW_WIN_ACTIVE) {
+	                    char file_path[MAX_PATH_LENGTH];
+	                    path_join(file_path, state.current_directory, state.selected_entry);
+	                    edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
+	                    state.preview_start_line = 0;
+	
+	                    redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
+	                    
+	                    werase(notifwin);
+	                    show_notification(notifwin, "Editing file: %s", state.selected_entry);
+	                    wrefresh(notifwin);
+	                    should_clear_notif = false;
+	                }
+	            }
 
             // 7) COPY
             else if (ch == kb.key_copy) {

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h> // size_t
 #include "globals.h" // MAX_PATH_LENGTH
+#include "vector.h"
 
 typedef struct PluginManager PluginManager;
 
@@ -16,6 +17,7 @@ typedef struct {
     bool search_active;
     const char *search_query;
     int active_pane; // 1=directory, 2=preview
+    const Vector *view; // current visible listing (state->files or state->search_files)
 } PluginsContext;
 
 typedef enum {
@@ -57,6 +59,15 @@ bool plugins_take_quit_request(PluginManager *pm);
 bool plugins_take_cd_request(PluginManager *pm, char *out_path, size_t out_len);
 bool plugins_take_select_request(PluginManager *pm, char *out_name, size_t out_len);
 bool plugins_take_select_index_request(PluginManager *pm, int *out_index);
+
+// Selection + navigation helpers (async: applied by host after script hook completes).
+bool plugins_take_open_selected_request(PluginManager *pm);
+bool plugins_take_enter_dir_request(PluginManager *pm);
+bool plugins_take_parent_dir_request(PluginManager *pm);
+
+// Search control (async: applied by host after script hook completes).
+bool plugins_take_set_search_request(PluginManager *pm, char *out_query, size_t out_len);
+bool plugins_take_clear_search_request(PluginManager *pm);
 
 // File operation requests issued by plugins (fm.copy/move/rename/delete/mkdir/touch/undo/redo).
 // Transfers ownership of op.paths to the caller.

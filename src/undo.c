@@ -1,5 +1,7 @@
 // undo.c
-#define _POSIX_C_SOURCE 200112L
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 
 #include "undo.h"
 
