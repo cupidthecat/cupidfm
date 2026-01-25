@@ -6,6 +6,7 @@
 const char *BANNER_TEXT = NULL;  // To be initialized in main()
 const char *BUILD_INFO = "Version 1.0";
 WINDOW *bannerwin = NULL;
+bool g_select_all_highlight = false;
 WINDOW *notifwin = NULL;
 struct timespec last_scroll_time = {0, 0};
 pthread_mutex_t banner_mutex = PTHREAD_MUTEX_INITIALIZER;

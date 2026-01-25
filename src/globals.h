@@ -31,6 +31,7 @@ extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;
 extern int banner_offset;  // Shared banner scroll offset for synchronization
+extern bool g_select_all_highlight; // Global highlight flag for Select All in current view
 
 // If set, the notif bar should not be auto-cleared until this time.
 extern bool notification_hold_active;
