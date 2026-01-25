@@ -13,3 +13,5 @@ bool should_clear_notif = true;
 struct timespec last_notification_time = {0, 0};
 KeyBindings g_kb;
 int banner_offset = 0;  // Shared banner scroll offset
+bool notification_hold_active = false;
+struct timespec notification_hold_until = {0, 0};

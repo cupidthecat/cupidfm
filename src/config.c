@@ -7,12 +7,15 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <ncurses.h>
+#include <errno.h>
 
 /**
  * Parses the key value from the configuration file.
  * Returns the corresponding key code or -1 on failure.
  */
 static int parse_key(const char *val);
+static void keycode_to_config_string(int keycode, char *buf, size_t buf_size);
+static void write_kv_line(FILE *fp, const char *key, int keycode, const char *comment);
 
 void load_default_keybindings(KeyBindings *kb) {
     // Navigation keys
@@ -32,7 +35,14 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->key_rename = 18; // Ctrl+R
     kb->key_new = 14;    // Ctrl+N
     kb->key_save = 19;   // Ctrl+S
+    kb->key_select_all = 1; // Ctrl+A (Select all in current view)
     kb->key_new_dir = 'N'; // Shift+N
+    kb->key_search = 6;  // Ctrl+F
+    kb->key_info = 20;   // Ctrl+T (Quick file info)
+    kb->key_undo = 26;   // Ctrl+Z (Undo last file op)
+    kb->key_redo = 25;   // Ctrl+Y (Redo last file op)
+    kb->key_permissions = 16; // Ctrl+P (Edit permissions)
+    kb->key_console = 15; // Ctrl+O (Open console)
 
     // Editing keys
     kb->edit_up = KEY_UP;
@@ -44,7 +54,122 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->edit_backspace = KEY_BACKSPACE;
 
     // Default label width
-    kb->info_label_width = 20;
+    kb->info_label_width = 15;
+}
+
+static void keycode_to_config_string(int keycode, char *buf, size_t buf_size) {
+    if (!buf || buf_size == 0) return;
+
+    // Function keys: KEY_F(1) is typically 265.
+    if (keycode >= KEY_F(1) && keycode <= KEY_F(63)) {
+        snprintf(buf, buf_size, "F%d", keycode - KEY_F(1) + 1);
+        return;
+    }
+
+    // Control characters: Ctrl+A..Ctrl+Z
+    if (keycode >= 1 && keycode <= 26) {
+        snprintf(buf, buf_size, "^%c", 'A' + (keycode - 1));
+        return;
+    }
+
+    // Common ncurses named keys we support in parse_key().
+    switch (keycode) {
+        case KEY_UP:        snprintf(buf, buf_size, "KEY_UP"); return;
+        case KEY_DOWN:      snprintf(buf, buf_size, "KEY_DOWN"); return;
+        case KEY_LEFT:      snprintf(buf, buf_size, "KEY_LEFT"); return;
+        case KEY_RIGHT:     snprintf(buf, buf_size, "KEY_RIGHT"); return;
+        case KEY_BACKSPACE: snprintf(buf, buf_size, "KEY_BACKSPACE"); return;
+        default: break;
+    }
+
+    if (keycode == '\t') {
+        snprintf(buf, buf_size, "Tab");
+        return;
+    }
+    if (keycode == ' ') {
+        snprintf(buf, buf_size, "Space");
+        return;
+    }
+
+    // Printable ASCII characters.
+    if (keycode >= 32 && keycode <= 126) {
+        snprintf(buf, buf_size, "%c", (char)keycode);
+        return;
+    }
+
+    // Fallback: numeric code (lets users still override even if unknown).
+    snprintf(buf, buf_size, "%d", keycode);
+}
+
+static void write_kv_line(FILE *fp, const char *key, int keycode, const char *comment) {
+    char val[64];
+    keycode_to_config_string(keycode, val, sizeof(val));
+    if (comment && *comment) {
+        fprintf(fp, "%s=%s  # %s\n", key, val, comment);
+    } else {
+        fprintf(fp, "%s=%s\n", key, val);
+    }
+}
+
+bool write_default_config_file(const char *filepath, const KeyBindings *kb, char *error_buffer, size_t buffer_size) {
+    if (!filepath || !*filepath || !kb) return false;
+
+    FILE *fp = fopen(filepath, "w");
+    if (!fp) {
+        if (error_buffer && buffer_size > 0) {
+            snprintf(error_buffer, buffer_size, "Failed to open config for writing: %s\n", filepath);
+        }
+        return false;
+    }
+
+    fputs("# CupidFM Configuration File\n", fp);
+    fputs("# Automatically generated on first run.\n\n", fp);
+
+    fputs("# Navigation Keys\n", fp);
+    write_kv_line(fp, "key_up", kb->key_up, NULL);
+    write_kv_line(fp, "key_down", kb->key_down, NULL);
+    write_kv_line(fp, "key_left", kb->key_left, NULL);
+    write_kv_line(fp, "key_right", kb->key_right, NULL);
+    write_kv_line(fp, "key_tab", kb->key_tab, NULL);
+    write_kv_line(fp, "key_exit", kb->key_exit, NULL);
+    fputc('\n', fp);
+
+    fputs("# File Management\n", fp);
+    write_kv_line(fp, "key_edit", kb->key_edit, "Enter edit mode");
+    write_kv_line(fp, "key_copy", kb->key_copy, "Copy selected file");
+    write_kv_line(fp, "key_paste", kb->key_paste, "Paste copied file");
+    write_kv_line(fp, "key_cut", kb->key_cut, "Cut (move) file");
+    write_kv_line(fp, "key_delete", kb->key_delete, "Delete selected file");
+    write_kv_line(fp, "key_rename", kb->key_rename, "Rename file");
+    write_kv_line(fp, "key_new", kb->key_new, "Create new file");
+    write_kv_line(fp, "key_new_dir", kb->key_new_dir, "Create new directory");
+    write_kv_line(fp, "key_search", kb->key_search, "Fuzzy search in directory list");
+    write_kv_line(fp, "key_select_all", kb->key_select_all, "Select all in current view");
+    write_kv_line(fp, "key_info", kb->key_info, "Quick file info popup");
+    write_kv_line(fp, "key_undo", kb->key_undo, "Undo last file operation");
+    write_kv_line(fp, "key_redo", kb->key_redo, "Redo last file operation");
+    write_kv_line(fp, "key_permissions", kb->key_permissions, "Edit file permissions (chmod)");
+    write_kv_line(fp, "key_console", kb->key_console, "Open plugin console (log output)");
+    write_kv_line(fp, "key_save", kb->key_save, "Save changes");
+    fputc('\n', fp);
+
+    fputs("# Editing Mode Keys\n", fp);
+    write_kv_line(fp, "edit_up", kb->edit_up, NULL);
+    write_kv_line(fp, "edit_down", kb->edit_down, NULL);
+    write_kv_line(fp, "edit_left", kb->edit_left, NULL);
+    write_kv_line(fp, "edit_right", kb->edit_right, NULL);
+    write_kv_line(fp, "edit_save", kb->edit_save, "Save in editor");
+    write_kv_line(fp, "edit_quit", kb->edit_quit, "Quit editor");
+    write_kv_line(fp, "edit_backspace", kb->edit_backspace, NULL);
+    fputc('\n', fp);
+
+    fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
+
+    bool ok = (fclose(fp) == 0);
+    if (!ok && error_buffer && buffer_size > 0) {
+        snprintf(error_buffer, buffer_size, "Failed to finalize config file: %s\n", filepath);
+    }
+    return ok;
 }
 
 int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, size_t buffer_size) {
@@ -53,14 +178,29 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         error_buffer[0] = '\0';
     }
     
-    // 1) Load config via CupidConf
+    // 1) Detect missing vs unreadable config file. We only auto-generate a config on missing file.
+    FILE *probe = fopen(filepath, "r");
+    if (!probe) {
+        if (errno == ENOENT) {
+            snprintf(error_buffer, buffer_size,
+                     "Configuration file not found: %s\nUsing defaults.\n",
+                     filepath);
+            return 1; // Missing file
+        }
+        snprintf(error_buffer, buffer_size,
+                 "Unable to read configuration file: %s\nUsing defaults.\n",
+                 filepath);
+        return 2; // Unreadable for some other reason
+    }
+    fclose(probe);
+
+    // 2) Load config via CupidConf
     cupidconf_t *conf = cupidconf_load(filepath);
     if (!conf) {
-        // If file not found or parse error, set an error message (non-fatal).
-        snprintf(error_buffer, buffer_size, 
-                 "Configuration file not found or parse error at: %s\nUsing defaults.\n",
+        snprintf(error_buffer, buffer_size,
+                 "Failed to load configuration file: %s\nUsing defaults.\n",
                  filepath);
-        return 1; // Non-fatal, we still have defaults
+        return 3;
     }
 
     // 2) For each known key in KeyBindings, retrieve from config
@@ -84,6 +224,13 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"key_new",     &kb->key_new},
         {"key_save",    &kb->key_save},
         {"key_new_dir", &kb->key_new_dir},
+        {"key_search",  &kb->key_search},
+        {"key_select_all", &kb->key_select_all},
+        {"key_info", &kb->key_info},
+        {"key_undo", &kb->key_undo},
+        {"key_redo", &kb->key_redo},
+        {"key_permissions", &kb->key_permissions},
+        {"key_console", &kb->key_console},
 
         {"edit_up",        &kb->edit_up},
         {"edit_down",      &kb->edit_down},
@@ -243,4 +390,3 @@ static int parse_key(const char *val) {
 
     return -1; // Unknown key
 }
-

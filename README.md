@@ -4,6 +4,8 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
+<video src="img/demo.mp4" width="320" height="240" controls></video>
+
 ### Terminal Requirements
 
 For proper emoji display:
@@ -44,6 +46,7 @@ To build and run cupidfm, you must have the following packages installed:
 - **A C Compiler & Build Tools** (e.g. `gcc`, `make`)
 - **ncurses** development libraries (for terminal handling)
 - **libmagic** development libraries (for MIME type detection)
+- **zlib + bzip2 + xz** development libraries (archive preview via `cupidarchive`)
 - **xclip** (for clipboard support)
 
 ### Installing Dependencies on Ubuntu/Debian
@@ -52,7 +55,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt update
-sudo apt install build-essential libncurses-dev libmagic-dev xclip
+sudo apt install build-essential libncurses-dev libmagic-dev zlib1g-dev libbz2-dev liblzma-dev xclip
 ```
 
 ### Installing Dependencies on Arch Linux
@@ -61,7 +64,7 @@ Open a terminal and run:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -S base-devel ncurses file xclip
+sudo pacman -S base-devel ncurses file zlib bzip2 xz xclip
 ```
 
 *Notes:*
@@ -104,6 +107,7 @@ Error logs (if any) will be saved to `log.txt`.
 - Navigate directories using arrow keys
 - View file details and preview supported file types
 - Display MIME types based on file content using `libmagic`
+- Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
 - File type indicators with emoji icons:
   - 📄 Text files
   - 📝 C source files
@@ -129,6 +133,7 @@ Error logs (if any) will be saved to `log.txt`.
 - Text editing capabilities within the terminal
 - Directory tree visualization with permissions
 - File information display (size, permissions, modification time)
+- Background directory size calculation with a live "Calculating... <size so far>" progress display
 - Scrollable preview window
 - Tab-based window switching between directory and preview panes
 - Configure keybinds
@@ -181,6 +186,50 @@ For detailed performance analysis and test suite documentation, see [`TESTING_AN
 
 ## Configuration
 
+### Keybinds (Quick Reference)
+
+All keybinds are configurable via `~/.cupidfmrc`. These are the defaults.
+
+### Browser Mode (Directory/Preview)
+
+| Action | Default |
+| --- | --- |
+| Move up | `KEY_UP` |
+| Move down | `KEY_DOWN` |
+| Go to parent directory | `KEY_LEFT` |
+| Enter directory | `KEY_RIGHT` |
+| Switch Directory/Preview pane | `Tab` |
+| Exit | `F1` |
+| Edit file (from Preview pane) | `^E` |
+| Copy | `^C` |
+| Paste | `^V` |
+| Cut | `^X` |
+| Delete | `^D` |
+| Rename | `^R` |
+| New file | `^N` |
+| New directory | `Shift+N` |
+| Fuzzy search | `^F` |
+| Select all (current view) | `^A` |
+| Open console | `^O` |
+
+### Search Prompt
+
+| Action | Key |
+| --- | --- |
+| Move selection | `KEY_UP` / `KEY_DOWN` |
+| Page | `PageUp` / `PageDown` |
+| Accept (keep filtered list) | `Enter` |
+| Cancel (restore previous selection) | `Esc` |
+
+### Edit Mode
+
+| Action | Default |
+| --- | --- |
+| Move cursor | `KEY_UP` / `KEY_DOWN` / `KEY_LEFT` / `KEY_RIGHT` |
+| Save | `^G` |
+| Quit | `^Q` |
+| Backspace | `KEY_BACKSPACE` |
+
 ### Default Keybindings
 
 cupidfm comes with a set of **default keybindings**. On **first run**, if cupidfm cannot find a user configuration file, it will **auto-generate** one at:
@@ -194,6 +243,7 @@ Below is a screenshot showing the start up
 ![preview](img/startup.png)
 
 This auto-generated config file includes default bindings, for example:
+The default includes `key_search=^F` (Ctrl+F) for fuzzy search and `key_new_dir=Shift+N` for creating directories, both of which you can change by editing `~/.cupidfmrc` and restarting CupidFM.
 
 ```
 key_up=KEY_UP
@@ -210,6 +260,13 @@ key_cut=^X
 key_delete=^D
 key_rename=^R
 key_new=^N
+key_search=^F
+key_new_dir=Shift+N
+key_select_all=^A
+key_undo=^Z
+key_redo=^Y
+key_permissions=^P
+key_console=^O
 
 edit_up=KEY_UP
 edit_down=KEY_DOWN
@@ -258,6 +315,9 @@ After CupidFM creates this file, you are free to **edit** it to customize keybin
    - CupidFM loads **hard-coded defaults** (arrow keys, F1, etc.) 
    - Automatically **writes** a new file to `~/.cupidfmrc`, which you can later edit.
 
+3. **Config exists but can’t be loaded?**  
+   - CupidFM keeps defaults and shows a **Configuration Errors** popup instead of overwriting your config.
+
 ### Common Changes to the Config
 
 - **Changing the Exit Key**  
@@ -291,59 +351,83 @@ After CupidFM creates this file, you are free to **edit** it to customize keybin
   - You can always delete `~/.cupidfmrc` and relaunch to regenerate a fresh config.
 
 With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`. If you ever lose or remove it, CupidFM will rewrite the default file and let you know on the next run!
+
+## Plugins (CupidScript)
+
+CupidFM can load Cupidscript plugins (`.cs`) on startup.
+
+By default it loads from your home directory:
+
+1. `~/.cupidfm/plugins`
+2. `~/.cupidfm/plugin`
+
+Local/repo plugin folders are supported, but are disabled by default (to avoid accidentally executing repo scripts):
+
+- Enable local plugin loading with: `CUPIDFM_LOAD_LOCAL_PLUGINS=1`
+- Then CupidFM will also search:
+  - `./cupidfm/plugins` and `./cupidfm/plugin`
+  - `./plugins` and `./plugin`
+
+### Plugin Hooks
+
+- `fn on_load()`
+- `fn on_key(key)` -> return `true` to consume the keypress
+- `fn on_dir_change(new_cwd, old_cwd)`
+- `fn on_selection_change(new_name, old_name)`
+
+### CupidFM Script API
+
+- `fm.notify(msg)` / `fm.status(msg)` - show a notification
+- `fm.popup(title, msg)` - show a popup
+- `fm.console_print(msg)` / `fm.console(msg)` - append to the in-app console (`^O` by default)
+- `fm.prompt(title, initial)` -> `string|nil`
+- `fm.confirm(title, msg)` -> `bool`
+- `fm.menu(title, items[])` -> `index|-1`
+- `fm.cwd()` - current directory
+- `fm.selected_name()` / `fm.selected_path()` - current selection
+- `fm.cursor()` / `fm.count()` - cursor index + list size
+- `fm.search_active()` / `fm.search_query()` - fuzzy search state
+- `fm.pane()` - `"directory"` or `"preview"`
+- `fm.bind(key, func_name)` - bind a key to a function (key can be `"^T"`, `"F5"`, `"KEY_UP"`, or a numeric keycode)
+- File operations (integrated with undo/redo):
+  - `fm.copy(path_or_paths, dst_dir)`
+  - `fm.move(path_or_paths, dst_dir)`
+  - `fm.rename(path, new_name)`
+  - `fm.delete(path_or_paths)` (trash)
+  - `fm.mkdir(name_or_path)`
+  - `fm.touch(name_or_path)`
+  - `fm.undo()` / `fm.redo()`
+- `fm.reload()` - request a directory reload
+- `fm.exit()` - request CupidFM to quit
+- `fm.cd(path)` - change directory (absolute or relative)
+- `fm.select(name)` / `fm.select_index(i)` - move selection (best effort)
+- `fm.key_name(code)` / `fm.key_code(name)` - convert between keycodes and names
+
+See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPIDSCRIPT_API.md` for the full API reference.
 ## Todo
 
 ### High Priority
-- [X] Fix directory preview not scrolling 
+- [ ] Add file filtering options
+- [ ] Add image preview (in house lib?)
 - [ ] Write custom magic library for in-house MIME type detection
-- [ ] Implement proper memory management and cleanup for file attributes and vectors
-- [ ] Add error handling for failed memory allocations
-- [ ] Optimize file loading performance for large directories
-- [ ] Optimize scrolling, also make sure tree preview is optimized 
-- [ ] Use tree command to rewrite tree preview
-- [ ] Use YSAP make-diagram program to learn more about files
-- [X] Fixed cursor issue in directory window scroll
-- [X] Fix dir size calc not working (wont calc files inside)
-- [ ] Fix long preview file names
-
-### Edit Mode Issues
-- [X] Banner marquee not rotating correctly when rotating in edit mode
-  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
-- [X] Fix banner not rotating when prompted eg. (new file or dir)
-  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
-- [X] Fix sig winch handling breaking while in edit mode
-- [X] Fix cursor showing up at the bottom of the text editing buffer
-- [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
 
 ### Features
-- [X] Enable scrolling for tree preview in the preview window when tabbed over
-- [ ] Add preview support for `.zip` and `.tar` files
-- [ ] Implement syntax highlighting for supported file types
-- [X] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [ ] Implement syntax highlighting for supported file types (use config system like micro)
 - [ ] Implement text editing shortcuts:
   - [ ] Shift+arrow for selection
   - [ ] Ctrl+arrow for faster cursor movement
   - [ ] Standard shortcuts (Ctrl+X, Ctrl+C, Ctrl+V)
   - [ ] Add undo/redo functionality in edit mode
   - [ ] Implement proper text selection in edit mode
-- [X] Add file operations:
-  - [X] Copy/paste files and directories
-  - [X] Create new file/directory
-  - [X] Delete file/directory
-  - [X] Rename file/directory
 - [ ] Add a quick select feature for selecting file names, dir names, and current directory
-- [ ] Implement file search functionality
-- [ ] Add file filtering options
-- [ ] Implement file/directory permissions editing
 - [X] Add configuration file support for customizing:
   - [X] Key bindings
   - [ ] Color schemes
   - [ ] Default text editor (using in house editor)
   - [ ] File associations
   - [ ] Change default text preview files
-- [ ] Add image preview
 - [ ] Basic file dialog for web and other applications
-- [ ] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
+- [ ] Use YSAP make-diagram program to learn more about files
 
 ### Todo List for Command Line Feature
 
@@ -356,13 +440,6 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [ ] Develop custom cupidfm commands (`tree`, `info`, etc.).
 - [ ] Integrate with system shell commands.
 - [ ] Allow user-defined aliases in a configuration file.
-
-### Performance Improvements
-- [ ] Implement lazy loading for large directories
-- [ ] Optimize memory usage for file preview
-- [ ] Cache directory contents for faster navigation
-- [ ] Improve MIME type detection performance
-- [ ] Implement background loading for directory contents
 
 ### Completed
 - [X] Fallback to extension-based detection instead of MIME type when detection fails
@@ -385,7 +462,42 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 - [X] Add tree structure visualization with proper icons and indentation
 - [X] File info not using emojis
 - [X] Add text display on tree preview when user enters an empty dir and on dir preview
+- [X] Enable scrolling for tree preview in the preview window when tabbed over
+- [X] Add preview support for `.zip` and `.tar` files - implemented via cupidarchive
+- [X] Fix directory preview not scrolling 
+- [X] Implement proper memory management and cleanup for file attributes and vectors
+- [X] Add error handling for failed memory allocations
+- [X] Optimize file loading performance for large directories
+- [X] Optimize scrolling, also make sure tree preview is optimized 
+- [?] Use tree command to rewrite tree preview
+- [X] Fixed cursor issue in directory window scroll
+- [X] Fix dir size calc not working (wont calc files inside)
+- [X] Fix long preview file names
+- [X] Add file operations:
+  - [X] Copy/paste files and directories
+  - [X] Create new file/directory
+  - [X] Delete file/directory
+  - [X] Rename file/directory
+- [X] Display symbolic links with correct arrow notation (e.g., `->` showing the target path)
+- [X] Basic install script for building, installing nerd fonts and other dependencies, and then moving the executable to /usr/bin
+- [X] Implement file search functionality (fuzzy search)
+- [X] Implement lazy loading for large directories
+- [X] Optimize memory usage for file preview
+- [X] Cache directory contents for faster navigation
+- [X] Improve MIME type detection performance
+- [X] Implement background loading for directory contents
+- [X] Banner bug when its going lefct the fisrst tick it goes in it goes to the right one tick then back like normal 
 
+### Edit Mode Issues
+- [X] Banner marquee not rotating correctly when rotating in edit mode
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix banner not rotating when prompted eg. (new file or dir)
+  - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
+- [X] Fix sig winch handling breaking while in edit mode
+- [X] Fix cursor showing up at the bottom of the text editing buffer
+- [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
+- [X] Custom plugin system with cupidscript a custom scripting lang
+- [X] Implement file/directory permissions editing
 ### Key Features to Implement
 
 ## Command Line Interface (CLI) Feature
@@ -443,22 +555,22 @@ The **Command Line Interface (CLI)** for **cupidfm** will introduce a powerful w
 - [X] **Create New File (Ctrl+N)**  
   - Create a new, empty file in the current directory.
 
-- [ ] **Create New Directory (Shift+N)**  
+- [X] **Create New Directory (Shift+N)**  
   - Create a new directory in the current directory.
 
-- [ ] **Select All (Ctrl+A)**  
+- [X] **Select All (Ctrl+A)**  
   - Select all files and directories in the current view.
 
-- [ ] **File Search (Ctrl+F)**  
+- [X] **File Search (Ctrl+F)**  
   - Search for files or directories by name or pattern.
 
-- [ ] **Quick File Info (Ctrl+I)**  
+- [X] **Quick File Info (Ctrl+T)**  
   - Display detailed information about the selected file or directory.
 
-- [ ] **Undo/Redo (Ctrl+Z / Ctrl+Y)**  
+- [X] **Undo/Redo (Ctrl+Z / Ctrl+Y)**  
   - Undo or redo the last file operation.
 
-- [ ] **File Permissions (Ctrl+P)**  
+- [X] **File Permissions (Ctrl+P)**  
   - Edit permissions of the selected file or directory.
 
 - [ ] **Quick Move (F2)**  

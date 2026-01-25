@@ -64,7 +64,8 @@ bool confirm_delete(const char *path, bool *should_delete) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
     
     // Capture user input
     int ch;
@@ -253,8 +254,8 @@ bool is_directory(const char *path, const char *filename) {
     char full_path[MAX_PATH_LENGTH];
     snprintf(full_path, sizeof(full_path), "%s/%s", path, filename);
 
-    // Use lstat instead of stat - faster (doesn't follow symlinks) and sufficient for directory check
-    if (lstat(full_path, &path_stat) == 0)
+    // Use stat (not lstat) to follow symlinks - allows entering symlinks that point to directories
+    if (stat(full_path, &path_stat) == 0)
         return S_ISDIR(path_stat.st_mode);
 
     return false; // Correct: Do not assume it's a directory if stat fails
@@ -553,8 +554,48 @@ static void generate_unique_filename(const char *target_directory, const char *f
     }
 }
 
+void paste_log_free(PasteLog *log) {
+    if (!log) return;
+    for (size_t i = 0; i < log->count; i++) {
+        free(log->src ? log->src[i] : NULL);
+        free(log->dst ? log->dst[i] : NULL);
+    }
+    free(log->src);
+    free(log->dst);
+    log->src = NULL;
+    log->dst = NULL;
+    log->count = 0;
+    log->kind = PASTE_KIND_NONE;
+}
+
+static bool paste_log_append(PasteLog *log, PasteKind kind, const char *src, const char *dst) {
+    if (!log) return true;
+    if (log->kind == PASTE_KIND_NONE) log->kind = kind;
+
+    size_t n = log->count + 1;
+    char **new_src = (char **)realloc(log->src, n * sizeof(char *));
+    char **new_dst = (char **)realloc(log->dst, n * sizeof(char *));
+    if (!new_src || !new_dst) {
+        free(new_src);
+        free(new_dst);
+        return false;
+    }
+    log->src = new_src;
+    log->dst = new_dst;
+    log->src[log->count] = src ? strdup(src) : NULL;
+    log->dst[log->count] = dst ? strdup(dst) : NULL;
+    log->count = n;
+    return true;
+}
+
 // paste files to directory the user in
-void paste_from_clipboard(const char *target_directory, const char *filename) {
+int paste_from_clipboard(const char *target_directory, const char *filename, PasteLog *log) {
+    if (log) {
+        log->kind = PASTE_KIND_NONE;
+        log->count = 0;
+        log->src = NULL;
+        log->dst = NULL;
+    }
     char temp_path[512];
     snprintf(temp_path, sizeof(temp_path), "/tmp/cupidfm_paste_%d", getpid());
     
@@ -563,47 +604,149 @@ void paste_from_clipboard(const char *target_directory, const char *filename) {
     
     if (system(command) == -1) {
         fprintf(stderr, "Error: Unable to read from clipboard.\n");
-        return;
+        return -1;
     }
     
     FILE *temp = fopen(temp_path, "r");
     if (!temp) {
         unlink(temp_path);
-        return;
+        return -1;
     }
-    
+
+    // Try new multi-item clipboard format first.
+    char first_line[512] = {0};
+    if (!fgets(first_line, sizeof(first_line), temp)) {
+        fclose(temp);
+        unlink(temp_path);
+        return -1;
+    }
+    first_line[strcspn(first_line, "\n")] = '\0';
+
+    if (strcmp(first_line, "CUPIDFM_CLIP_V2") == 0) {
+        char op_line[64] = {0};
+        char n_line[64] = {0};
+        if (!fgets(op_line, sizeof(op_line), temp) || !fgets(n_line, sizeof(n_line), temp)) {
+            fclose(temp);
+            unlink(temp_path);
+            return -1;
+        }
+        op_line[strcspn(op_line, "\n")] = '\0';
+        n_line[strcspn(n_line, "\n")] = '\0';
+
+        const char *op = NULL;
+        if (strncmp(op_line, "OP=", 3) == 0) op = op_line + 3;
+        long n = -1;
+        if (strncmp(n_line, "N=", 2) == 0) n = strtol(n_line + 2, NULL, 10);
+        if (!op || n <= 0) {
+            fclose(temp);
+            unlink(temp_path);
+            return -1;
+        }
+
+        bool is_cut = (strcmp(op, "CUT") == 0);
+        PasteKind kind = is_cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
+        int pasted = 0;
+        for (long i = 0; i < n; i++) {
+            char line[1024] = {0};
+            if (!fgets(line, sizeof(line), temp)) break;
+            line[strcspn(line, "\n")] = '\0';
+
+            // Line format: <is_dir>\t<path>\t<name>
+            char *p1 = strchr(line, '\t');
+            if (!p1) continue;
+            *p1++ = '\0';
+            char *p2 = strchr(p1, '\t');
+            if (!p2) continue;
+            *p2++ = '\0';
+
+            int is_directory = atoi(line);
+            const char *source_path = p1;
+            const char *name = p2;
+            if (!source_path || !*source_path || !name || !*name) continue;
+
+            char unique_filename[512];
+            generate_unique_filename(target_directory, name, unique_filename, sizeof(unique_filename));
+
+            char dst_full[PATH_MAX];
+            snprintf(dst_full, sizeof(dst_full), "%s/%s", target_directory, unique_filename);
+
+            if (is_cut) {
+                char mv_command[2048];
+                snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s/%s\"",
+                         source_path, target_directory, unique_filename);
+                if (system(mv_command) == -1) {
+                    fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
+                    continue;
+                }
+                if (!paste_log_append(log, kind, source_path, dst_full)) {
+                    paste_log_free(log);
+                    log = NULL;
+                }
+            } else {
+                char cp_command[2048];
+                snprintf(cp_command, sizeof(cp_command), "cp %s \"%s\" \"%s/%s\"",
+                         is_directory ? "-r" : "", source_path, target_directory, unique_filename);
+                if (system(cp_command) == -1) {
+                    fprintf(stderr, "Error: Unable to copy file.\n");
+                    continue;
+                }
+                if (!paste_log_append(log, kind, source_path, dst_full)) {
+                    paste_log_free(log);
+                    log = NULL;
+                }
+            }
+            pasted++;
+        }
+
+        fclose(temp);
+        unlink(temp_path);
+        return pasted;
+    }
+
+    // Legacy single-item clipboard format (rewind and parse the old way).
+    rewind(temp);
     char source_path[512];
     int is_directory;
     char operation[10] = {0};
-    
+
     if (fscanf(temp, "%511[^\n]\n%d\n%9s", source_path, &is_directory, operation) < 2) {
         fclose(temp);
         unlink(temp_path);
-        return;
+        return -1;
     }
     fclose(temp);
     unlink(temp_path);
-    
+
     // Check if this is a cut operation.
     bool is_cut = (operation[0] == 'C' && operation[1] == 'U' && operation[2] == 'T');
-    
+    PasteKind kind = is_cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
+
     // Generate a unique file name if one already exists in target_directory.
     char unique_filename[512];
-    generate_unique_filename(target_directory, filename, unique_filename, sizeof(unique_filename));
-    
+    const char *use_name = filename;
+    if (!use_name || !*use_name) {
+        const char *slash = strrchr(source_path, '/');
+        use_name = slash ? slash + 1 : source_path;
+    }
+    generate_unique_filename(target_directory, use_name, unique_filename, sizeof(unique_filename));
+
+    char dst_full[PATH_MAX];
+    snprintf(dst_full, sizeof(dst_full), "%s/%s", target_directory, unique_filename);
+
     if (is_cut) {
         // Get the temporary storage path (for cut operations).
         char temp_storage[MAX_PATH_LENGTH];
         snprintf(temp_storage, sizeof(temp_storage), "/tmp/cupidfm_cut_storage_%d", getpid());
-        
+
         // Move from temporary storage to target directory with the unique name.
         char mv_command[2048];
-        snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s/%s\"", 
+        snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s/%s\"",
                  temp_storage, target_directory, unique_filename);
         if (system(mv_command) == -1) {
             fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
-            return;
+            return -1;
         }
+        (void)paste_log_append(log, kind, temp_storage, dst_full);
     } else {
         // Handle regular copy operation.
         char cp_command[2048];
@@ -611,12 +754,16 @@ void paste_from_clipboard(const char *target_directory, const char *filename) {
                  is_directory ? "-r" : "", source_path, target_directory, unique_filename);
         if (system(cp_command) == -1) {
             fprintf(stderr, "Error: Unable to copy file.\n");
+            return -1;
         }
+        (void)paste_log_append(log, kind, source_path, dst_full);
     }
+
+    return 1;
 }
 
 // cut and put into memory 
-void cut_and_paste(const char *path) {
+void cut_and_paste(const char *path, char *out_storage_path, size_t out_len) {
     struct stat path_stat;
     if (stat(path, &path_stat) != 0) {
         fprintf(stderr, "Error: Unable to get file/directory stats.\n");
@@ -661,30 +808,165 @@ void cut_and_paste(const char *path) {
         fprintf(stderr, "Error: Unable to move file to temporary storage.\n");
         return;
     }
+
+    if (out_storage_path && out_len > 0) {
+        strncpy(out_storage_path, temp_storage, out_len - 1);
+        out_storage_path[out_len - 1] = '\0';
+    }
 }
 
-void delete_item(const char *path) {
+static bool ensure_trash_dir(char *out_dir, size_t out_len) {
+    if (!out_dir || out_len == 0) return false;
+    snprintf(out_dir, out_len, "/tmp/cupidfm_trash_%d", getpid());
+    out_dir[out_len - 1] = '\0';
+    if (mkdir(out_dir, 0700) == 0) return true;
+    return (errno == EEXIST);
+}
+
+bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
     struct stat path_stat;
     if (stat(path, &path_stat) != 0) {
         fprintf(stderr, "Error: Unable to get file/directory stats.\n");
-        return;
+        return false;
     }
 
-    if (S_ISDIR(path_stat.st_mode)) {
-        // For directories, use rm -rf command
-        char command[1024];
-        snprintf(command, sizeof(command), "rm -rf \"%s\"", path);
-        
-        int result = system(command);
-        if (result == -1) {
-            fprintf(stderr, "Error: Unable to delete directory: %s\n", path);
-        }
-    } else {
-        // For regular files, use unlink
-        if (unlink(path) != 0) {
-            fprintf(stderr, "Error: Unable to delete file: %s\n", path);
+    char trash_dir[MAX_PATH_LENGTH];
+    if (!ensure_trash_dir(trash_dir, sizeof(trash_dir))) {
+        return false;
+    }
+
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    if (!base || !*base) base = "item";
+
+    char dst_path[MAX_PATH_LENGTH];
+    int n = snprintf(dst_path, sizeof(dst_path), "%s/%s", trash_dir, base);
+    if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+        return false;
+    }
+    for (int attempt = 1; access(dst_path, F_OK) == 0 && attempt < 1000; attempt++) {
+        n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", trash_dir, base, attempt);
+        if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+            return false;
         }
     }
+
+    // Soft delete: move into per-session trash so we can undo.
+    char mv_command[2048];
+    n = snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s\"", path, dst_path);
+    if (n < 0 || (size_t)n >= sizeof(mv_command)) {
+        return false;
+    }
+    if (system(mv_command) == -1) {
+        fprintf(stderr, "Error: Unable to move to trash: %s\n", path);
+        return false;
+    }
+
+    if (out_trashed_path && out_len > 0) {
+        strncpy(out_trashed_path, dst_path, out_len - 1);
+        out_trashed_path[out_len - 1] = '\0';
+    }
+    return true;
+}
+
+bool change_permissions(WINDOW *win, const char *path) {
+    if (!win || !path || !*path) return false;
+
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        show_notification(win, "❌ Unable to stat: %s", strerror(errno));
+        should_clear_notif = false;
+        return false;
+    }
+
+    char input[8] = {0}; // "0777" + NUL
+    int ch = 0;
+    int idx = 0;
+
+    // Non-blocking so banner keeps animating
+    wtimeout(win, 10);
+
+    struct timespec last_banner_update;
+    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+
+    unsigned current = (unsigned)(st.st_mode & 07777);
+
+    for (;;) {
+        werase(win);
+        mvwprintw(win, 0, 0, "Permissions (octal, e.g. 0644) [current %04o] (Esc to cancel): %s",
+                  current, input);
+        wrefresh(win);
+
+        ch = wgetch(win);
+        if (ch == ERR) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            long banner_time_diff = (now.tv_sec - last_banner_update.tv_sec) * 1000000 +
+                                    (now.tv_nsec - last_banner_update.tv_nsec) / 1000;
+            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
+                pthread_mutex_lock(&banner_mutex);
+                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
+                pthread_mutex_unlock(&banner_mutex);
+                banner_offset = (banner_offset + 1) % total_scroll_length;
+                last_banner_update = now;
+            }
+            napms(10);
+            continue;
+        }
+
+        if (ch == 27) { // Esc
+            wtimeout(win, -1);
+            show_notification(win, "❌ Permission change canceled.");
+            should_clear_notif = false;
+            return false;
+        }
+
+        if (ch == '\n') break;
+
+        if (ch == KEY_BACKSPACE || ch == 127) {
+            if (idx > 0) {
+                idx--;
+                input[idx] = '\0';
+            }
+            continue;
+        }
+
+        if (idx < 4 && ch >= '0' && ch <= '7') {
+            input[idx++] = (char)ch;
+            input[idx] = '\0';
+        }
+    }
+
+    wtimeout(win, -1);
+
+    // Accept 3 or 4 octal digits. (e.g. 644 or 0755)
+    if (!(idx == 3 || idx == 4)) {
+        show_notification(win, "❌ Invalid mode (use 3 or 4 octal digits)");
+        should_clear_notif = false;
+        return false;
+    }
+
+    char *end = NULL;
+    errno = 0;
+    long mode = strtol(input, &end, 8);
+    if (errno != 0 || !end || *end != '\0' || mode < 0 || mode > 07777) {
+        show_notification(win, "❌ Invalid mode: %s", input);
+        should_clear_notif = false;
+        return false;
+    }
+
+    if (chmod(path, (mode_t)mode) != 0) {
+        show_notification(win, "❌ chmod failed: %s", strerror(errno));
+        should_clear_notif = false;
+        return false;
+    }
+
+    show_notification(win, "✅ Permissions set to %04lo", mode);
+    should_clear_notif = false;
+    return true;
 }
 
 /**
@@ -694,7 +976,7 @@ void delete_item(const char *path) {
  * @param dir_path The directory where the new folder will be created.
  * @return         true if the directory was created successfully, false if canceled or failed.
  */
-bool create_new_directory(WINDOW *win, const char *dir_path) {
+bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_path, size_t out_len) {
     char dir_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
@@ -705,7 +987,8 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for the new directory name
     werase(win);
@@ -768,6 +1051,10 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
     if (mkdir(full_path, 0755) == 0) {
         show_notification(win, "✅ Directory created: %s", dir_name);
         should_clear_notif = false;
+        if (out_created_path && out_len > 0) {
+            strncpy(out_created_path, full_path, out_len - 1);
+            out_created_path[out_len - 1] = '\0';
+        }
         return true;
     } else {
         show_notification(win, "❌ Directory creation failed: %s", strerror(errno));
@@ -783,7 +1070,7 @@ bool create_new_directory(WINDOW *win, const char *dir_path) {
  * @param old_path The full path to the existing file or directory.
  * @return         true if rename was successful, false if canceled or failed.
  */
-bool rename_item(WINDOW *win, const char *old_path) {
+bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t out_len) {
     char new_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
@@ -794,7 +1081,8 @@ bool rename_item(WINDOW *win, const char *old_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for new name
     werase(win);
@@ -862,6 +1150,10 @@ bool rename_item(WINDOW *win, const char *old_path) {
     if (rename(old_path, new_path) == 0) {
         show_notification(win, "✅ Renamed to: %s", new_name);
         should_clear_notif = false;
+        if (out_new_path && out_len > 0) {
+            strncpy(out_new_path, new_path, out_len - 1);
+            out_new_path[out_len - 1] = '\0';
+        }
         return true;
     } else {
         show_notification(win, "❌ Rename failed: %s", strerror(errno));
@@ -877,7 +1169,7 @@ bool rename_item(WINDOW *win, const char *old_path) {
  * @param dir_path The directory where the new file will be created.
  * @return         true if the file was created successfully, false if canceled or failed.
  */
-bool create_new_file(WINDOW *win, const char *dir_path) {
+bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, size_t out_len) {
     char file_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
@@ -888,7 +1180,8 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
+                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
     // Prompt for the new file name
     werase(win);
@@ -953,6 +1246,10 @@ bool create_new_file(WINDOW *win, const char *dir_path) {
         fclose(file);
         show_notification(win, "✅ File created: %s", file_name);
         should_clear_notif = false;
+        if (out_created_path && out_len > 0) {
+            strncpy(out_created_path, full_path, out_len - 1);
+            out_created_path[out_len - 1] = '\0';
+        }
         return true;
     } else {
         show_notification(win, "❌ File creation failed: %s", strerror(errno));

@@ -1,6 +1,7 @@
 #ifndef FILES_H
 #define FILES_H
 
+#include <stdbool.h>
 #include <curses.h>
 #include "config.h"  
 #include "vector.h"
@@ -22,6 +23,11 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files, siz
 size_t count_directory_files(const char *name);
 void display_file_info(WINDOW *window, const char *file_path, int max_x);
 bool is_supported_file_type(const char *filename);
+bool is_archive_file(const char *filename);
+void display_archive_preview(WINDOW *window, const char *file_path, int start_line, int max_y, int max_x);
+void format_dir_size_pending_animation(char *buffer, size_t len, bool reset);
+// Returns the best-known in-progress byte total for a directory size job, or 0 if none.
+long dir_size_get_progress(const char *dir_path);
 
 /**
  * Now the compiler knows what KeyBindings is 

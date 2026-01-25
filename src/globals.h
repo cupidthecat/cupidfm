@@ -14,6 +14,11 @@
 #define TAB 9
 #define CTRL_E 5
 #define BANNER_SCROLL_INTERVAL 250000  // Microseconds between scroll updates (250ms)
+#define BANNER_TIME_FORMAT "%Y-%m-%d %H:%M:%S"
+// strlen("YYYY-MM-DD HH:MM:SS") == 19
+#define BANNER_TIME_LEN 19
+#define BANNER_TIME_PREFIX " | "
+#define BANNER_TIME_PREFIX_LEN 3
 #define INPUT_CHECK_INTERVAL 10        // Milliseconds for input checking (10ms)
 #define ERROR_BUFFER_SIZE 2048         // Increased buffer size for error messages
 #define NOTIFICATION_TIMEOUT_MS 250    // 250ms timeout for notifications
@@ -26,4 +31,8 @@ extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;
 extern int banner_offset;  // Shared banner scroll offset for synchronization
+
+// If set, the notif bar should not be auto-cleared until this time.
+extern bool notification_hold_active;
+extern struct timespec notification_hold_until;
 #endif // GLOBALS_H
