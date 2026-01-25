@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c2x
-INCLUDES = -I../src -I.
+INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
 LIBS =
 ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
@@ -16,16 +16,16 @@ BENCHMARK_TARGET = benchmark
 all: $(TEST_TARGETS)
 
 test_vector: test_vector.c test_runner.h
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vector.c ../src/vector.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vector.c ../src/ds/vector.c $(LIBS)
 
 test_path_join: test_path_join.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_path_join.c $(LIBS)
 
 test_memory_safety: test_memory_safety.c test_runner.h
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_memory_safety.c ../src/vector.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_memory_safety.c ../src/ds/vector.c $(LIBS)
 
 test_vecstack: test_vecstack.c test_runner.h
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vecstack.c ../src/vecstack.c ../src/vector.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vecstack.c ../src/ds/vecstack.c ../src/ds/vector.c $(LIBS)
 
 test_path_fuzz: test_path_fuzz.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_path_fuzz.c $(LIBS)
@@ -40,7 +40,7 @@ test_integration: test_integration.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_integration.c $(LIBS)
 
 benchmark: benchmark.c
-	$(CC) $(CFLAGS) $(INCLUDES) -o benchmark benchmark.c ../src/vector.c ../src/vecstack.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -o benchmark benchmark.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS)
 
 test_all: test_all.c test_runner.h
 	@echo "Note: test_all requires full application dependencies"
