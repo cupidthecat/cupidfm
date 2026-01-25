@@ -44,6 +44,10 @@ int main(int argc, char** argv) {
 
     // base stdlib
     cs_register_stdlib(vm);
+    
+    // Safety controls to prevent runaway scripts
+    cs_vm_set_instruction_limit(vm, 100000000);  // 100 million instructions
+    cs_vm_set_timeout(vm, 10000);                // 10 second timeout
 
     // CupidFM API would register lots of these:
     cs_register_native(vm, "fm.status", fm_status, NULL);

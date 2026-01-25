@@ -21,6 +21,7 @@ typedef struct cs_native {
 
 typedef struct cs_list_obj {
     int ref;
+    cs_vm* owner;
     size_t len;
     size_t cap;
     cs_value* items;
@@ -33,6 +34,7 @@ typedef struct cs_map_entry {
 
 typedef struct cs_map_obj {
     int ref;
+    cs_vm* owner;
     size_t len;
     size_t cap;
     cs_map_entry* entries;
@@ -44,6 +46,14 @@ typedef struct cs_strbuf_obj {
     size_t cap;
     char* data;
 } cs_strbuf_obj;
+
+typedef struct cs_range_obj {
+    int ref;
+    int64_t start;
+    int64_t end;
+    int64_t step;
+    int inclusive;
+} cs_range_obj;
 
 // refcounted heap objects
 cs_string* cs_str_new(const char* s);
