@@ -2,22 +2,11 @@
 
 cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses` library for the user interface, providing features like directory navigation, directory tree preview, file preview, file editing, and file information display. 
 
-## Libraries used
-
-System/third-party dependencies:
-- [ncurses](https://invisible-island.net/ncurses/) (terminal UI)
-- [libmagic](https://github.com/file/file) (MIME/type detection)
-- [zlib](https://zlib.net/), [bzip2](https://sourceware.org/bzip2/), and [xz/liblzma](https://tukaani.org/xz/) (compression backends used by archive preview)
-- [xclip](https://github.com/astrand/xclip) (clipboard integration)
-
-Project libraries (customized/updated versions):
-- [cupidconf](https://github.com/cupidthecat/cupidconf) (config loader; this repo vendors a customized version in `lib/cupidconf.c`)
-- [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
-- [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
-
 ![preview](img/preview2.png)
 
 <video src="img/demo.mp4" width="320" height="240" controls></video>
+
+## Prerequisites
 
 ### Terminal Requirements
 
@@ -52,7 +41,18 @@ If emojis aren't displaying correctly:
 
 Note: Some terminal emulators like Alacritty, iTerm2, Konsole, and Kitty are known to work better with unicode/emojis. 
 
-## Prerequisites
+## Libraries used
+
+System/third-party dependencies:
+- [ncurses](https://invisible-island.net/ncurses/) (terminal UI)
+- [libmagic](https://github.com/file/file) (MIME/type detection)
+- [zlib](https://zlib.net/), [bzip2](https://sourceware.org/bzip2/), and [xz/liblzma](https://tukaani.org/xz/) (compression backends used by archive preview)
+- [xclip](https://github.com/astrand/xclip) (clipboard integration)
+
+Project libraries (customized/updated versions):
+- [cupidconf](https://github.com/cupidthecat/cupidconf) (config loader; this repo vendors a customized version in `lib/cupidconf.c`)
+- [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
+- [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
 
 To build and run cupidfm, you must have the following packages installed:
 
