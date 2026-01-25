@@ -12,14 +12,14 @@ st["last_ms"] = 0;
 
 fn on_load() {
   fm.notify("hooks_status.cs loaded (F10 toggles)");
-  fm.console("hooks_status.cs: loaded (F10 toggles)");
+  fm.console_print("hooks_status.cs: loaded (F10 toggles)");
   fm.bind("F10", "toggle_hooks");
 }
 
 fn toggle_hooks(key) {
   st["enabled"] = !st["enabled"];
   fm.status("hooks enabled=" + fmt("%b", st["enabled"]));
-  fm.console("hooks enabled=" + fmt("%b", st["enabled"]));
+  fm.console_print("hooks enabled=" + fmt("%b", st["enabled"]));
   return true;
 }
 
@@ -41,7 +41,7 @@ fn on_dir_change(new_cwd, old_cwd) {
     return;
   }
   fm.status(fmt("dir: %s -> %s", old_cwd, new_cwd));
-  fm.console(fmt("dir: %s -> %s", old_cwd, new_cwd));
+  fm.console_print(fmt("dir: %s -> %s", old_cwd, new_cwd));
 }
 
 fn on_selection_change(new_name, old_name) {
@@ -53,5 +53,5 @@ fn on_selection_change(new_name, old_name) {
   }
   // Show extra context using APIs:
   fm.status(fmt("[%s] %d/%d  %s", fm.pane(), fm.cursor(), fm.count(), new_name));
-  fm.console(fmt("[%s] %d/%d  %s", fm.pane(), fm.cursor(), fm.count(), new_name));
+  fm.console_print(fmt("[%s] %d/%d  %s", fm.pane(), fm.cursor(), fm.count(), new_name));
 }

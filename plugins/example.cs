@@ -13,7 +13,7 @@
 
 fn on_load() {
   fm.notify("example.cs loaded (CupidFM plugins)");
-  fm.console("example.cs: loaded (open console with ^O)");
+  fm.console_print("example.cs: loaded (open console with ^O)");
   // Demo binds:
   // - Ctrl+K: go to parent directory (relative cd)
   // - Ctrl+J: try to select README.md in the current directory
@@ -22,13 +22,13 @@ fn on_load() {
 }
 
 fn go_parent(key) {
-  fm.console("go_parent: cd ..");
+  fm.console_print("go_parent: cd ..");
   fm.cd("..");
   return true;
 }
 
 fn select_readme(key) {
-  fm.console("select_readme: selecting README.md");
+  fm.console_print("select_readme: selecting README.md");
   fm.select("README.md");
   return true;
 }
@@ -40,7 +40,7 @@ fn on_key(key) {
 
 fn on_dir_change(new_cwd, old_cwd) {
   fm.status("dir: " + old_cwd + " -> " + new_cwd);
-  fm.console("dir change: " + old_cwd + " -> " + new_cwd);
+  fm.console_print("dir change: " + old_cwd + " -> " + new_cwd);
 }
 
 fn on_selection_change(new_name, old_name) {

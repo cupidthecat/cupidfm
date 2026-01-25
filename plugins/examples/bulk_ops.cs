@@ -15,12 +15,12 @@ state["last_op"] = "none";
 
 fn on_load() {
   fm.notify("bulk_ops.cs loaded (F8)");
-  fm.console("bulk_ops.cs: loaded (F8)");
+  fm.console_print("bulk_ops.cs: loaded (F8)");
   fm.bind("F8", "bulk_dialog");
 }
 
 fn bulk_dialog(key) {
-  fm.console("bulk_ops: open dialog");
+  fm.console_print("bulk_ops: open dialog");
   let default_paths = fm.selected_path();
   if (default_paths == "") {
     default_paths = "a.txt,b.txt";
@@ -33,7 +33,7 @@ fn bulk_dialog(key) {
   let paths = list_from_csv(s);
   if (len(paths) == 0) {
     fm.status("No paths provided");
-    fm.console("bulk_ops: no paths provided");
+    fm.console_print("bulk_ops: no paths provided");
     return true;
   }
 
@@ -48,7 +48,7 @@ fn bulk_dialog(key) {
   if (idx < 0) {
     return true;
   }
-  fm.console("bulk_ops: menu idx=" + fmt("%d", idx));
+  fm.console_print("bulk_ops: menu idx=" + fmt("%d", idx));
 
   if (idx == 0 || idx == 1) {
     let dst = fm.prompt("Destination directory", fm.cwd());
@@ -81,6 +81,6 @@ fn bulk_dialog(key) {
   }
 
   fm.status("last_op=" + state["last_op"]);
-  fm.console("bulk_ops: last_op=" + state["last_op"]);
+  fm.console_print("bulk_ops: last_op=" + state["last_op"]);
   return true;
 }

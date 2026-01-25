@@ -9,12 +9,12 @@
 
 fn on_load() {
   fm.notify("toolkit.cs loaded (F7)");
-  fm.console("toolkit.cs: loaded (F7)");
+  fm.console_print("toolkit.cs: loaded (F7)");
   fm.bind("F7", "open_toolkit");
 }
 
 fn open_toolkit(key) {
-  fm.console("toolkit: open menu");
+  fm.console_print("toolkit: open menu");
   let items = list();
   push(items, "Rename selected");
   push(items, "Copy selected -> dst dir");
@@ -29,12 +29,12 @@ fn open_toolkit(key) {
   if (idx < 0) {
     return true;
   }
-  fm.console("toolkit: menu idx=" + fmt("%d", idx));
+  fm.console_print("toolkit: menu idx=" + fmt("%d", idx));
 
   let sel = fm.selected_path();
   if ((idx < 4) && (sel == "")) {
     fm.status("No selection");
-    fm.console("toolkit: no selection");
+    fm.console_print("toolkit: no selection");
     return true;
   }
 

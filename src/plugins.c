@@ -1400,7 +1400,16 @@ static void load_plugins_from_dir(PluginManager *pm, const char *dir_path) {
 
         // Optional hook.
         cs_value out = cs_nil();
-        (void)cs_call(vm, "on_load", 0, NULL, &out);
+        if (cs_call(vm, "on_load", 0, NULL, &out) != 0) {
+            const char *err = cs_vm_last_error(vm);
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Plugin on_load failed: %s: %s", ent->d_name, err ? err : "");
+            pm_notify(msg);
+            // Plugin errors are important; keep them visible long enough to read.
+            hold_notification_for_ms(5000);
+            // Clear so we don't spam the same error for other hooks.
+            cs_error(vm, "");
+        }
         cs_value_release(out);
     }
 

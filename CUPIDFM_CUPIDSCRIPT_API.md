@@ -36,7 +36,7 @@ while (cond) { ... }
 return expr;
 ```
 - **Operators:** `||`, `&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `%`, unary `!`, `-`
-- **Types/Values:** `nil`, `true`/`false`, int, string, list, map, function, native
+- **Types/Values:** `nil`, `true`/`false`, int, float, string, list, map, strbuf, function, native
 
 ### Recent Language Features
 
@@ -69,6 +69,70 @@ return expr;
 - **`fmt` supports more specifiers (`%b`, `%v` etc)**
 - **`assert_eq`, `assert_ne` (testing stdlib)**
 
+#### Core language features (per CupidScript wiki)
+
+These are the *core* language/stdlib behaviors implemented by the current lexer/parser/VM as documented in the CupidScript wiki.
+
+- **List and map literals**
+  ```cs
+  let xs = [1, 2, 3];
+  let m = {"name": "Frank", "age": 30};
+  ```
+- **Map field access sugar** (maps only)
+  ```cs
+  let m = {"name": "Frank"};
+  print(m.name);     // same as m["name"]
+  ```
+  If the value is *not* a map, `obj.field` is a runtime error.
+
+- **`for ... in` loops** (iterate lists; maps iterate keys)
+  ```cs
+  for x in [10, 20, 30] {
+    print(x);
+  }
+  for k in keys({"a": 1, "b": 2}) {
+    print(k);
+  }
+  ```
+
+- **C-style `for (init; cond; incr)` loops**
+  ```cs
+  for (i = 0; i < 10; i = i + 1) {
+    print(i);
+  }
+  ```
+
+- **Range operator**
+  ```cs
+  let nums = 0..5;    // [0,1,2,3,4]
+  let incl = 0..=5;   // [0,1,2,3,4,5]
+  for i in 1..=3 { print(i); }
+  ```
+  Ranges work in both directions (ascending/descending) automatically.
+
+- **Ternary expression**
+  ```cs
+  let max = a > b ? a : b;
+  ```
+
+- **Exceptions**: `throw` and `try/catch`
+  ```cs
+  try {
+    throw "boom";
+  } catch (e) {
+    print("caught:", e);
+  }
+  ```
+
+- **Standardized error objects**: `error`, `is_error`, `format_error`, global `ERR`
+  ```cs
+  try {
+    throw error("Division by zero", "DIV_ZERO");
+  } catch (e) {
+    print(format_error(e));
+  }
+  ```
+
 ---
 
 ## Built-In Types: Lists and Maps
@@ -91,6 +155,26 @@ print(m["answer"], keys(m)); // 42 ["answer"]
 - Use `keys(map)` to enumerate (as a list of strings).
 - Maps: string keys only. Lists: integer indices only.
 
+Additional rules (per wiki):
+
+- List indexing: index must be an `int`; negative or out-of-range returns `nil`.
+- Map indexing: key must be a `string`; missing keys return `nil`.
+
+## Control Flow (Additional)
+
+CupidScript supports:
+
+- `break;` / `continue;` inside `while`, `for ... in`, and C-style `for` loops.
+- `return;` / `return expr;` from inside any block.
+
+## Truthiness (Reminder)
+
+Used by `if`, `while`, `!`, `&&`, `||`:
+
+- `nil` is false
+- `bool` is its value
+- everything else is true (including `0`)
+
 ---
 
 ## Multi-File Scripts
@@ -98,6 +182,15 @@ print(m["answer"], keys(m)); // 42 ["answer"]
 - `load("path")` — always executes (like `#include`)
 - `require("path")` — only executes the first time (like JS `require`)
 - **New**: Loads use per-VM cache; relative to current file/script.
+
+Additional module/path behavior (per wiki):
+
+- The VM maintains a **current-directory stack** so relative module loads resolve relative to the calling script.
+- `require_optional("path")` behaves like `require()`, but returns `nil` if the file is missing.
+- `require()` returns a module **exports** map. Inside a required file, these globals are available:
+  - `exports` (map)
+  - `__file__` (string, resolved module path)
+  - `__dir__` (string, directory containing the module)
 
 ---
 
@@ -393,11 +486,16 @@ Registered by calling `cs_register_stdlib(vm)`:
 
 - **Core:** `print`, `assert`, `assert_eq`, `assert_ne`, `typeof`, `getenv`
 - **Lists/Maps:** `list`, `map`, `len`, `push`, `pop`, `mget`, `mset`, `mhas`, `keys`
+- **Lists/Maps (additional):** `insert`, `remove`, `slice`, `values`, `items`, `map_values`, `mdel`
+- **Copy helpers:** `copy`, `deepcopy`
+- **List helpers:** `reverse`, `reversed`, `contains`
 - **String utils:** `str_find`, `str_replace`, `str_split`, string interpolation `$(...)`
+- **String utils (additional):** `str_trim`, `str_ltrim`, `str_rtrim`, `str_lower`, `str_upper`, `str_startswith`, `str_endswith`, `str_repeat`
 - **Path utils:** `path_join`, `path_dirname`, `path_basename`, `path_ext`
 - **Formatting:** `fmt` supports `%d`, `%s`, `%b`, `%v`, `%%`
 - **Time/helpers:** `now_ms`, `sleep`
-- **Multi-file:** `load(path)`, `require(path)`
+- **Multi-file:** `load(path)`, `require(path)`, `require_optional(path)`
+- **Error handling:** `error`, `is_error`, `format_error`, global `ERR`
 - **Test helpers:** `assert_eq`, `assert_ne`
 - **New features:**
     - Anonymous functions/closures
@@ -423,6 +521,21 @@ Stack trace:
 ```
 `cs_vm_last_error(vm)` gives the last error message.
 
+## Host Safety Controls (CPU/timeout limits)
+
+CupidScript includes safety controls to keep scripts from hanging the host.
+
+Host-level (C API) examples:
+
+- `cs_vm_set_instruction_limit(vm, N)`
+- `cs_vm_set_timeout(vm, ms)`
+- `cs_vm_interrupt(vm)`
+
+Script-level helpers (per wiki):
+
+- `set_instruction_limit(n)` / `get_instruction_limit()` / `get_instruction_count()`
+- `set_timeout(ms)` / `get_timeout()`
+
 ---
 
 ## Embedding & C Native Extensions
@@ -443,10 +556,13 @@ You may pass/retain `cs_value` (function refs, data) between script and C.
 
 ## CupidScript API Reference/Quick Snapshots
 
-Types: `nil`, `bool`, `int`, `string`, `list`, `map`, `function`, `native function`
+Types: `nil`, `bool`, `int`, `float`, `string`, `list`, `map`, `strbuf`, `function`, `native function`
 
-- **Lists/maps:** `list`, `push`, `pop`, `len`, `map`, `mget`, `mset`, `keys`, `mhas`
+- **Lists/maps:** `list`, `push`, `pop`, `insert`, `remove`, `slice`, `reverse`, `reversed`, `contains`, `copy`, `deepcopy`
+- **Maps:** `map`, `mget`, `mset`, `mhas`, `mdel`, `keys`, `values`, `items`, `map_values`
 - **Strings:** `"..."` (with `\n`, `\t`, `\\`, `\"` escapes), concatenation, indexing
+- **Control flow:** `for x in xs {}`, `for (init; cond; incr) {}`, ranges `0..10` / `0..=10`, ternary `c ? a : b`
+- **Errors:** `throw`, `try/catch`, `error`, `is_error`, `format_error`, global `ERR`
 - **Functions/closures:**  
   ```cs
   fn make_counter() {

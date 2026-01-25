@@ -8,12 +8,12 @@
 
 fn on_load() {
   fm.notify("async_ui_demo.cs loaded (F9)");
-  fm.console("async_ui_demo.cs: loaded (F9)");
+  fm.console_print("async_ui_demo.cs: loaded (F9)");
   fm.bind("F9", "open_async_menu");
 }
 
 fn open_async_menu(key) {
-  fm.console("async_ui_demo: open async menu");
+  fm.console_print("async_ui_demo: open async menu");
   let items = list();
   push(items, "Rename selected");
   push(items, "mkdir (under cwd)");
@@ -26,7 +26,7 @@ fn open_async_menu(key) {
 }
 
 fn on_menu_choice(idx) {
-  fm.console("async_ui_demo: menu idx=" + fmt("%d", idx));
+  fm.console_print("async_ui_demo: menu idx=" + fmt("%d", idx));
   if (idx < 0) {
     return;
   }
@@ -65,7 +65,7 @@ fn on_menu_choice(idx) {
 }
 
 fn on_rename_value(v) {
-  fm.console("async_ui_demo: rename value=" + fmt("%v", v));
+  fm.console_print("async_ui_demo: rename value=" + fmt("%v", v));
   if (v == nil || v == "") {
     return;
   }
@@ -73,7 +73,7 @@ fn on_rename_value(v) {
 }
 
 fn on_mkdir_value(v) {
-  fm.console("async_ui_demo: mkdir value=" + fmt("%v", v));
+  fm.console_print("async_ui_demo: mkdir value=" + fmt("%v", v));
   if (v == nil || v == "") {
     return;
   }
@@ -81,7 +81,7 @@ fn on_mkdir_value(v) {
 }
 
 fn on_touch_value(v) {
-  fm.console("async_ui_demo: touch value=" + fmt("%v", v));
+  fm.console_print("async_ui_demo: touch value=" + fmt("%v", v));
   if (v == nil || v == "") {
     return;
   }
@@ -89,7 +89,7 @@ fn on_touch_value(v) {
 }
 
 fn on_delete_confirm(ok) {
-  fm.console("async_ui_demo: delete confirm=" + fmt("%b", ok));
+  fm.console_print("async_ui_demo: delete confirm=" + fmt("%b", ok));
   if (ok) {
     fm.delete(fm.selected_path());
   }

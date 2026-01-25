@@ -12,7 +12,7 @@
 
 fn on_load() {
   fm.notify("api_demo.cs loaded (F8 entries, F9 search, F10 clear, F11 open, F12 nav)");
-  fm.console("api_demo.cs: loaded (uses fm.console+entries+search helpers)");
+  fm.console_print("api_demo.cs: loaded (uses fm.console_print+entries+search helpers)");
   fm.bind("F8", "log_entries");
   fm.bind("F9", "set_or_toggle_search");
   fm.bind("F10", "clear_search");
@@ -23,8 +23,10 @@ fn on_load() {
 fn log_entries(key) {
   let entries = fm.entries();
   let total = len(entries);
-  fm.console(fmt("api_demo: entries=%d search_active=%b query=%s",
-                 total, fm.search_active(), fm.search_query()));
+  // Some APIs may return int(0/1) instead of bool; coerce via comparison.
+  let active = fm.search_active() != 0;
+  fm.console_print(fmt("api_demo: entries=%d search_active=%b query=%v",
+                 total, active, fm.search_query()));
 
   let limit = total;
   if (limit > 5) {
@@ -36,9 +38,11 @@ fn log_entries(key) {
     let entry = entries[idx];
     let name = entry["name"];
     let size = entry["size"];
-    let is_dir = entry["is_dir"];
+    // Coerce potential int(0/1) into bool for fmt("%b").
+    let is_dir = entry["is_dir"] != 0;
     let mime = entry["mime"];
-    fm.console(fmt("[%d] %s dir=%b size=%d mime=%s",
+    // Use %v so nil/unknown values don't crash fmt("%s").
+    fm.console_print(fmt("[%d] %v dir=%b size=%d mime=%v",
                    idx, name, is_dir, size, mime));
     idx = idx + 1;
   }
@@ -49,7 +53,7 @@ fn set_or_toggle_search(key) {
   let current = fm.search_query();
   if (current == "README") {
     fm.clear_search();
-    fm.console("api_demo: search cleared (README cycle)");
+    fm.console_print("api_demo: search cleared (README cycle)");
     return true;
   }
   let q = fm.prompt("Enter search query (empty clears)", current);
@@ -58,41 +62,41 @@ fn set_or_toggle_search(key) {
   }
   if (q == "") {
     fm.clear_search();
-    fm.console("api_demo: search cleared via prompt");
+    fm.console_print("api_demo: search cleared via prompt");
     return true;
   }
   if (fm.set_search(q)) {
-    fm.console("api_demo: search set to " + q);
+    fm.console_print("api_demo: search set to " + q);
   } else {
-    fm.console("api_demo: failed to set search");
+    fm.console_print("api_demo: failed to set search");
   }
   return true;
 }
 
 fn clear_search(key) {
   if (fm.clear_search()) {
-    fm.console("api_demo: search cleared (F10)");
+    fm.console_print("api_demo: search cleared (F10)");
   } else {
-    fm.console("api_demo: no active search to clear");
+    fm.console_print("api_demo: no active search to clear");
   }
   return true;
 }
 
 fn open_selected_entry(key) {
-  fm.console("api_demo: open_selected()");
+  fm.console_print("api_demo: open_selected()");
   fm.open_selected();
   return true;
 }
 
 fn parent_or_child(key) {
   if (fm.enter_dir()) {
-    fm.console("api_demo: entered child directory");
+    fm.console_print("api_demo: entered child directory");
     return true;
   }
   if (fm.parent_dir()) {
-    fm.console("api_demo: moved to parent directory");
+    fm.console_print("api_demo: moved to parent directory");
     return true;
   }
-  fm.console("api_demo: navigation request had no effect");
+  fm.console_print("api_demo: navigation request had no effect");
   return true;
 }
