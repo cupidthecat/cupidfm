@@ -10,8 +10,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
-#include "../src/vector.h"
-#include "../src/vecstack.h"
+#include "vector.h"
+#include "vecstack.h"
 
 #define MAX_PATH_LENGTH 1024
 

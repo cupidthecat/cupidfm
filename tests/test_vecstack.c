@@ -1,5 +1,5 @@
 #include "test_runner.h"
-#include "../src/vecstack.h"
+#include "vecstack.h"
 #include <stdlib.h>
 #include <string.h>
 

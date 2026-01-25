@@ -1,5 +1,5 @@
 #include "test_runner.h"
-#include "../src/utils.h"
+#include "utils.h"
 #include <string.h>
 
 #define MAX_PATH_LENGTH 1024

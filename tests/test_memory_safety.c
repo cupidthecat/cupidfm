@@ -1,5 +1,5 @@
 #include "test_runner.h"
-#include "../src/vector.h"
+#include "vector.h"
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
