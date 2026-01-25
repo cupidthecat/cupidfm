@@ -42,6 +42,7 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->key_undo = 26;   // Ctrl+Z (Undo last file op)
     kb->key_redo = 25;   // Ctrl+Y (Redo last file op)
     kb->key_permissions = 16; // Ctrl+P (Edit permissions)
+    kb->key_console = 15; // Ctrl+O (Open console)
 
     // Editing keys
     kb->edit_up = KEY_UP;
@@ -148,6 +149,7 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "key_undo", kb->key_undo, "Undo last file operation");
     write_kv_line(fp, "key_redo", kb->key_redo, "Redo last file operation");
     write_kv_line(fp, "key_permissions", kb->key_permissions, "Edit file permissions (chmod)");
+    write_kv_line(fp, "key_console", kb->key_console, "Open plugin console (log output)");
     write_kv_line(fp, "key_save", kb->key_save, "Save changes");
     fputc('\n', fp);
 
@@ -228,6 +230,7 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"key_undo", &kb->key_undo},
         {"key_redo", &kb->key_redo},
         {"key_permissions", &kb->key_permissions},
+        {"key_console", &kb->key_console},
 
         {"edit_up",        &kb->edit_up},
         {"edit_down",      &kb->edit_down},

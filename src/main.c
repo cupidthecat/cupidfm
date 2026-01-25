@@ -33,6 +33,7 @@
 #include "ui.h"
 #include "undo.h"
 #include "plugins.h"
+#include "console.h"
 
 // Global resize flag
 volatile sig_atomic_t resized = 0;
@@ -51,6 +52,14 @@ VecStack directoryStack;
 #define DIRECTORY_TREE_MAX_TOTAL 1500
 
 static bool tree_limit_hit = false;
+
+static void clear_directory_stack(void) {
+    // directoryStack elements are heap-allocated directory names (strdup).
+    char *p;
+    while ((p = (char *)VecStack_pop(&directoryStack)) != NULL) {
+        free(p);
+    }
+}
 
 // Typedefs and Structures
 typedef struct {
@@ -221,6 +230,60 @@ static int fuzzyhit_cmp(const void *a, const void *b) {
 
 static Vector *active_files(AppState *state) {
     return (state && state->search_active) ? &state->search_files : &state->files;
+}
+
+static void plugins_update_context(AppState *state, int active_window) {
+    if (!state || !state->plugins) return;
+    Vector *view = active_files(state);
+    PluginsContext ctx = {
+        .cwd = state->current_directory,
+        .selected_name = state->selected_entry,
+        .cursor_index = (int)state->dir_window_cas.cursor,
+        .list_count = (int)Vector_len(*view),
+        .search_active = state->search_active,
+        .search_query = state->search_query,
+        .active_pane = active_window,
+    };
+    plugins_set_context_ex(state->plugins, &ctx);
+}
+
+static bool ensure_parent_dir_local(const char *path) {
+    if (!path || !*path) return false;
+    char tmp[MAX_PATH_LENGTH];
+    strncpy(tmp, path, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+    char *slash = strrchr(tmp, '/');
+    if (!slash || slash == tmp) return true;
+    *slash = '\0';
+    if (mkdir(tmp, 0700) == 0) return true;
+    return (errno == EEXIST);
+}
+
+static void resolve_path_under_cwd(char out[MAX_PATH_LENGTH], const char *cwd, const char *path) {
+    if (!out) return;
+    out[0] = '\0';
+    if (!path || !*path) return;
+    if (path[0] == '/') {
+        strncpy(out, path, MAX_PATH_LENGTH - 1);
+        out[MAX_PATH_LENGTH - 1] = '\0';
+        return;
+    }
+    if (!cwd || !*cwd) {
+        strncpy(out, path, MAX_PATH_LENGTH - 1);
+        out[MAX_PATH_LENGTH - 1] = '\0';
+        return;
+    }
+    path_join(out, cwd, path);
+}
+
+static const char *basename_ptr(const char *p) {
+    if (!p) return "";
+    size_t len = strlen(p);
+    while (len > 0 && p[len - 1] == '/') len--;
+    if (len == 0) return "";
+    const char *end = p + len;
+    const char *slash = memrchr(p, '/', (size_t)(end - p));
+    return slash ? (slash + 1) : p;
 }
 
 static void search_clear(AppState *state) {
@@ -1944,7 +2007,45 @@ int main() {
 	    // Load plugins after the UI is drawn so their notifications aren't immediately overwritten.
 	    state.plugins = plugins_create();
 	    if (state.plugins) {
-	        plugins_set_context(state.plugins, state.current_directory, state.selected_entry);
+	        plugins_update_context(&state, active_window);
+
+            // Allow plugins to navigate on startup (e.g., fm.cd(...) in on_load()).
+            char cd_req[MAX_PATH_LENGTH];
+            if (plugins_take_cd_request(state.plugins, cd_req, sizeof(cd_req))) {
+                char target[MAX_PATH_LENGTH];
+                if (cd_req[0] == '/') {
+                    strncpy(target, cd_req, sizeof(target) - 1);
+                    target[sizeof(target) - 1] = '\0';
+                } else {
+                    path_join(target, state.current_directory, cd_req);
+                }
+
+                struct stat st;
+                if (stat(target, &st) == 0 && S_ISDIR(st.st_mode)) {
+                    clear_directory_stack();
+                    search_clear(&state);
+                    free(state.current_directory);
+                    state.current_directory = strdup(target);
+                    if (state.current_directory) {
+                        if (state.lazy_load.directory_path) free(state.lazy_load.directory_path);
+                        state.lazy_load.directory_path = strdup(state.current_directory);
+                        state.lazy_load.last_load_time = (struct timespec){0};
+                        reload_directory_lazy(&state.files, state.current_directory,
+                                              &state.lazy_load.files_loaded, &state.lazy_load.total_files);
+                        state.dir_window_cas.num_files = Vector_len(state.files);
+                        state.dir_window_cas.cursor = 0;
+                        state.dir_window_cas.start = 0;
+                        sync_selection_from_active(&state, &state.dir_window_cas);
+                        state.preview_start_line = 0;
+                        show_notification(notifwin, "cd: %s", state.current_directory);
+                        should_clear_notif = false;
+                    }
+                } else {
+                    show_notification(notifwin, "Plugin cd failed: %s", cd_req);
+                    should_clear_notif = false;
+                }
+            }
+
 	        // If plugins requested a reload during on_load, apply once on startup.
 	        if (plugins_take_reload_request(state.plugins)) {
 	            reload_directory(&state.files, state.current_directory);
@@ -1952,6 +2053,8 @@ int main() {
 	            state.lazy_load.files_loaded = Vector_len(state.files);
 	            state.lazy_load.total_files = state.lazy_load.files_loaded;
 	        }
+
+            plugins_update_context(&state, active_window);
 	    }
 
     // Set a separate timeout for mainwin to handle scrolling
@@ -1969,11 +2072,346 @@ int main() {
     int ch;
     while ((ch = getch()) != kb.key_exit) {
         if (state.plugins) {
-            plugins_set_context(state.plugins, state.current_directory, state.selected_entry);
+            plugins_update_context(&state, active_window);
             bool handled = plugins_handle_key(state.plugins, ch);
             if (plugins_take_quit_request(state.plugins)) {
                 break;
             }
+
+            // Async plugin UI (prompt/confirm/menu). If a plugin queued one during key handling,
+            // run it now (modal), invoke its callback, and then continue handling any requests
+            // the callback may have queued (cd/reload/file ops/etc).
+            plugins_poll(state.plugins);
+            if (plugins_take_quit_request(state.plugins)) {
+                break;
+            }
+
+            // Plugin-driven navigation/selection (apply even if plugin consumed the key).
+            char cd_req[MAX_PATH_LENGTH];
+            if (plugins_take_cd_request(state.plugins, cd_req, sizeof(cd_req))) {
+                char target[MAX_PATH_LENGTH];
+                if (cd_req[0] == '/') {
+                    strncpy(target, cd_req, sizeof(target) - 1);
+                    target[sizeof(target) - 1] = '\0';
+                } else {
+                    path_join(target, state.current_directory, cd_req);
+                }
+
+                struct stat st;
+                if (stat(target, &st) == 0 && S_ISDIR(st.st_mode)) {
+                    clear_directory_stack();
+                    search_clear(&state);
+                    free(state.current_directory);
+                    state.current_directory = strdup(target);
+                    if (!state.current_directory) {
+                        show_notification(notifwin, "Memory allocation error");
+                        should_clear_notif = false;
+                        plugins_update_context(&state, active_window);
+                        goto input_done;
+                    }
+
+                    if (state.lazy_load.directory_path) free(state.lazy_load.directory_path);
+                    state.lazy_load.directory_path = strdup(state.current_directory);
+                    state.lazy_load.last_load_time = (struct timespec){0};
+                    reload_directory_lazy(&state.files, state.current_directory,
+                                          &state.lazy_load.files_loaded, &state.lazy_load.total_files);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.dir_window_cas.cursor = 0;
+                    state.dir_window_cas.start = 0;
+                    sync_selection_from_active(&state, &state.dir_window_cas);
+                    state.preview_start_line = 0;
+                    show_notification(notifwin, "cd: %s", state.current_directory);
+                    should_clear_notif = false;
+                } else {
+                    show_notification(notifwin, "cd failed: %s", cd_req);
+                    should_clear_notif = false;
+                }
+                plugins_update_context(&state, active_window);
+                goto input_done;
+            }
+
+            int sel_idx = -1;
+            if (plugins_take_select_index_request(state.plugins, &sel_idx)) {
+                Vector *view = active_files(&state);
+                if (sel_idx >= 0 && (size_t)sel_idx < Vector_len(*view)) {
+                    state.dir_window_cas.cursor = (SIZE)sel_idx;
+                    fix_cursor(&state.dir_window_cas);
+                    sync_selection_from_active(&state, &state.dir_window_cas);
+                    should_clear_notif = false;
+                } else {
+                    show_notification(notifwin, "select_index out of range");
+                    should_clear_notif = false;
+                }
+                plugins_update_context(&state, active_window);
+                goto input_done;
+            }
+
+            char sel_req[MAX_PATH_LENGTH];
+            if (plugins_take_select_request(state.plugins, sel_req, sizeof(sel_req))) {
+                SIZE idx = (SIZE)-1;
+                if (state.search_active) {
+                    Vector *view = active_files(&state);
+                    idx = find_loaded_index_by_name(view, sel_req);
+                } else {
+                    idx = find_index_by_name_lazy(&state.files,
+                                                  state.current_directory,
+                                                  &state.dir_window_cas,
+                                                  &state.lazy_load,
+                                                  sel_req);
+                }
+
+                if (idx != (SIZE)-1) {
+                    state.dir_window_cas.cursor = idx;
+                    fix_cursor(&state.dir_window_cas);
+                    sync_selection_from_active(&state, &state.dir_window_cas);
+                    should_clear_notif = false;
+                } else {
+                    show_notification(notifwin, "Not found: %s", sel_req);
+                    should_clear_notif = false;
+                }
+                plugins_update_context(&state, active_window);
+                goto input_done;
+            }
+
+            PluginFileOp op;
+            memset(&op, 0, sizeof(op));
+            if (plugins_take_fileop_request(state.plugins, &op)) {
+                bool ok = false;
+                char err[256] = {0};
+
+                if (op.kind == PLUGIN_FILEOP_UNDO || op.kind == PLUGIN_FILEOP_REDO) {
+                    char ubuf[256] = {0};
+                    bool did = (op.kind == PLUGIN_FILEOP_UNDO)
+                                   ? undo_state_do_undo(&state.undo_state, ubuf, sizeof(ubuf))
+                                   : undo_state_do_redo(&state.undo_state, ubuf, sizeof(ubuf));
+                    if (did) {
+                        char saved_query[MAX_PATH_LENGTH];
+                        search_before_reload(&state, saved_query);
+                        reload_directory(&state.files, state.current_directory);
+                        state.dir_window_cas.num_files = Vector_len(state.files);
+                        state.lazy_load.files_loaded = Vector_len(state.files);
+                        state.lazy_load.total_files = state.lazy_load.files_loaded;
+                        state.dir_window_cas.cursor = 0;
+                        state.dir_window_cas.start = 0;
+                        search_after_reload(&state, &state.dir_window_cas, saved_query);
+                        sync_selection_from_active(&state, &state.dir_window_cas);
+                        show_notification(notifwin, "%s", (op.kind == PLUGIN_FILEOP_UNDO) ? "Undone last operation" : "Redone last operation");
+                        should_clear_notif = false;
+                        ok = true;
+                    } else {
+                        show_notification(notifwin, "%s", ubuf[0] ? ubuf : "Undo/redo failed");
+                        should_clear_notif = false;
+                    }
+                } else if (op.kind == PLUGIN_FILEOP_MKDIR) {
+                    char full[MAX_PATH_LENGTH];
+                    resolve_path_under_cwd(full, state.current_directory, op.arg1);
+                    if (full[0]) {
+                        (void)ensure_parent_dir_local(full);
+                        if (mkdir(full, 0755) == 0) {
+                            (void)undo_state_set_single(&state.undo_state, UNDO_OP_CREATE_DIR, NULL, full);
+                            show_notification(notifwin, "Created dir: %s", full);
+                            should_clear_notif = false;
+                            ok = true;
+                        } else if (errno == EEXIST) {
+                            show_notification(notifwin, "Dir exists: %s", full);
+                            should_clear_notif = false;
+                            ok = true;
+                        } else {
+                            snprintf(err, sizeof(err), "mkdir failed: %s", strerror(errno));
+                        }
+                    } else {
+                        snprintf(err, sizeof(err), "mkdir: invalid path");
+                    }
+                } else if (op.kind == PLUGIN_FILEOP_TOUCH) {
+                    char full[MAX_PATH_LENGTH];
+                    resolve_path_under_cwd(full, state.current_directory, op.arg1);
+                    if (full[0]) {
+                        if (access(full, F_OK) == 0) {
+                            show_notification(notifwin, "File exists: %s", full);
+                            should_clear_notif = false;
+                            ok = true;
+                        } else {
+                            (void)ensure_parent_dir_local(full);
+                            FILE *f = fopen(full, "wx");
+                            if (f) {
+                                fclose(f);
+                                (void)undo_state_set_single(&state.undo_state, UNDO_OP_CREATE_FILE, NULL, full);
+                                show_notification(notifwin, "Created file: %s", full);
+                                should_clear_notif = false;
+                                ok = true;
+                            } else {
+                                snprintf(err, sizeof(err), "touch failed: %s", strerror(errno));
+                            }
+                        }
+                    } else {
+                        snprintf(err, sizeof(err), "touch: invalid path");
+                    }
+                } else if (op.kind == PLUGIN_FILEOP_RENAME) {
+                    if (op.count == 1 && op.paths && op.paths[0] && op.arg1[0]) {
+                        char src[MAX_PATH_LENGTH];
+                        resolve_path_under_cwd(src, state.current_directory, op.paths[0]);
+                        char dst[MAX_PATH_LENGTH] = {0};
+                        if (op.arg1[0] == '/') {
+                            strncpy(dst, op.arg1, sizeof(dst) - 1);
+                            dst[sizeof(dst) - 1] = '\0';
+                        } else {
+                            const char *slash = strrchr(src, '/');
+                            if (!slash || slash == src) {
+                                path_join(dst, state.current_directory, op.arg1);
+                            } else {
+                                char dirbuf[MAX_PATH_LENGTH];
+                                size_t prefix = (size_t)(slash - src);
+                                if (prefix >= sizeof(dirbuf)) prefix = sizeof(dirbuf) - 1;
+                                memcpy(dirbuf, src, prefix);
+                                dirbuf[prefix] = '\0';
+                                path_join(dst, dirbuf, op.arg1);
+                            }
+                        }
+                        if (!dst[0]) snprintf(err, sizeof(err), "rename: invalid destination");
+                        else if (access(dst, F_OK) == 0) snprintf(err, sizeof(err), "rename: destination exists");
+                        else {
+                            (void)ensure_parent_dir_local(dst);
+                            if (rename(src, dst) == 0) {
+                                (void)undo_state_set_single(&state.undo_state, UNDO_OP_RENAME, src, dst);
+                                show_notification(notifwin, "Renamed: %s", op.arg1);
+                                should_clear_notif = false;
+                                ok = true;
+                            } else {
+                                snprintf(err, sizeof(err), "rename failed: %s", strerror(errno));
+                            }
+                        }
+                    } else {
+                        snprintf(err, sizeof(err), "rename: invalid args");
+                    }
+                } else if (op.kind == PLUGIN_FILEOP_DELETE) {
+                    if (op.count > 0 && op.paths) {
+                        UndoItem *items = (UndoItem *)calloc(op.count, sizeof(UndoItem));
+                        size_t did = 0;
+                        for (size_t i = 0; i < op.count; i++) {
+                            char src[MAX_PATH_LENGTH];
+                            resolve_path_under_cwd(src, state.current_directory, op.paths[i]);
+                            char trashed[MAX_PATH_LENGTH] = {0};
+                            if (delete_item(src, trashed, sizeof(trashed))) {
+                                if (items) {
+                                    items[did].src = strdup(src);
+                                    items[did].dst = strdup(trashed);
+                                }
+                                did++;
+                            }
+                        }
+                        if (items && did > 0) {
+                            if (!undo_state_set_owned(&state.undo_state, UNDO_OP_DELETE_TO_TRASH, items, did)) {
+                                for (size_t i = 0; i < did; i++) {
+                                    free(items[i].src);
+                                    free(items[i].dst);
+                                }
+                                free(items);
+                            }
+                        } else if (items) {
+                            free(items);
+                        }
+                        show_notification(notifwin, "Deleted %zu item(s)", did);
+                        should_clear_notif = false;
+                        ok = true;
+                    } else {
+                        snprintf(err, sizeof(err), "delete: invalid args");
+                    }
+                } else if (op.kind == PLUGIN_FILEOP_COPY || op.kind == PLUGIN_FILEOP_MOVE) {
+                    if (op.count > 0 && op.paths && op.arg1[0]) {
+                        char dst_dir[MAX_PATH_LENGTH];
+                        resolve_path_under_cwd(dst_dir, state.current_directory, op.arg1);
+                        struct stat dstst;
+                        if (stat(dst_dir, &dstst) != 0 || !S_ISDIR(dstst.st_mode)) {
+                            snprintf(err, sizeof(err), "dst_dir is not a directory");
+                        } else {
+                            UndoItem *items = (UndoItem *)calloc(op.count, sizeof(UndoItem));
+                            size_t did = 0;
+                            for (size_t i = 0; i < op.count; i++) {
+                                char src[MAX_PATH_LENGTH];
+                                resolve_path_under_cwd(src, state.current_directory, op.paths[i]);
+                                struct stat st;
+                                if (lstat(src, &st) != 0) continue;
+
+                                const char *base = basename_ptr(src);
+                                if (!base || !*base) continue;
+
+                                char dst[MAX_PATH_LENGTH];
+                                path_join(dst, dst_dir, base);
+
+                                if (access(dst, F_OK) == 0) continue;
+
+                                char cmd[4096];
+                                if (op.kind == PLUGIN_FILEOP_COPY) {
+                                    snprintf(cmd, sizeof(cmd), "cp %s \"%s\" \"%s\"",
+                                             (S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) ? "-r" : "",
+                                             src, dst);
+                                    if (system(cmd) != -1) {
+                                        if (items) {
+                                            items[did].src = strdup(src);
+                                            items[did].dst = strdup(dst);
+                                        }
+                                        did++;
+                                    }
+                                } else {
+                                    // MOVE
+                                    if (rename(src, dst) != 0) {
+                                        snprintf(cmd, sizeof(cmd), "mv \"%s\" \"%s\"", src, dst);
+                                        if (system(cmd) == -1) continue;
+                                    }
+                                    if (items) {
+                                        items[did].src = strdup(src);
+                                        items[did].dst = strdup(dst);
+                                    }
+                                    did++;
+                                }
+                            }
+
+                            if (items && did > 0) {
+                                UndoOpKind k = (op.kind == PLUGIN_FILEOP_COPY) ? UNDO_OP_COPY : UNDO_OP_MOVE;
+                                if (!undo_state_set_owned(&state.undo_state, k, items, did)) {
+                                    for (size_t i = 0; i < did; i++) {
+                                        free(items[i].src);
+                                        free(items[i].dst);
+                                    }
+                                    free(items);
+                                }
+                            } else if (items) {
+                                free(items);
+                            }
+
+                            show_notification(notifwin, "%s %zu item(s)", (op.kind == PLUGIN_FILEOP_COPY) ? "Copied" : "Moved", did);
+                            should_clear_notif = false;
+                            ok = true;
+                        }
+                    } else {
+                        snprintf(err, sizeof(err), "copy/move: invalid args");
+                    }
+                }
+
+                plugins_fileop_free(&op);
+
+                if (!ok && err[0]) {
+                    show_notification(notifwin, "%s", err);
+                    should_clear_notif = false;
+                }
+
+                if (ok) {
+                    char saved_query[MAX_PATH_LENGTH];
+                    search_before_reload(&state, saved_query);
+                    reload_directory(&state.files, state.current_directory);
+                    state.dir_window_cas.num_files = Vector_len(state.files);
+                    state.lazy_load.files_loaded = Vector_len(state.files);
+                    state.lazy_load.total_files = state.lazy_load.files_loaded;
+                    state.dir_window_cas.cursor = 0;
+                    state.dir_window_cas.start = 0;
+                    search_after_reload(&state, &state.dir_window_cas, saved_query);
+                    sync_selection_from_active(&state, &state.dir_window_cas);
+                }
+
+                plugins_update_context(&state, active_window);
+                goto input_done;
+            }
+
             if (plugins_take_reload_request(state.plugins)) {
                 char saved_query[MAX_PATH_LENGTH];
                 search_before_reload(&state, saved_query);
@@ -1986,9 +2424,11 @@ int main() {
                 search_after_reload(&state, &state.dir_window_cas, saved_query);
                 sync_selection_from_active(&state, &state.dir_window_cas);
                 should_clear_notif = false;
+                plugins_update_context(&state, active_window);
                 goto input_done;
             }
             if (handled) {
+                plugins_update_context(&state, active_window);
                 goto input_done;
             }
         }
@@ -2357,15 +2797,26 @@ int main() {
 
                             // Choose a unique destination inside the cut storage dir.
                             char dst_path[MAX_PATH_LENGTH];
-                            snprintf(dst_path, sizeof(dst_path), "%s/%s", storage_dir, name);
-                            dst_path[sizeof(dst_path) - 1] = '\0';
+                            int n = snprintf(dst_path, sizeof(dst_path), "%s/%s", storage_dir, name);
+                            if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+                                continue;
+                            }
                             for (int attempt = 1; access(dst_path, F_OK) == 0 && attempt < 1000; attempt++) {
-                                snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", storage_dir, name, attempt);
-                                dst_path[sizeof(dst_path) - 1] = '\0';
+                                n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", storage_dir, name, attempt);
+                                if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+                                    dst_path[0] = '\0';
+                                    break;
+                                }
+                            }
+                            if (!dst_path[0]) {
+                                continue;
                             }
 
                             char mv_cmd[2048];
-                            snprintf(mv_cmd, sizeof(mv_cmd), "mv \"%s\" \"%s\"", src_path, dst_path);
+                            n = snprintf(mv_cmd, sizeof(mv_cmd), "mv \"%s\" \"%s\"", src_path, dst_path);
+                            if (n < 0 || (size_t)n >= sizeof(mv_cmd)) {
+                                continue;
+                            }
                             if (system(mv_cmd) == -1) {
                                 continue;
                             }
@@ -2825,6 +3276,13 @@ int main() {
                     goto input_done;
                 }
             }
+
+            // Console (Ctrl+O by default)
+            else if (ch == kb.key_console) {
+                console_show();
+                should_clear_notif = false;
+                goto input_done;
+            }
         }
 
 input_done:
@@ -2832,6 +3290,11 @@ input_done:
         if (should_clear_notif) {
             werase(notifwin);
             wrefresh(notifwin);
+        }
+
+        // Keep plugin context up-to-date after CupidFM handled input, and fire change hooks.
+        if (state.plugins) {
+            plugins_update_context(&state, active_window);
         }
 
         // Redraw windows

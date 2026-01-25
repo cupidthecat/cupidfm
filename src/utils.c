@@ -840,16 +840,23 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
     if (!base || !*base) base = "item";
 
     char dst_path[MAX_PATH_LENGTH];
-    snprintf(dst_path, sizeof(dst_path), "%s/%s", trash_dir, base);
-    dst_path[sizeof(dst_path) - 1] = '\0';
+    int n = snprintf(dst_path, sizeof(dst_path), "%s/%s", trash_dir, base);
+    if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+        return false;
+    }
     for (int attempt = 1; access(dst_path, F_OK) == 0 && attempt < 1000; attempt++) {
-        snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", trash_dir, base, attempt);
-        dst_path[sizeof(dst_path) - 1] = '\0';
+        n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", trash_dir, base, attempt);
+        if (n < 0 || (size_t)n >= sizeof(dst_path)) {
+            return false;
+        }
     }
 
     // Soft delete: move into per-session trash so we can undo.
     char mv_command[2048];
-    snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s\"", path, dst_path);
+    n = snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s\"", path, dst_path);
+    if (n < 0 || (size_t)n >= sizeof(mv_command)) {
+        return false;
+    }
     if (system(mv_command) == -1) {
         fprintf(stderr, "Error: Unable to move to trash: %s\n", path);
         return false;

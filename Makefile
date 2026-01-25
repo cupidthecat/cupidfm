@@ -8,7 +8,7 @@ CUPIDSCRIPT_LIB?=lib/libcupidscript.a
 CUPIDSCRIPT_INC?=/home/frank/cupidscript/src
 CUPID_CFLAGS += -I$(CUPIDSCRIPT_INC)
 # Link order matters: static archives first, then their dependent shared/system libs.
-CUPID_LIBS= $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) -lncursesw -lmagic -lz -lbz2 -llzma
+override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) -lncursesw -lmagic -lz -lbz2 -llzma
 
 all: cupidfm
 

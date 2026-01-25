@@ -4,10 +4,7 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
-## demo running on WSL2
-<p align="center" width="100%">
-<video src="https://github.com/user-attachments/assets/cff79286-74e9-4946-82cf-da790616d636" width="80%" controls></video>
-</p>
+<video src="img/demo.mp4" width="320" height="240" controls></video>
 
 ### Terminal Requirements
 
@@ -49,6 +46,7 @@ To build and run cupidfm, you must have the following packages installed:
 - **A C Compiler & Build Tools** (e.g. `gcc`, `make`)
 - **ncurses** development libraries (for terminal handling)
 - **libmagic** development libraries (for MIME type detection)
+- **zlib + bzip2 + xz** development libraries (archive preview via `cupidarchive`)
 - **xclip** (for clipboard support)
 
 ### Installing Dependencies on Ubuntu/Debian
@@ -57,7 +55,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt update
-sudo apt install build-essential libncurses-dev libmagic-dev xclip
+sudo apt install build-essential libncurses-dev libmagic-dev zlib1g-dev libbz2-dev liblzma-dev xclip
 ```
 
 ### Installing Dependencies on Arch Linux
@@ -66,7 +64,7 @@ Open a terminal and run:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -S base-devel ncurses file xclip
+sudo pacman -S base-devel ncurses file zlib bzip2 xz xclip
 ```
 
 *Notes:*
@@ -109,6 +107,7 @@ Error logs (if any) will be saved to `log.txt`.
 - Navigate directories using arrow keys
 - View file details and preview supported file types
 - Display MIME types based on file content using `libmagic`
+- Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
 - File type indicators with emoji icons:
   - 📄 Text files
   - 📝 C source files
@@ -134,6 +133,7 @@ Error logs (if any) will be saved to `log.txt`.
 - Text editing capabilities within the terminal
 - Directory tree visualization with permissions
 - File information display (size, permissions, modification time)
+- Background directory size calculation with a live "Calculating... <size so far>" progress display
 - Scrollable preview window
 - Tab-based window switching between directory and preview panes
 - Configure keybinds
@@ -210,6 +210,7 @@ All keybinds are configurable via `~/.cupidfmrc`. These are the defaults.
 | New directory | `Shift+N` |
 | Fuzzy search | `^F` |
 | Select all (current view) | `^A` |
+| Open console | `^O` |
 
 ### Search Prompt
 
@@ -265,6 +266,7 @@ key_select_all=^A
 key_undo=^Z
 key_redo=^Y
 key_permissions=^P
+key_console=^O
 
 edit_up=KEY_UP
 edit_down=KEY_DOWN
@@ -352,29 +354,56 @@ With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`
 
 ## Plugins (CupidScript)
 
-CupidFM can load Cupidscript plugins (`.cs`) on startup from:
+CupidFM can load Cupidscript plugins (`.cs`) on startup.
+
+By default it loads from your home directory:
 
 1. `~/.cupidfm/plugins`
-2. `./cupidfm/plugins`
-3. `./plugins`
+2. `~/.cupidfm/plugin`
+
+Local/repo plugin folders are supported, but are disabled by default (to avoid accidentally executing repo scripts):
+
+- Enable local plugin loading with: `CUPIDFM_LOAD_LOCAL_PLUGINS=1`
+- Then CupidFM will also search:
+  - `./cupidfm/plugins` and `./cupidfm/plugin`
+  - `./plugins` and `./plugin`
 
 ### Plugin Hooks
 
 - `fn on_load()`
 - `fn on_key(key)` -> return `true` to consume the keypress
+- `fn on_dir_change(new_cwd, old_cwd)`
+- `fn on_selection_change(new_name, old_name)`
 
 ### CupidFM Script API
 
 - `fm.notify(msg)` / `fm.status(msg)` - show a notification
 - `fm.popup(title, msg)` - show a popup
+- `fm.console_print(msg)` / `fm.console(msg)` - append to the in-app console (`^O` by default)
+- `fm.prompt(title, initial)` -> `string|nil`
+- `fm.confirm(title, msg)` -> `bool`
+- `fm.menu(title, items[])` -> `index|-1`
 - `fm.cwd()` - current directory
 - `fm.selected_name()` / `fm.selected_path()` - current selection
+- `fm.cursor()` / `fm.count()` - cursor index + list size
+- `fm.search_active()` / `fm.search_query()` - fuzzy search state
+- `fm.pane()` - `"directory"` or `"preview"`
 - `fm.bind(key, func_name)` - bind a key to a function (key can be `"^T"`, `"F5"`, `"KEY_UP"`, or a numeric keycode)
+- File operations (integrated with undo/redo):
+  - `fm.copy(path_or_paths, dst_dir)`
+  - `fm.move(path_or_paths, dst_dir)`
+  - `fm.rename(path, new_name)`
+  - `fm.delete(path_or_paths)` (trash)
+  - `fm.mkdir(name_or_path)`
+  - `fm.touch(name_or_path)`
+  - `fm.undo()` / `fm.redo()`
 - `fm.reload()` - request a directory reload
 - `fm.exit()` - request CupidFM to quit
+- `fm.cd(path)` - change directory (absolute or relative)
+- `fm.select(name)` / `fm.select_index(i)` - move selection (best effort)
 - `fm.key_name(code)` / `fm.key_code(name)` - convert between keycodes and names
 
-See `plugins/example.cs` for a working example.
+See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPIDSCRIPT_API.md` for the full API reference.
 ## Todo
 
 ### High Priority
