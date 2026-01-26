@@ -23,6 +23,11 @@ void draw_preview_window(WINDOW *window,
                          const char *selected_entry,
                          int start_line);
 
+void draw_preview_window_path(WINDOW *window,
+                              const char *full_path,
+                              const char *display_name,
+                              int start_line);
+
 void fix_cursor(CursorAndSlice *cas);
 
 int get_total_lines(const char *file_path);

@@ -11,6 +11,7 @@ typedef enum {
     TK_INT,
     TK_FLOAT,
     TK_STR,
+    TK_RAW_STR,
     TK_STR_PART,    // raw string chunk inside interpolated string
     TK_STR_END,     // end of interpolated string
     TK_INTERP_START, // ${
@@ -41,6 +42,14 @@ typedef enum {
     TK_CATCH,
     TK_FINALLY,
     TK_EXPORT,
+    TK_CLASS,
+    TK_STRUCT,
+    TK_ENUM,
+    TK_ASYNC,
+    TK_AWAIT,
+    TK_YIELD,
+    TK_SELF,
+    TK_SUPER,
     TK_TRUE,
     TK_FALSE,
     TK_NIL,
@@ -56,6 +65,7 @@ typedef enum {
     TK_QMARK,
     TK_QQ,          // ??
     TK_QDOT,        // ?.
+    TK_DOTDOTDOT,   // ...
 
     // operators
     TK_ASSIGN,     // =
@@ -66,6 +76,9 @@ typedef enum {
     TK_LT, TK_LE,
     TK_GT, TK_GE,
     TK_ANDAND, TK_OROR,
+    TK_ARROW,      // =>
+    TK_PIPE,       // |>
+    TK_PLACEHOLDER, // _
     TK_RANGE,      // ..
     TK_RANGE_INC   // ..=
 } token_type;

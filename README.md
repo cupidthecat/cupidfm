@@ -46,6 +46,7 @@ Note: Some terminal emulators like Alacritty, iTerm2, Konsole, and Kitty are kno
 System/third-party dependencies:
 - [ncurses](https://invisible-island.net/ncurses/) (terminal UI)
 - [libmagic](https://github.com/file/file) (MIME/type detection)
+- [OpenSSL](https://www.openssl.org/) (TLS/HTTPS support for cupidscript)
 - [zlib](https://zlib.net/), [bzip2](https://sourceware.org/bzip2/), and [xz/liblzma](https://tukaani.org/xz/) (compression backends used by archive preview)
 - [xclip](https://github.com/astrand/xclip) (clipboard integration)
 
@@ -59,6 +60,7 @@ To build and run cupidfm, you must have the following packages installed:
 - **A C Compiler & Build Tools** (e.g. `gcc`, `make`)
 - **ncurses** development libraries (for terminal handling)
 - **libmagic** development libraries (for MIME type detection)
+- **OpenSSL** development libraries (for HTTPS support in cupidscript)
 - **zlib + bzip2 + xz** development libraries (archive preview via `cupidarchive`)
 - **xclip** (for clipboard support)
 
@@ -68,7 +70,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt update
-sudo apt install build-essential libncurses-dev libmagic-dev zlib1g-dev libbz2-dev liblzma-dev xclip
+sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev xclip
 ```
 
 ### Installing Dependencies on Arch Linux
@@ -77,7 +79,7 @@ Open a terminal and run:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -S base-devel ncurses file zlib bzip2 xz xclip
+sudo pacman -S base-devel ncurses file openssl zlib bzip2 xz xclip
 ```
 
 *Notes:*

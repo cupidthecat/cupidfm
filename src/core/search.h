@@ -10,6 +10,12 @@
 
 Vector *active_files(AppState *state);
 
+typedef enum {
+    SEARCH_MODE_FUZZY = 0,
+    SEARCH_MODE_EXACT = 1,
+    SEARCH_MODE_REGEX = 2,
+} SearchMode;
+
 void search_clear(AppState *state);
 size_t search_rebuild(AppState *state, const char *query);
 void search_before_reload(AppState *state, char saved_query[MAX_PATH_LENGTH]);

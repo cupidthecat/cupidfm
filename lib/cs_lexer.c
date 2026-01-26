@@ -137,9 +137,18 @@ static token_type keyword_type(const char* s, size_t n) {
     if (n == 5 && memcmp(s, "catch", 5) == 0) return TK_CATCH;
     if (n == 7 && memcmp(s, "finally", 7) == 0) return TK_FINALLY;
     if (n == 6 && memcmp(s, "export", 6) == 0) return TK_EXPORT;
+    if (n == 5 && memcmp(s, "class", 5) == 0) return TK_CLASS;
+    if (n == 6 && memcmp(s, "struct", 6) == 0) return TK_STRUCT;
+    if (n == 4 && memcmp(s, "enum", 4) == 0) return TK_ENUM;
+    if (n == 5 && memcmp(s, "async", 5) == 0) return TK_ASYNC;
+    if (n == 5 && memcmp(s, "await", 5) == 0) return TK_AWAIT;
+    if (n == 5 && memcmp(s, "yield", 5) == 0) return TK_YIELD;
+    if (n == 4 && memcmp(s, "self", 4) == 0) return TK_SELF;
+    if (n == 5 && memcmp(s, "super", 5) == 0) return TK_SUPER;
     if (n == 4 && memcmp(s, "true", 4) == 0) return TK_TRUE;
     if (n == 5 && memcmp(s, "false", 5) == 0) return TK_FALSE;
     if (n == 3 && memcmp(s, "nil", 3) == 0) return TK_NIL;
+    if (n == 1 && s[0] == '_') return TK_PLACEHOLDER;
     return TK_IDENT;
 }
 
@@ -312,6 +321,20 @@ token lex_next(lexer* L) {
         return make_tok(L, TK_STR, start, len, 0, line, col);
     }
 
+    // raw/multiline strings (backtick literals, no escapes)
+    if (c == '`') {
+        advance(L); // opening
+        while (peek(L) && peek(L) != '`') {
+            advance(L);
+        }
+        if (peek(L) != '`') {
+            return make_tok(L, TK_ERR, start, (size_t)(&L->src[L->pos] - start), 0, line, col);
+        }
+        advance(L); // closing
+        size_t len = (size_t)(&L->src[L->pos] - start);
+        return make_tok(L, TK_RAW_STR, start, len, 0, line, col);
+    }
+
     // operators / punctuation
     advance(L);
     token_type t = TK_ERR;
@@ -331,10 +354,13 @@ token lex_next(lexer* L) {
         case ',': t = TK_COMMA; break;
         case ';': t = TK_SEMI; break;
         case '.':
-            // Check for .. or ..=
+            // Check for ... or .. or ..=
             if (peek(L) == '.') {
                 advance(L);
-                if (peek(L) == '=') {
+                if (peek(L) == '.') {
+                    advance(L);
+                    t = TK_DOTDOTDOT;
+                } else if (peek(L) == '=') {
                     advance(L);
                     t = TK_RANGE_INC;
                 } else {
@@ -376,6 +402,7 @@ token lex_next(lexer* L) {
 
         case '=':
             if (peek(L) == '=') { advance(L); t = TK_EQ; }
+            else if (peek(L) == '>') { advance(L); t = TK_ARROW; }
             else t = TK_ASSIGN;
             break;
 
@@ -395,6 +422,7 @@ token lex_next(lexer* L) {
 
         case '|':
             if (peek(L) == '|') { advance(L); t = TK_OROR; }
+            else if (peek(L) == '>') { advance(L); t = TK_PIPE; }
             break;
         default:
             t = TK_ERR;

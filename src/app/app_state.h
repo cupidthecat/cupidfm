@@ -26,9 +26,12 @@ typedef struct {
     const char *selected_entry;
     bool select_all_active;
     int preview_start_line;
+    bool preview_override_active;
+    char preview_override_path[MAX_PATH_LENGTH];
     LazyLoadState lazy_load;
     bool search_active;
     char search_query[MAX_PATH_LENGTH];
+    int search_mode;
     Vector search_files;
     UndoState undo_state;
     PluginManager *plugins;

@@ -16,6 +16,7 @@ void plugins_update_context(AppState *state, int active_window) {
         .selected_name = state->selected_entry,
         .cursor_index = (int)state->dir_window_cas.cursor,
         .list_count = (int)Vector_len(*view),
+        .select_all_active = state->select_all_active,
         .search_active = state->search_active,
         .search_query = state->search_query,
         .active_pane = active_window,

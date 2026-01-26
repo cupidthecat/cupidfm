@@ -11,7 +11,7 @@ HDRS := $(shell find src -name '*.h')
 CUPIDSCRIPT_INC?=lib/
 CUPID_CFLAGS += -I$(CUPIDSCRIPT_INC)
 # Link order matters: static archives first, then their dependent shared/system libs.
-override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) -lncursesw -lmagic -lz -lbz2 -llzma -lm
+override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) -lssl -lcrypto -lncursesw -lmagic -lz -lbz2 -llzma -lm
 
 all: cupidfm
 

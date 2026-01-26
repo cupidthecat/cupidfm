@@ -21,7 +21,8 @@ typedef enum {
     CS_T_STRBUF,
     CS_T_RANGE,
     CS_T_FUNC,
-    CS_T_NATIVE
+    CS_T_NATIVE,
+    CS_T_PROMISE
 } cs_type;
 
 typedef struct {
@@ -109,7 +110,13 @@ cs_value cs_map_get(cs_value map_val, const char* key);  // returns cs_nil() if 
 int cs_map_set(cs_value map_val, const char* key, cs_value value);  // returns 0 on success
 int cs_map_has(cs_value map_val, const char* key);  // returns 1 if key exists
 int cs_map_del(cs_value map_val, const char* key);  // returns 0 on success
-cs_value cs_map_keys(cs_vm* vm, cs_value map_val);  // returns list of string keys
+cs_value cs_map_keys(cs_vm* vm, cs_value map_val);  // returns list of keys
+
+// Generalized key variants (use any value as key)
+cs_value cs_map_get_value(cs_value map_val, cs_value key);  // returns cs_nil() if missing
+int cs_map_set_value(cs_value map_val, cs_value key, cs_value value);  // returns 0 on success
+int cs_map_has_value(cs_value map_val, cs_value key);  // returns 1 if key exists
+int cs_map_del_value(cs_value map_val, cs_value key);  // returns 0 on success
 
 // Safety controls (prevents runaway scripts from hanging host)
 // Set instruction limit (0 = unlimited). Script aborts if exceeded.

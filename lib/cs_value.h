@@ -3,6 +3,7 @@
 
 #include "cupidscript.h"
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct cs_string {
     int ref;
@@ -28,8 +29,10 @@ typedef struct cs_list_obj {
 } cs_list_obj;
 
 typedef struct cs_map_entry {
-    cs_string* key;
+    cs_value key;
     cs_value val;
+    uint32_t hash;
+    unsigned char in_use;
 } cs_map_entry;
 
 typedef struct cs_map_obj {
@@ -55,6 +58,12 @@ typedef struct cs_range_obj {
     int inclusive;
 } cs_range_obj;
 
+typedef struct cs_promise_obj {
+    int ref;
+    int state; // 0=pending, 1=fulfilled, 2=rejected
+    cs_value value;
+} cs_promise_obj;
+
 // refcounted heap objects
 cs_string* cs_str_new(const char* s);
 cs_string* cs_str_new_take(char* owned, size_t len);
@@ -62,5 +71,9 @@ void       cs_str_incref(cs_string* s);
 void       cs_str_decref(cs_string* s);
 
 const char* cs_type_name_impl(cs_type t);
+
+// Hash and equality helpers for map keys
+uint32_t cs_value_hash(cs_value v);
+int cs_value_key_equals(cs_value a, cs_value b);
 
 #endif

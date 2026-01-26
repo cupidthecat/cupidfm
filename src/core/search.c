@@ -6,6 +6,7 @@
 #include "search.h"
 
 #include <ctype.h>
+#include <regex.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,6 +102,20 @@ static int fuzzyhit_cmp(const void *a, const void *b) {
     return strcasecmp(an, bn);
 }
 
+static bool ci_substr(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return false;
+    size_t nlen = strlen(needle);
+    if (nlen == 0) return true;
+    for (const char *h = haystack; *h; h++) {
+        size_t i = 0;
+        while (needle[i] && h[i] && tolower((unsigned char)h[i]) == tolower((unsigned char)needle[i])) {
+            i++;
+        }
+        if (i == nlen) return true;
+    }
+    return false;
+}
+
 Vector *active_files(AppState *state) {
     return (state && state->search_active) ? &state->search_files : &state->files;
 }
@@ -124,6 +139,39 @@ size_t search_rebuild(AppState *state, const char *query) {
 
     size_t total = Vector_len(state->files);
     if (total == 0) return 0;
+
+    if (state->search_mode == SEARCH_MODE_EXACT) {
+        size_t count = 0;
+        for (size_t i = 0; i < total; i++) {
+            FileAttr fa = (FileAttr)state->files.el[i];
+            const char *name = FileAttr_get_name(fa);
+            if (!name) continue;
+            if (!ci_substr(name, query)) continue;
+            Vector_add(&state->search_files, 1);
+            state->search_files.el[count++] = fa;
+        }
+        Vector_set_len_no_free(&state->search_files, count);
+        return count;
+    }
+
+    if (state->search_mode == SEARCH_MODE_REGEX) {
+        regex_t re;
+        if (regcomp(&re, query, REG_EXTENDED | REG_NOSUB) != 0) {
+            return 0;
+        }
+        size_t count = 0;
+        for (size_t i = 0; i < total; i++) {
+            FileAttr fa = (FileAttr)state->files.el[i];
+            const char *name = FileAttr_get_name(fa);
+            if (!name) continue;
+            if (regexec(&re, name, 0, NULL, 0) != 0) continue;
+            Vector_add(&state->search_files, 1);
+            state->search_files.el[count++] = fa;
+        }
+        Vector_set_len_no_free(&state->search_files, count);
+        regfree(&re);
+        return count;
+    }
 
     FuzzyHit *hits = malloc(total * sizeof(*hits));
     if (!hits) return 0;
@@ -215,6 +263,11 @@ void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas) {
 
 void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
     if (!state || !cas) return;
+    char old_name[MAX_PATH_LENGTH] = {0};
+    if (state->selected_entry && *state->selected_entry) {
+        strncpy(old_name, state->selected_entry, sizeof(old_name) - 1);
+        old_name[sizeof(old_name) - 1] = '\0';
+    }
     Vector *files = active_files(state);
     cas->num_files = (SIZE)Vector_len(*files);
     if (cas->num_files <= 0) {
@@ -226,6 +279,13 @@ void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
     if (cas->cursor >= (SIZE)cas->num_files) cas->cursor = (SIZE)cas->num_files - 1;
     fix_cursor(cas);
     state->selected_entry = FileAttr_get_name((FileAttr)files->el[cas->cursor]);
+    if (state->preview_override_active) {
+        const char *new_name = state->selected_entry ? state->selected_entry : "";
+        if (strcmp(old_name, new_name) != 0) {
+            state->preview_override_active = false;
+            state->preview_override_path[0] = '\0';
+        }
+    }
 }
 
 bool prompt_fuzzy_search(AppState *state,
@@ -296,7 +356,11 @@ bool prompt_fuzzy_search(AppState *state,
                 search_rebuild(state, state->search_query);
                 sync_selection_from_active(state, cas);
                 draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
-                draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+                if (state->preview_override_active) {
+                    draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+                } else {
+                    draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+                }
                 wrefresh(dir_window);
                 wrefresh(preview_window);
             }
@@ -371,7 +435,11 @@ bool prompt_fuzzy_search(AppState *state,
         }
 
         draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
-        draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        if (state->preview_override_active) {
+            draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+        } else {
+            draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        }
         wrefresh(dir_window);
         wrefresh(preview_window);
     }
@@ -397,7 +465,11 @@ bool prompt_fuzzy_search(AppState *state,
         }
         sync_selection_from_active(state, cas);
         draw_directory_window(dir_window, state->current_directory, &state->files, cas);
-        draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        if (state->preview_override_active) {
+            draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+        } else {
+            draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+        }
         wrefresh(dir_window);
         wrefresh(preview_window);
 

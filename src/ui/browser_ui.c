@@ -434,7 +434,17 @@ void draw_directory_window(WINDOW *window,
     wrefresh(window);
 }
 
-void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
+static const char *basename_ptr_local(const char *p) {
+    if (!p) return "";
+    size_t len = strlen(p);
+    while (len > 0 && p[len - 1] == '/') len--;
+    if (len == 0) return "";
+    const char *end = p + len;
+    const char *slash = memrchr(p, '/', (size_t)(end - p));
+    return slash ? (slash + 1) : p;
+}
+
+void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name, int start_line) {
     // Clear the window and draw border
     werase(window);
     box(window, 0, 0);
@@ -442,19 +452,17 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     int max_y, max_x;
     getmaxyx(window, max_y, max_x);
 
-    if (selected_entry == NULL || selected_entry[0] == '\0') {
+    if (!full_path || !*full_path) {
         mvwprintw(window, 1, 2, "No file selected");
         wrefresh(window);
         return;
     }
 
-    char file_path[MAX_PATH_LENGTH];
-    path_join(file_path, current_directory, selected_entry);
-
-    mvwprintw(window, 1, 2, "Preview: %s", selected_entry);
+    const char *name = (display_name && *display_name) ? display_name : basename_ptr_local(full_path);
+    mvwprintw(window, 1, 2, "Preview: %s", name);
 
     struct stat file_stat;
-    if (stat(file_path, &file_stat) == -1) {
+    if (stat(full_path, &file_stat) == -1) {
         mvwprintw(window, 2, 2, "Unable to retrieve file information");
         wrefresh(window);
         return;
@@ -470,9 +478,9 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         clock_gettime(CLOCK_MONOTONIC, &now);
 
         bool path_changed = !last_preview_size_initialized ||
-                            strncmp(last_preview_size_path, file_path, MAX_PATH_LENGTH) != 0;
+                            strncmp(last_preview_size_path, full_path, MAX_PATH_LENGTH) != 0;
         if (path_changed) {
-            strncpy(last_preview_size_path, file_path, MAX_PATH_LENGTH - 1);
+            strncpy(last_preview_size_path, full_path, MAX_PATH_LENGTH - 1);
             last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
             last_preview_size_change = now;
             last_preview_size_initialized = true;
@@ -482,8 +490,8 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
                           (now.tv_nsec - last_preview_size_change.tv_nsec);
         bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
 
-        long dir_size = allow_enqueue ? get_directory_size(file_path)
-                                      : get_directory_size_peek(file_path);
+        long dir_size = allow_enqueue ? get_directory_size(full_path)
+                                      : get_directory_size_peek(full_path);
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
         } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
@@ -493,7 +501,7 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
         } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
         } else if (dir_size == DIR_SIZE_PENDING) {
-            long p = dir_size_get_progress(file_path);
+            long p = dir_size_get_progress(full_path);
             if (p > 0) {
                 char tmp[32];
                 format_file_size(tmp, (size_t)p);
@@ -520,7 +528,7 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
 
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
-        const char *mime_type = magic_file(magic_cookie, file_path);
+        const char *mime_type = magic_file(magic_cookie, full_path);
         mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
         magic_close(magic_cookie);
     } else {
@@ -530,11 +538,11 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
         int current_count = 0;
-        show_directory_tree(window, file_path, 0, &line_num, max_y, max_x, start_line, &current_count);
-    } else if (is_archive_file(file_path)) {
-        display_archive_preview(window, file_path, start_line, max_y, max_x);
-    } else if (is_supported_file_type(file_path)) {
-        FILE *file = fopen(file_path, "r");
+        show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line, &current_count);
+    } else if (is_archive_file(full_path)) {
+        display_archive_preview(window, full_path, start_line, max_y, max_x);
+    } else if (is_supported_file_type(full_path)) {
+        FILE *file = fopen(full_path, "r");
         if (file) {
             char line[256];
             int line_num = 7;
@@ -570,6 +578,17 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
     }
 
     wrefresh(window);
+}
+
+void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
+    if (selected_entry == NULL || selected_entry[0] == '\0') {
+        draw_preview_window_path(window, NULL, NULL, start_line);
+        return;
+    }
+
+    char file_path[MAX_PATH_LENGTH];
+    path_join(file_path, current_directory, selected_entry);
+    draw_preview_window_path(window, file_path, selected_entry, start_line);
 }
 
 void fix_cursor(CursorAndSlice *cas) {

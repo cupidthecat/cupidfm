@@ -14,6 +14,7 @@ typedef struct {
     const char *selected_name;
     int cursor_index;
     int list_count;
+    bool select_all_active;
     bool search_active;
     const char *search_query;
     int active_pane; // 1=directory, 2=preview
@@ -62,12 +63,15 @@ bool plugins_take_select_index_request(PluginManager *pm, int *out_index);
 
 // Selection + navigation helpers (async: applied by host after script hook completes).
 bool plugins_take_open_selected_request(PluginManager *pm);
+bool plugins_take_open_path_request(PluginManager *pm, char *out_path, size_t out_len);
+bool plugins_take_preview_path_request(PluginManager *pm, char *out_path, size_t out_len);
 bool plugins_take_enter_dir_request(PluginManager *pm);
 bool plugins_take_parent_dir_request(PluginManager *pm);
 
 // Search control (async: applied by host after script hook completes).
 bool plugins_take_set_search_request(PluginManager *pm, char *out_query, size_t out_len);
 bool plugins_take_clear_search_request(PluginManager *pm);
+bool plugins_take_set_search_mode_request(PluginManager *pm, int *out_mode);
 
 // File operation requests issued by plugins (fm.copy/move/rename/delete/mkdir/touch/undo/redo).
 // Transfers ownership of op.paths to the caller.

@@ -167,6 +167,8 @@ int main() {
         // For now, we'll proceed with whatever was loaded and keep defaults for invalid entries
     }
 
+    g_kb = kb;
+
     // Now that keybindings are loaded from config, initialize the banner
     char banner_text_buffer[256];
     snprintf(banner_text_buffer, sizeof(banner_text_buffer), "Welcome to CupidFM - Press %s to exit", keycode_to_string(kb.key_exit));
@@ -195,6 +197,7 @@ int main() {
     state.files = Vector_new(10);
     state.search_active = false;
     state.search_query[0] = '\0';
+    state.search_mode = SEARCH_MODE_FUZZY;
 	    state.search_files = Vector_new(10);
 	    state.plugins = NULL;
     
@@ -218,6 +221,8 @@ int main() {
     };
 
     state.preview_start_line = 0;
+    state.preview_override_active = false;
+    state.preview_override_path[0] = '\0';
 
     enum {
         DIRECTORY_WIN_ACTIVE = 1,
@@ -446,6 +451,76 @@ int main() {
 	                plugins_update_context(&state, active_window);
 	                goto input_done;
 	            }
+
+                char open_req[MAX_PATH_LENGTH];
+                if (plugins_take_open_path_request(state.plugins, open_req, sizeof(open_req))) {
+                    char target[MAX_PATH_LENGTH];
+                    resolve_path_under_cwd(target, state.current_directory, open_req);
+                    if (!target[0]) {
+                        show_notification(notifwin, "Open failed: empty path");
+                        should_clear_notif = false;
+                    } else {
+                        struct stat st;
+                        if (stat(target, &st) == 0) {
+                            if (S_ISDIR(st.st_mode)) {
+                                navigation_clear_stack(&directoryStack);
+                                search_clear(&state);
+                                free(state.current_directory);
+                                state.current_directory = strdup(target);
+                                if (state.current_directory) {
+                                    if (state.lazy_load.directory_path) free(state.lazy_load.directory_path);
+                                    state.lazy_load.directory_path = strdup(state.current_directory);
+                                    state.lazy_load.last_load_time = (struct timespec){0};
+                                    reload_directory_lazy(&state.files, state.current_directory,
+                                                          &state.lazy_load.files_loaded, &state.lazy_load.total_files);
+                                    state.dir_window_cas.num_files = Vector_len(state.files);
+                                    state.dir_window_cas.cursor = 0;
+                                    state.dir_window_cas.start = 0;
+                                    sync_selection_from_active(&state, &state.dir_window_cas);
+                                    state.preview_start_line = 0;
+                                    show_notification(notifwin, "Opened dir: %s", state.current_directory);
+                                    should_clear_notif = false;
+                                }
+                            } else {
+                                edit_file_in_terminal(previewwin, target, notifwin, &kb);
+                                state.preview_start_line = 0;
+                                redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
+                                show_notification(notifwin, "Opened file: %s", target);
+                                should_clear_notif = false;
+                            }
+                        } else {
+                            show_notification(notifwin, "Open failed: %s", strerror(errno));
+                            should_clear_notif = false;
+                        }
+                    }
+                    plugins_update_context(&state, active_window);
+                    goto input_done;
+                }
+
+                char preview_req[MAX_PATH_LENGTH];
+                if (plugins_take_preview_path_request(state.plugins, preview_req, sizeof(preview_req))) {
+                    char target[MAX_PATH_LENGTH];
+                    resolve_path_under_cwd(target, state.current_directory, preview_req);
+                    if (!target[0]) {
+                        show_notification(notifwin, "Preview failed: empty path");
+                        should_clear_notif = false;
+                    } else {
+                        struct stat st;
+                        if (stat(target, &st) == 0) {
+                            state.preview_override_active = true;
+                            strncpy(state.preview_override_path, target, sizeof(state.preview_override_path) - 1);
+                            state.preview_override_path[sizeof(state.preview_override_path) - 1] = '\0';
+                            state.preview_start_line = 0;
+                            show_notification(notifwin, "Previewing: %s", target);
+                            should_clear_notif = false;
+                        } else {
+                            show_notification(notifwin, "Preview failed: %s", strerror(errno));
+                            should_clear_notif = false;
+                        }
+                    }
+                    plugins_update_context(&state, active_window);
+                    goto input_done;
+                }
 
 	            if (plugins_take_open_selected_request(state.plugins)) {
 	                Vector *view = active_files(&state);
@@ -711,6 +786,22 @@ int main() {
                 goto input_done;
             }
 
+            int search_mode_req = SEARCH_MODE_FUZZY;
+            if (plugins_take_set_search_mode_request(state.plugins, &search_mode_req)) {
+                state.search_mode = search_mode_req;
+                if (state.search_active && state.search_query[0]) {
+                    search_rebuild(&state, state.search_query);
+                    state.dir_window_cas.cursor = 0;
+                    state.dir_window_cas.start = 0;
+                    sync_selection_from_active(&state, &state.dir_window_cas);
+                    state.preview_start_line = 0;
+                }
+                show_notification(notifwin, "Search mode: %s", (search_mode_req == SEARCH_MODE_EXACT) ? "exact" : (search_mode_req == SEARCH_MODE_REGEX) ? "regex" : "fuzzy");
+                should_clear_notif = false;
+                plugins_update_context(&state, active_window);
+                goto input_done;
+            }
+
             if (plugins_take_reload_request(state.plugins)) {
                 char saved_query[MAX_PATH_LENGTH];
                 search_before_reload(&state, saved_query);
@@ -816,7 +907,12 @@ int main() {
                 } else if (active_window == PREVIEW_WIN_ACTIVE) {
                     // Determine total lines for scrolling in the preview
                     char file_path[MAX_PATH_LENGTH];
-                    path_join(file_path, state.current_directory, state.selected_entry);
+                    if (state.preview_override_active) {
+                        strncpy(file_path, state.preview_override_path, sizeof(file_path) - 1);
+                        file_path[sizeof(file_path) - 1] = '\0';
+                    } else {
+                        path_join(file_path, state.current_directory, state.selected_entry);
+                    }
                     
                     // Check if it's a directory or a file
                     struct stat file_stat;
@@ -1574,12 +1670,21 @@ input_done:
                 &state.dir_window_cas
         );
 
-        draw_preview_window(
+        if (state.preview_override_active) {
+            draw_preview_window_path(
+                previewwin,
+                state.preview_override_path,
+                NULL,
+                state.preview_start_line
+            );
+        } else {
+            draw_preview_window(
                 previewwin,
                 state.current_directory,
                 state.selected_entry,
                 state.preview_start_line
-        );
+            );
+        }
 
         // Removed: duplicate active-window cursor highlighting. Use render-only highlights in draw_directory_window.
 
