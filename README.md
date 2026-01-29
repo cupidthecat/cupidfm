@@ -241,7 +241,7 @@ All keybinds are configurable via `~/.cupidfmrc`. These are the defaults.
 | Action | Default |
 | --- | --- |
 | Move cursor | `KEY_UP` / `KEY_DOWN` / `KEY_LEFT` / `KEY_RIGHT` |
-| Save | `^G` |
+| Save | `^S` |
 | Quit | `^Q` |
 | Backspace | `KEY_BACKSPACE` |
 
@@ -287,9 +287,15 @@ edit_up=KEY_UP
 edit_down=KEY_DOWN
 edit_left=KEY_LEFT
 edit_right=KEY_RIGHT
-edit_save=^G
+edit_save=^S
 edit_quit=^Q
 edit_backspace=KEY_BACKSPACE
+edit_copy=^C
+edit_cut=^X
+edit_paste=^V
+edit_select_all=^A
+edit_undo=^Z
+edit_redo=^Y
 ```
 
 **Immediately after creating** `~/.cupidfmrc` for the first time, CupidFM will display a **popup** in the interface letting you know where it wrote your new config.
@@ -419,6 +425,7 @@ Local/repo plugin folders are supported, but are disabled by default (to avoid a
 - `fm.key_name(code)` / `fm.key_code(name)` - convert between keycodes and names
 
 See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPIDSCRIPT_API.md` for the full API reference.
+
 ## Todo
 
 ### High Priority
@@ -428,12 +435,6 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 
 ### Features
 - [ ] Implement syntax highlighting for supported file types (use config system like micro)
-- [ ] Implement text editing shortcuts:
-  - [ ] Shift+arrow for selection
-  - [ ] Ctrl+arrow for faster cursor movement
-  - [ ] Standard shortcuts (Ctrl+X, Ctrl+C, Ctrl+V)
-  - [ ] Add undo/redo functionality in edit mode
-  - [ ] Implement proper text selection in edit mode
 - [ ] Add a quick select feature for selecting file names, dir names, and current directory
 - [X] Add configuration file support for customizing:
   - [X] Key bindings
@@ -502,6 +503,14 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [X] Improve MIME type detection performance
 - [X] Implement background loading for directory contents
 - [X] Banner bug when its going lefct the fisrst tick it goes in it goes to the right one tick then back like normal 
+- [X] Implement text editing shortcuts:
+  - [X] Shift+arrow for selection
+  - [X] Ctrl+arrow for faster cursor movement
+  - [X] Standard shortcuts (Ctrl+X, Ctrl+C, Ctrl+V)
+  - [X] Add undo (control Z) /redo (contriol Y) functionality in edit mode
+  - [X] Implement proper text selection in edit mode (Currnety mouse selecting, will select line numbers )
+- [X] Custom plugin system with cupidscript a custom scripting lang
+- [X] Implement file/directory permissions editing
 
 ### Edit Mode Issues
 - [X] Banner marquee not rotating correctly when rotating in edit mode
@@ -511,8 +520,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [X] Fix sig winch handling breaking while in edit mode
 - [X] Fix cursor showing up at the bottom of the text editing buffer
 - [X] Fix text buffer not scrolling to the right when typing and hitting the border of the window
-- [X] Custom plugin system with cupidscript a custom scripting lang
-- [X] Implement file/directory permissions editing
+
 ### Key Features to Implement
 
 ## Command Line Interface (CLI) Feature

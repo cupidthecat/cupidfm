@@ -49,9 +49,15 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->edit_down = KEY_DOWN;
     kb->edit_left = KEY_LEFT;
     kb->edit_right = KEY_RIGHT;
-    kb->edit_save = 7;   // Ctrl+G
+    kb->edit_save = 19;  // Ctrl+S
     kb->edit_quit = 17;  // Ctrl+Q
     kb->edit_backspace = KEY_BACKSPACE;
+    kb->edit_copy = 3;   // Ctrl+C
+    kb->edit_cut = 24;   // Ctrl+X
+    kb->edit_paste = 22; // Ctrl+V
+    kb->edit_select_all = 1; // Ctrl+A
+    kb->edit_undo = 26;  // Ctrl+Z
+    kb->edit_redo = 25;  // Ctrl+Y
 
     // Default label width
     kb->info_label_width = 15;
@@ -161,6 +167,12 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "edit_save", kb->edit_save, "Save in editor");
     write_kv_line(fp, "edit_quit", kb->edit_quit, "Quit editor");
     write_kv_line(fp, "edit_backspace", kb->edit_backspace, NULL);
+    write_kv_line(fp, "edit_copy", kb->edit_copy, "Copy selection");
+    write_kv_line(fp, "edit_cut", kb->edit_cut, "Cut selection");
+    write_kv_line(fp, "edit_paste", kb->edit_paste, "Paste clipboard");
+    write_kv_line(fp, "edit_select_all", kb->edit_select_all, "Select all");
+    write_kv_line(fp, "edit_undo", kb->edit_undo, "Undo");
+    write_kv_line(fp, "edit_redo", kb->edit_redo, "Redo");
     fputc('\n', fp);
 
     fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
@@ -239,6 +251,12 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"edit_save",      &kb->edit_save},
         {"edit_quit",      &kb->edit_quit},
         {"edit_backspace", &kb->edit_backspace},
+        {"edit_copy",      &kb->edit_copy},
+        {"edit_cut",       &kb->edit_cut},
+        {"edit_paste",     &kb->edit_paste},
+        {"edit_select_all", &kb->edit_select_all},
+        {"edit_undo",      &kb->edit_undo},
+        {"edit_redo",      &kb->edit_redo},
         {NULL, NULL} // sentinel
     };
 

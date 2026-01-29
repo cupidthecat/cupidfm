@@ -38,6 +38,12 @@ typedef struct {
     int edit_save;
     int edit_quit;
     int edit_backspace;
+    int edit_copy;
+    int edit_cut;
+    int edit_paste;
+    int edit_select_all;
+    int edit_undo;
+    int edit_redo;
 
     // file 
     int info_label_width;

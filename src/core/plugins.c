@@ -592,6 +592,12 @@ static bool config_key_to_field(const char *key, int **out_field) {
     if (strcmp(key, "edit_save") == 0) { *out_field = &g_kb.edit_save; return true; }
     if (strcmp(key, "edit_quit") == 0) { *out_field = &g_kb.edit_quit; return true; }
     if (strcmp(key, "edit_backspace") == 0) { *out_field = &g_kb.edit_backspace; return true; }
+    if (strcmp(key, "edit_copy") == 0) { *out_field = &g_kb.edit_copy; return true; }
+    if (strcmp(key, "edit_cut") == 0) { *out_field = &g_kb.edit_cut; return true; }
+    if (strcmp(key, "edit_paste") == 0) { *out_field = &g_kb.edit_paste; return true; }
+    if (strcmp(key, "edit_select_all") == 0) { *out_field = &g_kb.edit_select_all; return true; }
+    if (strcmp(key, "edit_undo") == 0) { *out_field = &g_kb.edit_undo; return true; }
+    if (strcmp(key, "edit_redo") == 0) { *out_field = &g_kb.edit_redo; return true; }
     if (strcmp(key, "info_label_width") == 0) { *out_field = &g_kb.info_label_width; return true; }
     return false;
 }
@@ -2291,7 +2297,13 @@ static int nf_fm_cache_set(cs_vm *vm, void *ud, int argc, const cs_value *argv, 
     }
 
     char tmp_path[MAX_PATH_LENGTH];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    size_t path_len = strlen(path);
+    if (path_len + 4 + 1 > sizeof(tmp_path)) {
+        if (out) *out = cs_bool(0);
+        return 0;
+    }
+    memcpy(tmp_path, path, path_len);
+    memcpy(tmp_path + path_len, ".tmp", 5);
 
     FILE *in = fopen(path, "r");
     FILE *outf = fopen(tmp_path, "w");
