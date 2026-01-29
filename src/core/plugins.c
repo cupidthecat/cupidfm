@@ -34,6 +34,7 @@
 #include "cupidscript.h"
 #include "cs_vm.h"
 #include "cs_value.h"
+#include "cs_http.h"
 
 typedef struct {
     cs_vm *vm;
@@ -1568,6 +1569,12 @@ static int nf_fm_search_query(cs_vm *vm, void *ud, int argc, const cs_value *arg
     return 0;
 }
 
+static int nf_fm_editor_active(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud; (void)argc; (void)argv;
+    if (out) *out = cs_bool(is_editing);
+    return 0;
+}
+
 static int nf_fm_clipboard_get(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud; (void)argc; (void)argv;
     if (!out) return 0;
@@ -2656,6 +2663,7 @@ static int nf_fm_bind(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_va
 
 static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_stdlib(vm);
+    cs_register_http_stdlib(vm);
     cs_register_native(vm, "fm.notify", nf_fm_notify, pm);
     cs_register_native(vm, "fm.status", nf_fm_notify, pm); // alias
     cs_register_native(vm, "fm.on", nf_fm_on, pm);
@@ -2685,6 +2693,7 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.search_active", nf_fm_search_active, pm);
     cs_register_native(vm, "fm.search_query", nf_fm_search_query, pm);
     cs_register_native(vm, "fm.search_set_mode", nf_fm_search_set_mode, pm);
+    cs_register_native(vm, "fm.editor_active", nf_fm_editor_active, pm);
     cs_register_native(vm, "fm.info", nf_fm_info, pm);
     cs_register_native(vm, "fm.exec", nf_fm_exec, pm);
     cs_register_native(vm, "fm.env", nf_fm_env, pm);

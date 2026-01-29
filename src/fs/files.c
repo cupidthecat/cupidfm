@@ -1079,7 +1079,8 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
 void edit_file_in_terminal(WINDOW *window, 
                            const char *file_path, 
                            WINDOW *notification_window, 
-                           KeyBindings *kb)
+                           KeyBindings *kb,
+                           struct PluginManager *pm)
 {
     (void)window;  // Unused - we create a full-screen editor window instead
     is_editing = 1;
@@ -1292,7 +1293,18 @@ void edit_file_in_terminal(WINDOW *window,
             // Update notification timeout
             long notif_time_diff = (current_time.tv_sec - last_notif_check.tv_sec) * 1000 +
                                   (current_time.tv_nsec - last_notif_check.tv_nsec) / 1000000;
-            if (!should_clear_notif && notif_time_diff >= NOTIFICATION_TIMEOUT_MS && notifwin) {
+            // Check notification hold status before clearing
+            bool can_clear_notif = !notification_hold_active;
+            if (notification_hold_active) {
+                // Check if hold period has expired
+                if (current_time.tv_sec > notification_hold_until.tv_sec ||
+                    (current_time.tv_sec == notification_hold_until.tv_sec && 
+                     current_time.tv_nsec >= notification_hold_until.tv_nsec)) {
+                    notification_hold_active = false;
+                    can_clear_notif = true;
+                }
+            }
+            if (!should_clear_notif && can_clear_notif && notif_time_diff >= NOTIFICATION_TIMEOUT_MS && notifwin) {
                 pthread_mutex_lock(&banner_mutex);
                 werase(notifwin);
                 wrefresh(notifwin);
@@ -1304,7 +1316,32 @@ void edit_file_in_terminal(WINDOW *window,
             continue;
         }
 
-        is_editing = 0;
+        // Check for console key first (allow opening console in editor)
+        if (ch == kb->key_console) {
+            console_show();
+            should_clear_notif = false;
+            render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
+            // Re-render notification window to ensure it stays visible
+            if (notification_window) {
+                touchwin(notification_window);
+                wrefresh(notification_window);
+            }
+            continue;
+        }
+
+        // Check for plugin keybinds (like F10 for editor status)
+        if (pm && plugins_handle_key(pm, ch)) {
+            should_clear_notif = false;
+            // Reset notification timer so it stays visible for the normal timeout period
+            clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+            // Re-render notification window to ensure it stays visible
+            if (notification_window) {
+                touchwin(notification_window);
+                wrefresh(notification_window);
+            }
+            // Don't render text buffer - avoid clearing the notification
+            continue;
+        }
 
         // 1) Quit editing
         if (ch == kb->edit_quit) {
@@ -1486,6 +1523,7 @@ void edit_file_in_terminal(WINDOW *window,
     }
 
     // Cleanup
+    is_editing = 0;  // Reset editing flag when exiting editor
     fclose(file);
     curs_set(0);
     

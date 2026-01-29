@@ -5,6 +5,10 @@
 #include <curses.h>
 #include "config.h"  
 #include "vector.h"
+
+// Forward declaration
+struct PluginManager;
+
 // 256 in most systems
 #define MAX_FILENAME_LEN 512
 #define DIR_SIZE_TOO_LARGE (-2)
@@ -36,7 +40,8 @@ long dir_size_get_progress(const char *dir_path);
 void edit_file_in_terminal(WINDOW *window, 
                            const char *file_path, 
                            WINDOW *notifwin, 
-                           KeyBindings *kb);
+                           KeyBindings *kb,
+                           struct PluginManager *pm);
 
 char* format_file_size(char *buffer, size_t size);
 long get_directory_size(const char *dir_path);

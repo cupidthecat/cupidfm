@@ -482,7 +482,7 @@ int main() {
                                     should_clear_notif = false;
                                 }
                             } else {
-                                edit_file_in_terminal(previewwin, target, notifwin, &kb);
+                                edit_file_in_terminal(previewwin, target, notifwin, &kb, state.plugins);
                                 state.preview_start_line = 0;
                                 redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
                                 show_notification(notifwin, "Opened file: %s", target);
@@ -533,7 +533,7 @@ int main() {
 	                    } else {
 	                        char file_path[MAX_PATH_LENGTH];
 	                        path_join(file_path, state.current_directory, state.selected_entry);
-	                        edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
+	                        edit_file_in_terminal(previewwin, file_path, notifwin, &kb, state.plugins);
 	                        state.preview_start_line = 0;
 	                        redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
 	                        show_notification(notifwin, "Editing file: %s", state.selected_entry);
@@ -993,7 +993,7 @@ int main() {
 	                if (active_window == PREVIEW_WIN_ACTIVE) {
 	                    char file_path[MAX_PATH_LENGTH];
 	                    path_join(file_path, state.current_directory, state.selected_entry);
-	                    edit_file_in_terminal(previewwin, file_path, notifwin, &kb);
+	                    edit_file_in_terminal(previewwin, file_path, notifwin, &kb, state.plugins);
 	                    state.preview_start_line = 0;
 	
 	                    redraw_frame_after_edit(&state, dirwin, previewwin, mainwin, notifwin);
@@ -1648,6 +1648,13 @@ int main() {
                 should_clear_notif = false;
                 goto input_done;
             }
+        }
+
+        // Allow console to be opened even when editor is active
+        if (ch == kb.key_console) {
+            console_show();
+            should_clear_notif = false;
+            goto input_done;
         }
 
 input_done:

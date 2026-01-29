@@ -335,6 +335,7 @@ Async variants (callback-based):
 - `fm.count()` — count of files/items
 - `fm.search_active()` — true if search open
 - `fm.search_query()`
+- `fm.editor_active()` — true if the built-in text editor is currently open
 - `fm.pane()` — string ("directory" or "preview")
 
 ### Search Control
