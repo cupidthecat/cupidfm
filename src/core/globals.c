@@ -5,6 +5,7 @@
 // Global variable definitions
 const char *BANNER_TEXT = NULL;  // To be initialized in main()
 const char *BUILD_INFO = "Version 1.0";
+char g_editor_path[MAX_PATH_LENGTH] = "";
 WINDOW *bannerwin = NULL;
 bool g_select_all_highlight = false;
 WINDOW *notifwin = NULL;

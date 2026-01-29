@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "files.h"
 #include "globals.h"
@@ -556,7 +557,12 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
                 line[strcspn(line, "\n")] = '\0';
 
                 for (char *p = line; *p; p++) {
-                    if (*p == '\t') {
+                    unsigned char c = (unsigned char)*p;
+                    if (c == '\t') {
+                        *p = ' ';
+                    } else if (isspace(c) && c != ' ') {
+                        *p = ' ';
+                    } else if (!isprint(c)) {
                         *p = ' ';
                     }
                 }

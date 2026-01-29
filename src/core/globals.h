@@ -27,6 +27,7 @@
 extern volatile sig_atomic_t resized;
 extern volatile sig_atomic_t is_editing;
 extern char copied_filename[MAX_PATH_LENGTH];
+extern char g_editor_path[MAX_PATH_LENGTH];
 extern struct timespec last_notification_time;
 extern bool should_clear_notif;
 extern KeyBindings g_kb;

@@ -327,6 +327,50 @@ typedef struct {
     int num_lines;     // Current number of lines
     int capacity;      // Total capacity of the array
 } TextBuffer;
+
+// Active editor buffer (only valid while editor is open)
+static TextBuffer *g_editor_buffer = NULL;
+
+char *editor_get_content_copy(void) {
+    if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines) return NULL;
+
+    size_t total = 0;
+    for (int i = 0; i < g_editor_buffer->num_lines; i++) {
+        const char *line = g_editor_buffer->lines[i] ? g_editor_buffer->lines[i] : "";
+        total += strlen(line);
+        if (i < g_editor_buffer->num_lines - 1) total += 1; // newline
+    }
+
+    char *out = (char *)malloc(total + 1);
+    if (!out) return NULL;
+    size_t pos = 0;
+    for (int i = 0; i < g_editor_buffer->num_lines; i++) {
+        const char *line = g_editor_buffer->lines[i] ? g_editor_buffer->lines[i] : "";
+        size_t len = strlen(line);
+        if (len) {
+            memcpy(out + pos, line, len);
+            pos += len;
+        }
+        if (i < g_editor_buffer->num_lines - 1) {
+            out[pos++] = '\n';
+        }
+    }
+    out[pos] = '\0';
+    return out;
+}
+
+char *editor_get_line_copy(int line_num) {
+    if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines) return NULL;
+    if (line_num <= 0 || line_num > g_editor_buffer->num_lines) return NULL;
+    const char *line = g_editor_buffer->lines[line_num - 1];
+    if (!line) line = "";
+    size_t len = strlen(line);
+    char *out = (char *)malloc(len + 1);
+    if (!out) return NULL;
+    memcpy(out, line, len);
+    out[len] = '\0';
+    return out;
+}
 /**
  * Function to initialize a TextBuffer
  *
@@ -1084,6 +1128,12 @@ void edit_file_in_terminal(WINDOW *window,
 {
     (void)window;  // Unused - we create a full-screen editor window instead
     is_editing = 1;
+    if (file_path) {
+        strncpy(g_editor_path, file_path, sizeof(g_editor_path) - 1);
+        g_editor_path[sizeof(g_editor_path) - 1] = '\0';
+    } else {
+        g_editor_path[0] = '\0';
+    }
 
     // Open the file for reading and writing
     int fd = open(file_path, O_RDWR);
@@ -1134,6 +1184,7 @@ void edit_file_in_terminal(WINDOW *window,
     text_buffer.capacity = 100; 
     text_buffer.num_lines = 0;
     text_buffer.lines = malloc(sizeof(char*) * text_buffer.capacity);
+    g_editor_buffer = &text_buffer;
     if (!text_buffer.lines) {
         pthread_mutex_lock(&banner_mutex);
         mvwprintw(notification_window, 1, 2, "Memory allocation error");
@@ -1334,12 +1385,13 @@ void edit_file_in_terminal(WINDOW *window,
             should_clear_notif = false;
             // Reset notification timer so it stays visible for the normal timeout period
             clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+            // Re-render editor buffer, then bring notification back on top
+            render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
             // Re-render notification window to ensure it stays visible
             if (notification_window) {
                 touchwin(notification_window);
                 wrefresh(notification_window);
             }
-            // Don't render text buffer - avoid clearing the notification
             continue;
         }
 
@@ -1524,6 +1576,8 @@ void edit_file_in_terminal(WINDOW *window,
 
     // Cleanup
     is_editing = 0;  // Reset editing flag when exiting editor
+    g_editor_path[0] = '\0';
+    g_editor_buffer = NULL;
     fclose(file);
     curs_set(0);
     

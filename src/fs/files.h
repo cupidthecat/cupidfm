@@ -33,6 +33,14 @@ void format_dir_size_pending_animation(char *buffer, size_t len, bool reset);
 // Returns the best-known in-progress byte total for a directory size job, or 0 if none.
 long dir_size_get_progress(const char *dir_path);
 
+// Returns a newly allocated copy of the current editor buffer, or NULL if not editing.
+// Caller must free the returned string.
+char *editor_get_content_copy(void);
+
+// Returns a newly allocated copy of a 1-indexed line from the editor, or NULL.
+// Caller must free the returned string.
+char *editor_get_line_copy(int line_num);
+
 /**
  * Now the compiler knows what KeyBindings is 
  * because config.h is included above.

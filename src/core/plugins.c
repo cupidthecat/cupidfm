@@ -1575,6 +1575,49 @@ static int nf_fm_editor_active(cs_vm *vm, void *ud, int argc, const cs_value *ar
     return 0;
 }
 
+static int nf_fm_editor_get_path(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud; (void)argc; (void)argv;
+    if (out) {
+        if (is_editing && g_editor_path[0]) {
+            *out = cs_str(vm, g_editor_path);
+        } else {
+            *out = cs_nil();
+        }
+    }
+    return 0;
+}
+
+static int nf_fm_editor_get_content(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud; (void)argc; (void)argv;
+    if (!out) return 0;
+    char *content = editor_get_content_copy();
+    if (!content) {
+        *out = cs_nil();
+        return 0;
+    }
+    *out = cs_str(vm, content);
+    free(content);
+    return 0;
+}
+
+static int nf_fm_editor_get_line(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    if (!out) return 0;
+    if (argc != 1 || argv[0].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+    int line_num = (int)argv[0].as.i;
+    char *line = editor_get_line_copy(line_num);
+    if (!line) {
+        *out = cs_nil();
+        return 0;
+    }
+    *out = cs_str(vm, line);
+    free(line);
+    return 0;
+}
+
 static int nf_fm_clipboard_get(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud; (void)argc; (void)argv;
     if (!out) return 0;
@@ -2694,6 +2737,9 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.search_query", nf_fm_search_query, pm);
     cs_register_native(vm, "fm.search_set_mode", nf_fm_search_set_mode, pm);
     cs_register_native(vm, "fm.editor_active", nf_fm_editor_active, pm);
+    cs_register_native(vm, "fm.editor_get_path", nf_fm_editor_get_path, pm);
+    cs_register_native(vm, "fm.editor_get_content", nf_fm_editor_get_content, pm);
+    cs_register_native(vm, "fm.editor_get_line", nf_fm_editor_get_line, pm);
     cs_register_native(vm, "fm.info", nf_fm_info, pm);
     cs_register_native(vm, "fm.exec", nf_fm_exec, pm);
     cs_register_native(vm, "fm.env", nf_fm_env, pm);

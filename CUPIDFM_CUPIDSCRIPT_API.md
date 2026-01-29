@@ -336,6 +336,9 @@ Async variants (callback-based):
 - `fm.search_active()` — true if search open
 - `fm.search_query()`
 - `fm.editor_active()` — true if the built-in text editor is currently open
+- `fm.editor_get_path()` — current editor file path, or nil if editor not open
+- `fm.editor_get_content()` — current editor buffer text, or nil if editor not open
+- `fm.editor_get_line(line_num)` — line content (1-indexed), or nil if out of range
 - `fm.pane()` — string ("directory" or "preview")
 
 ### Search Control

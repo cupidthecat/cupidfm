@@ -73,6 +73,7 @@ void show_popup(const char *title, const char *fmt, ...) {
         unsigned char c = (unsigned char)msg[i];
         if (c == '\0') break;
         if (c == '\n') continue;
+        if (c == '\r') { msg[i] = ' '; continue; }
         if (!isprint(c)) msg[i] = '?';
     }
 
