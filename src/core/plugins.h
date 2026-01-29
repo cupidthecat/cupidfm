@@ -77,5 +77,6 @@ bool plugins_take_set_search_mode_request(PluginManager *pm, int *out_mode);
 // Transfers ownership of op.paths to the caller.
 bool plugins_take_fileop_request(PluginManager *pm, PluginFileOp *out);
 void plugins_fileop_free(PluginFileOp *op);
+void editor_apply_uppercase_to_selection(void);
 
 #endif // PLUGINS_H

@@ -339,6 +339,12 @@ Async variants (callback-based):
 - `fm.editor_get_path()` — current editor file path, or nil if editor not open
 - `fm.editor_get_content()` — current editor buffer text, or nil if editor not open
 - `fm.editor_get_line(line_num)` — line content (1-indexed), or nil if out of range
+- `fm.editor_get_lines(start, end)` — list of lines in range (1-indexed, inclusive), or nil if invalid
+- `fm.editor_line_count()` — total number of lines in the editor, or 0 if editor not open
+- `fm.editor_get_cursor()` — returns map with cursor position `{line: int, col: int}` (1-indexed), or nil if not editing
+- `fm.editor_get_selection()` — returns map with selection bounds `{start_line: int, start_col: int, end_line: int, end_col: int}` (1-indexed), or nil if no selection
+- `fm.editor_insert_text(text)` — inserts text at current cursor position, returns true on success
+- `fm.editor_replace_text(start_line, start_col, end_line, end_col, text)` — replaces text in range (1-indexed) with new text, returns true on success
 - `fm.pane()` — string ("directory" or "preview")
 
 ### Search Control

@@ -58,6 +58,7 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->edit_select_all = 1; // Ctrl+A
     kb->edit_undo = 26;  // Ctrl+Z
     kb->edit_redo = 25;  // Ctrl+Y
+    kb->edit_uppercase = 21; // Ctrl+U
 
     // Default label width
     kb->info_label_width = 15;
@@ -173,6 +174,7 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "edit_select_all", kb->edit_select_all, "Select all");
     write_kv_line(fp, "edit_undo", kb->edit_undo, "Undo");
     write_kv_line(fp, "edit_redo", kb->edit_redo, "Redo");
+    write_kv_line(fp, "edit_uppercase", kb->edit_uppercase, "Uppercase selection");
     fputc('\n', fp);
 
     fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
@@ -257,6 +259,7 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"edit_select_all", &kb->edit_select_all},
         {"edit_undo",      &kb->edit_undo},
         {"edit_redo",      &kb->edit_redo},
+        {"edit_uppercase", &kb->edit_uppercase},
         {NULL, NULL} // sentinel
     };
 

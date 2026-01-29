@@ -44,6 +44,7 @@ typedef struct {
     int edit_select_all;
     int edit_undo;
     int edit_redo;
+    int edit_uppercase;
 
     // file 
     int info_label_width;

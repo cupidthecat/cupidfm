@@ -15,6 +15,7 @@
 #include <ncurses.h>               // for WINDOW, mvwprintw
 #include <stdbool.h>               // for bool, true, false
 #include <string.h>                // for strcmp
+#include <ctype.h>                 // for toupper
 #include <limits.h>                // For PATH_MAX
 #include <fcntl.h>                 // For O_RDONLY
 #include <magic.h>                 // For libmagic
@@ -390,6 +391,9 @@ static int g_sel_anchor_line = 0;
 static int g_sel_anchor_col = 0;
 static int g_sel_end_line = 0;
 static int g_sel_end_col = 0;
+static int g_editor_cursor_line = 0;
+static int g_editor_cursor_col = 0;
+static bool g_editor_dirty = false;
 
 // -----------------------
 // Editor Undo/Redo (snapshot-based)
@@ -780,6 +784,49 @@ static void delete_selection(TextBuffer *buffer) {
     buffer->num_lines -= remove_count;
 }
 
+// -----------------------
+// Selection transforms
+// -----------------------
+static void editor_selection_to_uppercase(TextBuffer *buffer) {
+    if (!buffer || !buffer->lines) return;
+    if (!g_sel_active || selection_is_empty()) return;
+
+    int s_line = g_sel_anchor_line;
+    int s_col  = g_sel_anchor_col;
+    int e_line = g_sel_end_line;
+    int e_col  = g_sel_end_col;
+    normalize_selection(&s_line, &s_col, &e_line, &e_col);
+
+    if (buffer->num_lines <= 0) return;
+    if (s_line < 0) s_line = 0;
+    if (e_line < 0) e_line = 0;
+    if (s_line >= buffer->num_lines) return;
+    if (e_line >= buffer->num_lines) e_line = buffer->num_lines - 1;
+
+    for (int i = s_line; i <= e_line; i++) {
+        char *line = buffer->lines[i];
+        if (!line) continue;
+
+        int len = (int)strlen(line);
+        int start = (i == s_line) ? MIN(s_col, len) : 0;
+        int end   = (i == e_line) ? MIN(e_col, len) : len; // end is EXCLUSIVE (matches your copy/delete logic)
+        if (end < start) end = start;
+
+        for (int j = start; j < end; j++) {
+            unsigned char c = (unsigned char)line[j];
+            line[j] = (char)toupper((int)c);
+        }
+    }
+}
+
+void editor_apply_uppercase_to_selection(void) {
+    if (!g_editor_buffer || selection_is_empty()) {
+        return;
+    }
+    editor_selection_to_uppercase(g_editor_buffer);
+    g_editor_dirty = true;
+}
+
 static void insert_text_at_cursor(TextBuffer *buffer, int *cursor_line, int *cursor_col, const char *text) {
     if (!buffer || !buffer->lines || !text || !cursor_line || !cursor_col) return;
 
@@ -955,6 +1002,193 @@ char *editor_get_line_copy(int line_num) {
     memcpy(out, line, len);
     out[len] = '\0';
     return out;
+}
+
+int editor_get_line_count(void) {
+    if (!is_editing || !g_editor_buffer) return 0;
+    return g_editor_buffer->num_lines;
+}
+
+bool editor_get_cursor(int *line, int *col) {
+    if (!is_editing) return false;
+    if (line) *line = g_editor_cursor_line + 1;  // Convert to 1-indexed
+    if (col) *col = g_editor_cursor_col + 1;     // Convert to 1-indexed
+    return true;
+}
+
+bool editor_get_selection(int *start_line, int *start_col, int *end_line, int *end_col) {
+    if (!is_editing || !g_sel_active) return false;
+    
+    // Normalize selection so start is always before end
+    int sl = g_sel_anchor_line;
+    int sc = g_sel_anchor_col;
+    int el = g_sel_end_line;
+    int ec = g_sel_end_col;
+    
+    // Swap if needed to ensure start <= end
+    if (sl > el || (sl == el && sc > ec)) {
+        int tmp_l = sl; sl = el; el = tmp_l;
+        int tmp_c = sc; sc = ec; ec = tmp_c;
+    }
+    
+    if (start_line) *start_line = sl + 1;  // Convert to 1-indexed
+    if (start_col) *start_col = sc + 1;    // Convert to 1-indexed
+    if (end_line) *end_line = el + 1;      // Convert to 1-indexed
+    if (end_col) *end_col = ec + 1;        // Convert to 1-indexed
+    return true;
+}
+
+bool editor_insert_text(const char *text) {
+    if (!is_editing || !g_editor_buffer || !text) return false;
+    
+    int line = g_editor_cursor_line;
+    int col = g_editor_cursor_col;
+    
+    if (line < 0 || line >= g_editor_buffer->num_lines) return false;
+    
+    char *curr_line = g_editor_buffer->lines[line];
+    if (!curr_line) curr_line = "";
+    
+    // Handle newlines in the text
+    const char *p = text;
+    const char *line_start = text;
+    
+    while (*p) {
+        if (*p == '\n') {
+            // Insert text up to newline
+            size_t insert_len = p - line_start;
+            if (insert_len > 0 || p == line_start) {
+                int curr_len = strlen(curr_line);
+                char *new_line = malloc(curr_len + insert_len + 1);
+                if (!new_line) return false;
+                
+                memcpy(new_line, curr_line, col);
+                memcpy(new_line + col, line_start, insert_len);
+                memcpy(new_line + col + insert_len, curr_line + col, curr_len - col + 1);
+                
+                free(g_editor_buffer->lines[line]);
+                g_editor_buffer->lines[line] = new_line;
+                curr_line = new_line;
+                col += insert_len;
+            }
+            
+            // Split line at cursor
+            char *rest = strdup(curr_line + col);
+            if (!rest) return false;
+            curr_line[col] = '\0';
+            
+            // Insert new line
+            if (g_editor_buffer->num_lines >= g_editor_buffer->capacity) {
+                g_editor_buffer->capacity *= 2;
+                char **tmp = realloc(g_editor_buffer->lines, sizeof(char*) * g_editor_buffer->capacity);
+                if (!tmp) {
+                    free(rest);
+                    return false;
+                }
+                g_editor_buffer->lines = tmp;
+            }
+            
+            memmove(&g_editor_buffer->lines[line + 2], &g_editor_buffer->lines[line + 1],
+                   (g_editor_buffer->num_lines - line - 1) * sizeof(char*));
+            g_editor_buffer->lines[line + 1] = rest;
+            g_editor_buffer->num_lines++;
+            
+            line++;
+            col = 0;
+            curr_line = rest;
+            line_start = p + 1;
+        }
+        p++;
+    }
+    
+    // Insert remaining text
+    size_t insert_len = p - line_start;
+    if (insert_len > 0) {
+        int curr_len = strlen(curr_line);
+        char *new_line = malloc(curr_len + insert_len + 1);
+        if (!new_line) return false;
+        
+        memcpy(new_line, curr_line, col);
+        memcpy(new_line + col, line_start, insert_len);
+        memcpy(new_line + col + insert_len, curr_line + col, curr_len - col + 1);
+        
+        free(g_editor_buffer->lines[line]);
+        g_editor_buffer->lines[line] = new_line;
+        col += insert_len;
+    }
+    
+    // Update cursor
+    g_editor_cursor_line = line;
+    g_editor_cursor_col = col;
+    g_editor_dirty = true;
+    
+    return true;
+}
+
+bool editor_replace_text(int start_line, int start_col, int end_line, int end_col, const char *text) {
+    if (!is_editing || !g_editor_buffer) return false;
+    
+    // Convert to 0-indexed
+    start_line--;
+    start_col--;
+    end_line--;
+    end_col--;
+    
+    if (start_line < 0 || start_line >= g_editor_buffer->num_lines) return false;
+    if (end_line < 0 || end_line >= g_editor_buffer->num_lines) return false;
+    if (start_line > end_line || (start_line == end_line && start_col > end_col)) return false;
+    
+    // Delete the range
+    if (start_line == end_line) {
+        // Same line - delete portion
+        char *line = g_editor_buffer->lines[start_line];
+        if (!line) return false;
+        int len = strlen(line);
+        if (start_col > len || end_col > len) return false;
+        
+        char *new_line = malloc(len - (end_col - start_col) + 1);
+        if (!new_line) return false;
+        
+        memcpy(new_line, line, start_col);
+        strcpy(new_line + start_col, line + end_col);
+        
+        free(g_editor_buffer->lines[start_line]);
+        g_editor_buffer->lines[start_line] = new_line;
+    } else {
+        // Multiple lines - merge first and last, delete middle
+        char *first = g_editor_buffer->lines[start_line];
+        char *last = g_editor_buffer->lines[end_line];
+        
+        char *merged = malloc(start_col + strlen(last + end_col) + 1);
+        if (!merged) return false;
+        
+        memcpy(merged, first, start_col);
+        strcpy(merged + start_col, last + end_col);
+        
+        // Free deleted lines
+        for (int i = start_line; i <= end_line; i++) {
+            free(g_editor_buffer->lines[i]);
+        }
+        
+        // Shift remaining lines
+        g_editor_buffer->lines[start_line] = merged;
+        int lines_deleted = end_line - start_line;
+        memmove(&g_editor_buffer->lines[start_line + 1], &g_editor_buffer->lines[end_line + 1],
+               (g_editor_buffer->num_lines - end_line - 1) * sizeof(char*));
+        g_editor_buffer->num_lines -= lines_deleted;
+    }
+    
+    // Set cursor to start of deleted range
+    g_editor_cursor_line = start_line;
+    g_editor_cursor_col = start_col;
+    
+    // Insert new text
+    if (text && *text) {
+        if (!editor_insert_text(text)) return false;
+    }
+    
+    g_editor_dirty = true;
+    return true;
 }
 /**
  * Function to initialize a TextBuffer
@@ -2023,6 +2257,9 @@ void edit_file_in_terminal(WINDOW *window,
     int cursor_col  = 0;
     int start_line  = 0;
     g_sel_active = false;
+    g_editor_cursor_line = 0;
+    g_editor_cursor_col = 0;
+    g_editor_dirty = false;
     bool editor_dirty = false;
     UndoManager um = {0};
 
@@ -2271,8 +2508,9 @@ void edit_file_in_terminal(WINDOW *window,
             continue;
         }
 
-        // Check for plugin keybinds (like F10 for editor status)
-        if (pm && plugins_handle_key(pm, ch)) {
+        // Normalize Ctrl+L (ncurses sends KEY_CLEAR)
+        int plugin_ch = (ch == KEY_CLEAR) ? 12 : ch;
+        if (pm && plugins_handle_key(pm, plugin_ch)) {
             should_clear_notif = false;
             // Reset notification timer so it stays visible for the normal timeout period
             clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
@@ -2325,6 +2563,7 @@ void edit_file_in_terminal(WINDOW *window,
             mvwprintw(notification_window, 0, 0, "File saved: %s", file_path);
             wrefresh(notification_window);
             editor_dirty = false;
+            g_editor_dirty = false;
         }
 
         // 3) Move up
@@ -2492,6 +2731,32 @@ void edit_file_in_terminal(WINDOW *window,
                     clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
                 }
             }
+        }
+        // Ctrl+U (uppercase selection)
+        else if (ch == kb->edit_uppercase) {
+            if (!g_sel_active || selection_is_empty()) {
+                if (notification_window) {
+                    werase(notification_window);
+                    mvwprintw(notification_window, 0, 0, "No selection to uppercase");
+                    wrefresh(notification_window);
+                    should_clear_notif = false;
+                    clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+                }
+            } else {
+                editor_undo_record(&um, &text_buffer, cursor_line, cursor_col, start_line);
+                editor_selection_to_uppercase(&text_buffer);
+                editor_dirty = true;
+                g_editor_dirty = true;
+
+                if (notification_window) {
+                    werase(notification_window);
+                    mvwprintw(notification_window, 0, 0, "Uppercased selection");
+                    wrefresh(notification_window);
+                    should_clear_notif = false;
+                    clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+                }
+            }
+            render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
         }
         // Ctrl+X (cut)
         else if (ch == kb->edit_cut) {
@@ -2711,6 +2976,11 @@ void edit_file_in_terminal(WINDOW *window,
             editor_dirty = true;
         }
 
+        // Update global cursor position for API access
+        g_editor_cursor_line = cursor_line;
+        g_editor_cursor_col = cursor_col;
+        if (editor_dirty) g_editor_dirty = true;
+
         // Re-render after any key
         render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
     }
@@ -2719,6 +2989,7 @@ void edit_file_in_terminal(WINDOW *window,
     is_editing = 0;  // Reset editing flag when exiting editor
     g_editor_path[0] = '\0';
     g_editor_buffer = NULL;
+    g_editor_dirty = false;
     fclose(file);
     curs_set(0);
 

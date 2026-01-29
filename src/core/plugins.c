@@ -1624,6 +1624,131 @@ static int nf_fm_editor_get_line(cs_vm *vm, void *ud, int argc, const cs_value *
     return 0;
 }
 
+static int nf_fm_editor_get_lines(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    if (!out) return 0;
+    if (argc != 2 || argv[0].type != CS_T_INT || argv[1].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+
+    int start = (int)argv[0].as.i;
+    int end = (int)argv[1].as.i;
+    if (start < 1 || end < start) {
+        *out = cs_nil();
+        return 0;
+    }
+
+    cs_value listv = cs_list(vm);
+    cs_list_obj *l = (cs_list_obj *)listv.as.p;
+    if (!l) {
+        *out = cs_nil();
+        return 0;
+    }
+
+    for (int i = start; i <= end; i++) {
+        char *line = editor_get_line_copy(i);
+        if (!line) {
+            *out = cs_nil();
+            return 0;
+        }
+        (void)list_push_local(l, cs_str(vm, line));
+        free(line);
+    }
+
+    *out = listv;
+    return 0;
+}
+
+static int nf_fm_editor_line_count(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud; (void)argc; (void)argv;
+    if (out) *out = cs_int(editor_get_line_count());
+    return 0;
+}
+
+static int nf_fm_editor_get_cursor(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud; (void)argc; (void)argv;
+    if (!out) return 0;
+
+    int line = 0, col = 0;
+    if (!editor_get_cursor(&line, &col)) {
+        *out = cs_nil();
+        return 0;
+    }
+
+    cs_value mapv = cs_map(vm);
+    cs_map_set(mapv, "line", cs_int(line));
+    cs_map_set(mapv, "col", cs_int(col));
+
+    *out = mapv;
+    return 0;
+}
+
+static int nf_fm_editor_get_selection(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud; (void)argc; (void)argv;
+    if (!out) return 0;
+
+    int start_line = 0, start_col = 0, end_line = 0, end_col = 0;
+    if (!editor_get_selection(&start_line, &start_col, &end_line, &end_col)) {
+        *out = cs_nil();
+        return 0;
+    }
+
+    cs_value mapv = cs_map(vm);
+    cs_map_set(mapv, "start_line", cs_int(start_line));
+    cs_map_set(mapv, "start_col", cs_int(start_col));
+    cs_map_set(mapv, "end_line", cs_int(end_line));
+    cs_map_set(mapv, "end_col", cs_int(end_col));
+
+    *out = mapv;
+    return 0;
+}
+
+static int nf_fm_editor_insert_text(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        if (out) *out = cs_bool(false);
+        return 0;
+    }
+    
+    const char *text = cs_to_cstr(argv[0]);
+    bool result = editor_insert_text(text);
+    if (out) *out = cs_bool(result);
+    return 0;
+}
+
+static int nf_fm_editor_replace_text(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud;
+    if (argc != 5 || 
+        argv[0].type != CS_T_INT || argv[1].type != CS_T_INT ||
+        argv[2].type != CS_T_INT || argv[3].type != CS_T_INT ||
+        argv[4].type != CS_T_STR) {
+        if (out) *out = cs_bool(false);
+        return 0;
+    }
+    
+    int start_line = (int)argv[0].as.i;
+    int start_col = (int)argv[1].as.i;
+    int end_line = (int)argv[2].as.i;
+    int end_col = (int)argv[3].as.i;
+    const char *text = cs_to_cstr(argv[4]);
+    
+    bool result = editor_replace_text(start_line, start_col, end_line, end_col, text);
+    if (out) *out = cs_bool(result);
+    return 0;
+}
+
+static int nf_fm_editor_uppercase_selection(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud; (void)argc; (void)argv;
+    if (!is_editing) {
+        if (out) *out = cs_bool(false);
+        return 0;
+    }
+    editor_apply_uppercase_to_selection();
+    if (out) *out = cs_bool(true);
+    return 0;
+}
+
 static int nf_fm_clipboard_get(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud; (void)argc; (void)argv;
     if (!out) return 0;
@@ -2752,6 +2877,13 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.editor_get_path", nf_fm_editor_get_path, pm);
     cs_register_native(vm, "fm.editor_get_content", nf_fm_editor_get_content, pm);
     cs_register_native(vm, "fm.editor_get_line", nf_fm_editor_get_line, pm);
+    cs_register_native(vm, "fm.editor_get_lines", nf_fm_editor_get_lines, pm);
+    cs_register_native(vm, "fm.editor_line_count", nf_fm_editor_line_count, pm);
+    cs_register_native(vm, "fm.editor_get_cursor", nf_fm_editor_get_cursor, pm);
+    cs_register_native(vm, "fm.editor_get_selection", nf_fm_editor_get_selection, pm);
+    cs_register_native(vm, "fm.editor_insert_text", nf_fm_editor_insert_text, pm);
+    cs_register_native(vm, "fm.editor_replace_text", nf_fm_editor_replace_text, pm);
+    cs_register_native(vm, "fm.editor_uppercase_selection", nf_fm_editor_uppercase_selection, pm);
     cs_register_native(vm, "fm.info", nf_fm_info, pm);
     cs_register_native(vm, "fm.exec", nf_fm_exec, pm);
     cs_register_native(vm, "fm.env", nf_fm_env, pm);

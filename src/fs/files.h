@@ -41,6 +41,21 @@ char *editor_get_content_copy(void);
 // Caller must free the returned string.
 char *editor_get_line_copy(int line_num);
 
+// Returns the total number of lines in the editor, or 0 if not editing.
+int editor_get_line_count(void);
+
+// Returns the current cursor position (1-indexed). Returns false if not editing.
+bool editor_get_cursor(int *line, int *col);
+
+// Returns the current selection bounds (1-indexed). Returns false if no selection.
+bool editor_get_selection(int *start_line, int *start_col, int *end_line, int *end_col);
+
+// Inserts text at the current cursor position. Returns false on failure.
+bool editor_insert_text(const char *text);
+
+// Replaces text in the specified range (1-indexed). Returns false on failure.
+bool editor_replace_text(int start_line, int start_col, int end_line, int end_col, const char *text);
+
 /**
  * Now the compiler knows what KeyBindings is 
  * because config.h is included above.
