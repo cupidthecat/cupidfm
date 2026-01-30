@@ -630,7 +630,6 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [ ] Write custom magic library for in-house MIME type detection
 
 ### Features
-- [ ] Implement syntax highlighting for supported file types (use config system like micro)
 - [ ] Add a quick select feature for selecting file names, dir names, and current directory
 - [X] Add configuration file support for customizing:
   - [X] Key bindings
@@ -707,7 +706,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
   - [X] Implement proper text selection in edit mode (Currnety mouse selecting, will select line numbers )
 - [X] Custom plugin system with cupidscript a custom scripting lang
 - [X] Implement file/directory permissions editing
-
+- [X] Implement syntax highlighting for supported file types (use config system like micro)
 ### Edit Mode Issues
 - [X] Banner marquee not rotating correctly when rotating in edit mode
   - [X] Fix issue casued by patch, they are in seperate locations dpeedning on timing 
