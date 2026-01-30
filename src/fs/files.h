@@ -47,6 +47,9 @@ int editor_get_line_count(void);
 // Returns the current cursor position (1-indexed). Returns false if not editing.
 bool editor_get_cursor(int *line, int *col);
 
+// Sets the cursor position (1-indexed). Returns false if not editing or invalid position.
+bool editor_set_cursor(int line, int col);
+
 // Returns the current selection bounds (1-indexed). Returns false if no selection.
 bool editor_get_selection(int *start_line, int *start_col, int *end_line, int *end_col);
 

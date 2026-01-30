@@ -1017,6 +1017,40 @@ bool editor_get_cursor(int *line, int *col) {
     return true;
 }
 
+bool editor_set_cursor(int line, int col) {
+    if (!is_editing) return false;
+    
+    // Convert from 1-indexed to 0-indexed
+    int target_line = line - 1;
+    int target_col = col - 1;
+    
+    // Validate line number
+    if (target_line < 0 || target_line >= g_editor_buffer->num_lines) {
+        return false;
+    }
+    
+    // Get the line to validate column
+    const char *line_text = g_editor_buffer->lines[target_line];
+    if (!line_text) {
+        return false;
+    }
+    
+    int line_length = strlen(line_text);
+    
+    // Clamp column to valid range (0 to line_length)
+    if (target_col < 0) {
+        target_col = 0;
+    } else if (target_col > line_length) {
+        target_col = line_length;
+    }
+    
+    // Update cursor position
+    g_editor_cursor_line = target_line;
+    g_editor_cursor_col = target_col;
+    
+    return true;
+}
+
 bool editor_get_selection(int *start_line, int *start_col, int *end_line, int *end_col) {
     if (!is_editing || !g_sel_active) return false;
     
@@ -2385,6 +2419,10 @@ void edit_file_in_terminal(WINDOW *window,
     int total_scroll_length = COLS + (BANNER_TEXT ? strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? strlen(BUILD_INFO) : 0) + 4;
 
     while (!exit_edit_mode) {
+        /* NEW: sync cursor state so API always reports correct position */
+        g_editor_cursor_line = cursor_line;
+        g_editor_cursor_col  = cursor_col;
+
         // Check for window resize
         if (resized) {
             resized = 0;
@@ -2604,10 +2642,26 @@ void edit_file_in_terminal(WINDOW *window,
 
         // Normalize Ctrl+L (ncurses sends KEY_CLEAR)
         int plugin_ch = (ch == KEY_CLEAR) ? 12 : ch;
+
+        /* NEW: keep plugin-visible cursor in sync with the editor loop state */
+        g_editor_cursor_line = cursor_line;
+        g_editor_cursor_col  = cursor_col;
+
+        /* NEW: also keep dirty state in sync (plugins may set g_editor_dirty) */
+        if (g_editor_dirty) editor_dirty = true;
+
         if (pm && plugins_handle_key(pm, plugin_ch)) {
             should_clear_notif = false;
             // Reset notification timer so it stays visible for the normal timeout period
             clock_gettime(CLOCK_MONOTONIC, &last_notif_check);
+
+            /* NEW: plugin may have moved the cursor via fm.editor_set_cursor() */
+            cursor_line = g_editor_cursor_line;
+            cursor_col  = g_editor_cursor_col;
+
+            /* NEW: plugin may have edited buffer via API */
+            if (g_editor_dirty) editor_dirty = true;
+
             // Re-render editor buffer, then bring notification back on top
             render_text_buffer(editor_window, &text_buffer, &start_line, cursor_line, cursor_col);
             // Re-render notification window to ensure it stays visible

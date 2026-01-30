@@ -1684,6 +1684,22 @@ static int nf_fm_editor_get_cursor(cs_vm *vm, void *ud, int argc, const cs_value
     return 0;
 }
 
+static int nf_fm_editor_set_cursor(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud;
+    if (argc < 2) return -1;
+    
+    if (argv[0].type != CS_T_INT || argv[1].type != CS_T_INT) {
+        return -1;
+    }
+    
+    int line = (int)argv[0].as.i;
+    int col = (int)argv[1].as.i;
+    
+    bool success = editor_set_cursor(line, col);
+    if (out) *out = cs_bool(success);
+    return 0;
+}
+
 static int nf_fm_editor_get_selection(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud; (void)argc; (void)argv;
     if (!out) return 0;
@@ -2899,6 +2915,7 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.editor_get_lines", nf_fm_editor_get_lines, pm);
     cs_register_native(vm, "fm.editor_line_count", nf_fm_editor_line_count, pm);
     cs_register_native(vm, "fm.editor_get_cursor", nf_fm_editor_get_cursor, pm);
+    cs_register_native(vm, "fm.editor_set_cursor", nf_fm_editor_set_cursor, pm);
     cs_register_native(vm, "fm.editor_get_selection", nf_fm_editor_get_selection, pm);
     cs_register_native(vm, "fm.editor_insert_text", nf_fm_editor_insert_text, pm);
     cs_register_native(vm, "fm.editor_replace_text", nf_fm_editor_replace_text, pm);

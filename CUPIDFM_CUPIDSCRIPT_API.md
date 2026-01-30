@@ -762,6 +762,7 @@ CupidFM provides a comprehensive API for manipulating the built-in text editor f
 | `fm.editor_get_path()` | `string \| nil` | Current editor file path, or nil if editor not open |
 | `fm.editor_line_count()` | `int` | Total number of lines in the editor, or 0 if not open |
 | `fm.editor_get_cursor()` | `map \| nil` | Cursor position `{line: int, col: int}` (1-indexed), or nil if not editing |
+| `fm.editor_set_cursor(line, col)` | `bool` | Sets cursor position (1-indexed). Returns true on success, false if not editing or invalid position |
 | `fm.editor_get_selection()` | `map \| nil` | Selection bounds `{start_line, start_col, end_line, end_col}` (1-indexed), or nil if no selection |
 
 #### Reading Editor Content
@@ -785,6 +786,11 @@ if (fm.editor_active()) {
     let lines = fm.editor_get_lines(1, 10);
     for line in lines {
         print(line);
+    }
+    
+    // Move cursor to line 5, column 10
+    if (fm.editor_set_cursor(5, 10)) {
+        fm.notify("Cursor moved to line 5, column 10");
     }
 }
 ```
