@@ -47,6 +47,7 @@
 #include "app_navigation.h"
 #include "app_windows.h"
 #include "app_plugins.h"
+#include "syntax.h"
 
 // Global resize flag
 volatile sig_atomic_t resized = 0;
@@ -83,6 +84,15 @@ int main() {
     keypad(stdscr, TRUE);
     curs_set(0);
     timeout(100);
+    
+    // Initialize colors for syntax highlighting
+    if (has_colors()) {
+        start_color();
+        syntax_init_colors();
+    }
+    
+    // Load syntax highlighting definitions
+    syntax_init();
 
     // Initialize windows and other components
     int notif_height = 1;
@@ -1749,6 +1759,7 @@ input_done:
     delwin(mainwin);
     delwin(bannerwin);
     endwin();
+    syntax_cleanup();
     cleanup_temp_files();
     dir_size_cache_stop();
 

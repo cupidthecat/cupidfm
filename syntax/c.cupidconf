@@ -1,0 +1,46 @@
+# C Language Syntax Highlighting Configuration
+# Comprehensive C/C++ syntax support (C89/C99/C11/C17/C23, C++98/C++11/C++14/C++17/C++20/C++23)
+
+# Language name
+language = c
+
+# File extensions to apply this syntax to
+extensions = .c, .h, .cpp, .hpp, .cc, .cxx, .hxx, .C, .H, .ii, .def, .inl, .inc, .ipp
+
+# C/C++ keywords - control flow and jump statements
+keywords = for, if, while, do, else, case, default, switch, goto, continue, break, return, try, catch, throw, _Generic, _Static_assert, static_assert, asm, __asm__, fortran, co_await, co_return, co_yield, requires, concept
+
+# Storage class, type qualifiers, and modifiers
+statements = auto, volatile, register, restrict, _Alignas, alignas, _Alignof, alignof, static, const, constexpr, consteval, constinit, extern, _Thread_local, thread_local, sizeof, offsetof, __attribute__, __aligned, __asm, __builtin, __extension__, __hidden, __inline, __packed, __restrict, __section, __typeof, __weak, mutable, virtual, override, final, explicit, friend, inline, noexcept, decltype, template, typename, using, namespace, class, public, private, protected, new, delete, this, operator, static_cast, dynamic_cast, const_cast, reinterpret_cast, typeid, export, module, import
+
+# C types - primitive and standard types
+types = _Atomic, _BitInt, float, double, _Decimal32, _Decimal64, _Decimal128, _Complex, complex, _Imaginary, imaginary, _Bool, bool, char, int, short, long, enum, void, struct, union, typedef, typeof, typeof_unqual, signed, unsigned, inline, _Noreturn, noreturn, size_t, ssize_t, ptrdiff_t, intptr_t, uintptr_t, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, char8_t, char16_t, char32_t, wchar_t, u_int8_t, u_int16_t, u_int32_t, u_int64_t, _Float16, __fp16, _Float32, _Float32x, _Float64, _Float64x, __float80, _Float128, _Float128x, __float128, __ibm128, __int128, __uint128_t, _Fract, _Sat, _Accum, FILE, DIR, va_list, jmp_buf, sig_atomic_t, fpos_t, clock_t, time_t, div_t, ldiv_t, lldiv_t, mbstate_t, wint_t, wctrans_t, wctype_t, off_t, pid_t, uid_t, gid_t, mode_t, dev_t, ino_t, nlink_t
+
+# Boolean and null constants
+constants = true, false, TRUE, FALSE, NULL, nullptr, __null, EXIT_SUCCESS, EXIT_FAILURE, EOF, BUFSIZ, FILENAME_MAX, FOPEN_MAX
+
+# Preprocessor directives
+preprocessor = define, embed, pragma, include, include_next, undef, ifdef, ifndef, endif, elif, elifdef, elifndef, else, if, line, warning, error, __has_include, __has_embed, __has_c_attribute, __has_cpp_attribute, _Pragma, import
+
+# Comment delimiters
+line_comment = //
+block_comment_start = /*
+block_comment_end = */
+
+# String delimiters
+string_delim = "
+char_delim = '
+
+# Preprocessor character
+preprocessor_char = #
+
+# Monokai Color Scheme (optional - RGB format: R,G,B or hex: #RRGGBB)
+# If not specified, default Monokai colors will be used
+color_keyword = #e87d3e
+color_type = #b4d273
+color_string = #e5b567
+color_comment = #797979
+color_number = #9e86c8
+color_preprocessor = #b05279
+color_operator = #e87d3e
+color_function = #6c99bb

@@ -1749,6 +1749,25 @@ static int nf_fm_editor_uppercase_selection(cs_vm *vm, void *ud, int argc, const
     return 0;
 }
 
+static int nf_fm_editor_delete_range(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm; (void)ud;
+    if (argc != 4 || 
+        argv[0].type != CS_T_INT || argv[1].type != CS_T_INT ||
+        argv[2].type != CS_T_INT || argv[3].type != CS_T_INT) {
+        if (out) *out = cs_bool(false);
+        return 0;
+    }
+    
+    int start_line = (int)argv[0].as.i;
+    int start_col = (int)argv[1].as.i;
+    int end_line = (int)argv[2].as.i;
+    int end_col = (int)argv[3].as.i;
+    
+    bool result = editor_delete_range(start_line, start_col, end_line, end_col);
+    if (out) *out = cs_bool(result);
+    return 0;
+}
+
 static int nf_fm_clipboard_get(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud; (void)argc; (void)argv;
     if (!out) return 0;
@@ -2883,6 +2902,7 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
     cs_register_native(vm, "fm.editor_get_selection", nf_fm_editor_get_selection, pm);
     cs_register_native(vm, "fm.editor_insert_text", nf_fm_editor_insert_text, pm);
     cs_register_native(vm, "fm.editor_replace_text", nf_fm_editor_replace_text, pm);
+    cs_register_native(vm, "fm.editor_delete_range", nf_fm_editor_delete_range, pm);
     cs_register_native(vm, "fm.editor_uppercase_selection", nf_fm_editor_uppercase_selection, pm);
     cs_register_native(vm, "fm.info", nf_fm_info, pm);
     cs_register_native(vm, "fm.exec", nf_fm_exec, pm);

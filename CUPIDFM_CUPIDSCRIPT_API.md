@@ -1,4 +1,64 @@
+
 # CupidFM Cupidscript API (with New Features)
+
+---
+
+## Table of Contents
+
+- [CupidScript](#cupidscript)
+  - [What's Included](#whats-included)
+  - [Language Overview](#language-overview)
+    - [Syntax Example](#syntax-example)
+    - [Modern Language Features](#modern-language-features)
+    - [Recent Language Features](#recent-language-features)
+    - [Core language features (per CupidScript wiki)](#core-language-features-per-cupidscript-wiki)
+- [Built-In Types](#built-in-types)
+  - [Core Types](#core-types)
+  - [Lists](#lists)
+  - [Maps](#maps)
+  - [Sets](#sets)
+  - [Tuples](#tuples)
+  - [Bytes](#bytes)
+  - [Range](#range)
+- [Control Flow (Additional)](#control-flow-additional)
+- [Truthiness (Reminder)](#truthiness-reminder)
+- [Multi-File Scripts](#multi-file-scripts)
+- [Advanced Features](#advanced-features)
+  - [Data Formats](#data-formats)
+    - [JSON](#json)
+    - [CSV (RFC 4180 Compliant)](#csv-rfc-4180-compliant)
+    - [YAML (RFC-9512--yaml-122-compliant)](#yaml-rfc-9512--yaml-122-compliant)
+    - [XML](#xml)
+  - [Regular Expressions (POSIX ERE)](#regular-expressions-posix-ere)
+  - [Async/Await & Promises](#asyncawait--promises)
+  - [Network I/O](#network-io)
+  - [File Operations](#file-operations)
+  - [Date & Time](#date--time)
+- [Directory Overview](#directory-overview)
+- [Build Instructions](#build-instructions)
+- [Using CupidScript in C Hosts](#using-cupidscript-in-c-hosts)
+- [CupidFM Plugins](#cupidfm-plugins)
+  - [Plugin Locations](#plugin-locations)
+  - [Plugin Structure, Events & Lifecycle](#plugin-structure-events--lifecycle)
+  - [Key Format and Helpers](#key-format-and-helpers)
+- [fm.* API (Plugin Scripting API)](#fm-api-plugin-scripting-api)
+  - [UI](#ui)
+  - [Query Context](#query-context)
+  - [Editor API](#editor-api)
+    - [Editor State Functions](#editor-state-functions)
+    - [Reading Editor Content](#reading-editor-content)
+    - [Modifying Editor Content](#modifying-editor-content)
+    - [Complete Editor Example](#complete-editor-example)
+  - [Search Control](#search-control)
+  - [Key Bindings & Events](#key-bindings--events)
+  - [UI & System Control](#ui--system-control)
+  - [File Navigation/Selection](#file-navigationselection)
+  - [File Operations + Undo Integration](#file-operations--undo-integration)
+  - [Minimal Example Plugin](#minimal-example-plugin)
+  - [Example: API demo plugin](#example-api-demo-plugin)
+- [Notes & Limitations](#notes--limitations)
+- [CupidScript Standard Library & New Features](#cupidscript-standard-library--new-features)
+
 
 CupidFM supports plugin scripting via [CupidScript](#cupidscript), a lightweight, embeddable scripting language and VM written in C99. This document details plugin loading, the plugin architecture, the `fm.*` API exposed to scripts in CupidFM, and a comprehensive overview of the latest CupidScript language features.
 
@@ -36,7 +96,130 @@ while (cond) { ... }
 return expr;
 ```
 - **Operators:** `||`, `&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `%`, unary `!`, `-`
-- **Types/Values:** `nil`, `true`/`false`, int, float, string, list, map, strbuf, function, native
+- **Types/Values:** `nil`, `true`/`false`, int, float, string, bytes, list, map, set, tuple, strbuf, range, promise, function, native
+- **Keywords:** `let`, `const`, `fn`, `async`, `await`, `yield`, `class`, `struct`, `enum`, `self`, `super`, `if`, `else`, `while`, `switch`, `case`, `default`, `for`, `in`, `break`, `continue`, `return`, `throw`, `try`, `catch`, `finally`, `defer`, `match`, `import`, `export`
+
+### Modern Language Features
+
+CupidScript includes cutting-edge features found in modern scripting languages:
+
+- **Tuples** - Immutable, fixed-size value groupings
+  ```cs
+  let point = (x: 10, y: 20);  // named tuple
+  let coords = (1, 2, 3);      // positional tuple
+  print(point.x, coords[0]);
+  ```
+
+- **Comprehensions** - Concise syntax for transforming collections
+  ```cs
+  let squares = [x * x for x in 1..=10];
+  let evens = [x for x in nums if x % 2 == 0];
+  let word_map = {word: len(word) for word in words};
+  let unique = #{x for x in list};  // set comprehension
+  ```
+
+- **Destructuring** - Extract values into variables
+  ```cs
+  let [a, b, ...rest] = [1, 2, 3, 4, 5];
+  let (x, y) = get_coords();  // function returning tuple
+  ```
+
+- **Pattern Matching** - `match` expressions for powerful branching
+  ```cs
+  let result = match value {
+    0 => "zero",
+    1..=5 => "small",
+    _ => "large"
+  };
+  ```
+
+- **Walrus Operator** - Assign and test in one expression
+  ```cs
+  if (result := compute()) {
+    print("Success:", result);
+  }
+  while (line := read_line()) {
+    process(line);
+  }
+  ```
+
+- **Pipe Operator** - Chain function calls fluently
+  ```cs
+  let result = data |> filter(_) |> map(_) |> sum();
+  ```
+
+- **Arrow Functions** - Concise function syntax
+  ```cs
+  let add = fn(a, b) => a + b;
+  let square = fn(x) => x * x;
+  ```
+
+- **Spread & Rest** - Flexible argument handling
+  ```cs
+  let all = [...list1, ...list2];
+  let merged = {...map1, ...map2};
+  fn sum(...nums) { return list_sum(nums); }
+  ```
+
+- **Sets** - Unique collections with set operations
+  ```cs
+  let s = #{1, 2, 3};
+  let union = set1 | set2;
+  let intersection = set1 & set2;
+  let difference = set1 - set2;
+  ```
+
+- **Classes & Inheritance** - Object-oriented programming
+  ```cs
+  class File {
+    fn new(path) { self.path = path; }
+    fn is_hidden() { return starts_with(self.path, "."); }
+  }
+  class ImageFile : File {
+    fn is_image() { return ends_with(self.path, ".png"); }
+  }
+  ```
+
+- **Structs** - Lightweight data carriers
+  ```cs
+  struct Point { x, y = 0 }
+  let p = Point(5, 10);
+  ```
+
+- **Enums** - Named integer constants
+  ```cs
+  enum Color { Red, Green = 5, Blue }
+  print(Color.Red);   // 0
+  ```
+
+- **Async/Await** - Asynchronous programming
+  ```cs
+  async fn fetch_data(url) {
+    let response = await http_get(url);
+    return response;
+  }
+  ```
+
+- **Generators** - Lazy value sequences
+  ```cs
+  fn range(n) {
+    let i = 0;
+    while (i < n) { yield i; i += 1; }
+  }
+  ```
+
+- **String Interpolation** - Embed expressions in strings
+  ```cs
+  let name = "Alice";
+  print("Hello ${name}, you have ${count} messages");
+  ```
+
+- **Raw Strings** - Backtick strings without escape processing
+  ```cs
+  let path = `C:\Users\Frank\Documents`;
+  let multiline = `line 1
+  line 2`;
+  ```
 
 ### Recent Language Features
 
@@ -56,16 +239,20 @@ return expr;
 - **Indexed map access (`m[k]`), map key querying (`keys(m)`)**
 - **Optional trailing commas in lists/maps**
 - **Improved error/stack reporting, with precise line/col info**
-- **Unpack syntax for lists:**  
+- **Defer statements** - Execute code when leaving scope
   ```cs
-  let [a, b, ...rest] = arr;
+  fn process() {
+    let f = open_file("data.txt");
+    defer close_file(f);  // always called before returning
+    // ... work with file ...
+  }
   ```
-- **Top-level await** (if host uses async)
-- **`typeof` returns detailed type names ("native", "function", etc)**
-- **String interpolation**:  
+- **Const bindings** - Immutable variable declarations
   ```cs
-  print("The value is: $(x)");
+  const PI = 3.14159;
+  const MAX_SIZE = 100;
   ```
+- **`typeof` returns detailed type names ("native", "function", "tuple", "set", etc)**
 - **`fmt` supports more specifiers (`%b`, `%v` etc)**
 - **`assert_eq`, `assert_ne` (testing stdlib)**
 
@@ -135,9 +322,23 @@ These are the *core* language/stdlib behaviors implemented by the current lexer/
 
 ---
 
-## Built-In Types: Lists and Maps
+## Built-In Types
 
-Lists and maps are built-in, dynamic and mutable.
+CupidScript supports a rich set of built-in types:
+
+### Core Types
+
+```cs
+let xs = [1, 2, 3];              // list
+let m = {"name": "Frank"};       // map
+let s = #{1, 2, 3};              // set
+let t = (x: 10, y: 20);          // tuple (named)
+let coords = (1, 2, 3);          // tuple (positional)
+let b = bytes([0x48, 0x65]);     // bytes
+let r = 1..10;                   // range
+```
+
+### Lists
 
 ```cs
 let xs = list();
@@ -145,20 +346,84 @@ push(xs, 10);
 push(xs, 20);
 xs[1] = 99;
 print(xs[0], xs[1], len(xs)); // 10 99 2
+```
+- Index by integer (0-based)
+- Negative or out-of-range returns `nil`
+- Dynamic and mutable
+- Supports spread: `[...list1, ...list2]`
 
+### Maps
+
+```cs
 let m = map();
 m["answer"] = 42;
 print(m["answer"], keys(m)); // 42 ["answer"]
+print(m.answer);  // field access sugar
 ```
-- Lists index by integer; maps index by string.
-- Assign as `xs[i]=`, `m["key"]=value`
-- Use `keys(map)` to enumerate (as a list of strings).
-- Maps: string keys only. Lists: integer indices only.
+- **Generalized keys**: Any value can be a key (string, int, bool, list, map, etc.)
+- Key equality uses `==` rules (int/float compare by value, strings by content)
+- Missing keys return `nil`
+- Supports spread: `{...map1, ...map2}`
 
-Additional rules (per wiki):
+### Sets
 
-- List indexing: index must be an `int`; negative or out-of-range returns `nil`.
-- Map indexing: key must be a `string`; missing keys return `nil`.
+```cs
+let s = #{1, 2, 3};
+s.add(4);
+s.remove(2);
+print(s.contains(3));  // true
+print(s.size());       // 3
+
+// Set operations
+let union = set1 | set2;
+let intersection = set1 & set2;
+let difference = set1 - set2;
+let symmetric_diff = set1 ^ set2;
+```
+- Unique values (by `==`)
+- Set operations: `|` (union), `&` (intersection), `-` (difference), `^` (symmetric difference)
+- Literal: `#{1, 2, 3}` or `#{}` for empty
+- Comprehensions: `#{x for x in list if condition}`
+
+### Tuples
+
+```cs
+// Positional tuple
+let coords = (10, 20, 30);
+print(coords[0], coords[1], coords[2]);
+
+// Named tuple
+let point = (x: 10, y: 20);
+print(point.x, point.y);
+
+// Destructuring
+let (a, b, c) = coords;
+let [x, y] = get_position();
+```
+- **Immutable** - cannot modify after creation
+- Access by index (positional) or field name (named)
+- Perfect for returning multiple values from functions
+
+### Bytes
+
+```cs
+let b = bytes([72, 101, 108, 108, 111]);  // "Hello"
+print(b[0]);  // 72
+b[0] = 104;   // modify to "hello"
+```
+- Mutable byte buffer for binary data
+- Index returns int 0-255
+- Out-of-range returns `nil`
+
+### Range
+
+```cs
+let r = 0..5;      // [0,1,2,3,4] - exclusive end
+let incl = 0..=5;  // [0,1,2,3,4,5] - inclusive end
+for i in 1..=10 { print(i); }
+```
+- Works in both directions (ascending/descending)
+- Can iterate with `for ... in`
 
 ## Control Flow (Additional)
 
@@ -191,6 +456,154 @@ Additional module/path behavior (per wiki):
   - `exports` (map)
   - `__file__` (string, resolved module path)
   - `__dir__` (string, directory containing the module)
+
+---
+
+## Advanced Features
+
+### Data Formats
+
+CupidScript provides built-in support for structured data formats:
+
+#### JSON
+```cs
+let data = {"name": "Frank", "age": 30};
+let json_str = json_encode(data);
+let parsed = json_decode(json_str);
+```
+
+#### CSV (RFC 4180 Compliant)
+```cs
+let csv_data = csv_parse("name,age\nFrank,30\nAlice,25");
+let csv_str = csv_format([{"name": "Frank", "age": 30}]);
+```
+
+#### YAML (RFC 9512 / YAML 1.2.2 Compliant)
+```cs
+let yaml_str = "name: Frank\nage: 30";
+let data = yaml_parse(yaml_str);
+let yaml = yaml_format(data);
+```
+
+#### XML
+```cs
+let xml = "<root><item>test</item></root>";
+let doc = xml_parse(xml);
+```
+
+### Regular Expressions (POSIX ERE)
+
+```cs
+// Match checking
+if (regex_is_match("[0-9]+", text)) {
+    print("Contains digits");
+}
+
+// Find first match
+let email = regex_find("([a-z]+)@([a-z]+\\.[a-z]+)", text);
+if (email != nil) {
+    print(email["match"]);     // full match
+    print(email.groups[0]);    // first capture group
+}
+
+// Find all matches
+let nums = regex_find_all("[0-9]+", "x=7 y=42 z=105");
+
+// Replace
+let clean = regex_replace("[a-z]+@[a-z]+\\.[a-z]+", text, "<hidden>");
+```
+
+### Async/Await & Promises
+
+```cs
+// Event loop (background thread for true async)
+event_loop_start();
+
+// Async functions
+async fn fetch_data(url) {
+    let response = await http_get(url);
+    return response;
+}
+
+// Multiple concurrent operations
+let p1 = fetch_data("https://api.example.com/1");
+let p2 = fetch_data("https://api.example.com/2");
+let result1 = await p1;
+let result2 = await p2;
+
+// Sleep/timers
+await sleep(1000);  // milliseconds
+
+event_loop_stop();
+```
+
+**Promise Helpers:**
+- `promise()` - create new promise
+- `resolve(p, value)` - resolve promise
+- `reject(p, error)` - reject promise
+- `promise_all(promises)` - wait for all
+- `promise_race(promises)` - wait for first
+- `promise_any(promises)` - wait for first success
+
+### Network I/O
+
+```cs
+// HTTP requests (async)
+let response = await http_get("https://api.github.com/users/octocat");
+let data = json_decode(response);
+
+// TCP sockets
+let sock = await tcp_connect("example.com", 80);
+await socket_send(sock, "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n");
+let response = await socket_recv(sock, 4096);
+socket_close(sock);
+```
+
+### File Operations
+
+```cs
+// Read/write files
+let content = read_file("config.txt");
+write_file("output.txt", "Hello, world!");
+
+// Binary files
+let data = read_file_bytes("image.png");
+write_file_bytes("copy.png", data);
+
+// Directory operations
+let entries = list_dir(".");
+mkdir("new_folder");
+rm("old_file.txt");
+rename("old.txt", "new.txt");
+
+// File info
+if (exists("file.txt") && is_file("file.txt")) {
+    print("File exists");
+}
+if (is_dir("folder")) {
+    print("Directory exists");
+}
+
+// Glob patterns (platform-specific)
+let txt_files = glob("*.txt");
+let all_cs = glob("**/*.cs", "src");
+```
+
+### Date & Time
+
+```cs
+// Current time
+let ms = unix_ms();
+let seconds = unix_s();
+
+// Date/time maps
+let now = datetime_now();
+let utc = datetime_utc();
+print("${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}");
+
+// Convert from Unix timestamp
+let dt = datetime_from_unix_ms(ms);
+```
 
 ---
 
@@ -335,17 +748,110 @@ Async variants (callback-based):
 - `fm.count()` — count of files/items
 - `fm.search_active()` — true if search open
 - `fm.search_query()`
-- `fm.editor_active()` — true if the built-in text editor is currently open
-- `fm.editor_get_path()` — current editor file path, or nil if editor not open
-- `fm.editor_get_content()` — current editor buffer text, or nil if editor not open
-- `fm.editor_get_line(line_num)` — line content (1-indexed), or nil if out of range
-- `fm.editor_get_lines(start, end)` — list of lines in range (1-indexed, inclusive), or nil if invalid
-- `fm.editor_line_count()` — total number of lines in the editor, or 0 if editor not open
-- `fm.editor_get_cursor()` — returns map with cursor position `{line: int, col: int}` (1-indexed), or nil if not editing
-- `fm.editor_get_selection()` — returns map with selection bounds `{start_line: int, start_col: int, end_line: int, end_col: int}` (1-indexed), or nil if no selection
-- `fm.editor_insert_text(text)` — inserts text at current cursor position, returns true on success
-- `fm.editor_replace_text(start_line, start_col, end_line, end_col, text)` — replaces text in range (1-indexed) with new text, returns true on success
 - `fm.pane()` — string ("directory" or "preview")
+
+### Editor API
+
+CupidFM provides a comprehensive API for manipulating the built-in text editor from plugins. All editor functions use **1-indexed** line and column numbers.
+
+#### Editor State Functions
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `fm.editor_active()` | `bool` | True if the built-in text editor is currently open |
+| `fm.editor_get_path()` | `string \| nil` | Current editor file path, or nil if editor not open |
+| `fm.editor_line_count()` | `int` | Total number of lines in the editor, or 0 if not open |
+| `fm.editor_get_cursor()` | `map \| nil` | Cursor position `{line: int, col: int}` (1-indexed), or nil if not editing |
+| `fm.editor_get_selection()` | `map \| nil` | Selection bounds `{start_line, start_col, end_line, end_col}` (1-indexed), or nil if no selection |
+
+#### Reading Editor Content
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `fm.editor_get_content()` | `string \| nil` | Entire editor buffer text, or nil if editor not open |
+| `fm.editor_get_line(line_num)` | `string \| nil` | Single line content (1-indexed), or nil if out of range |
+| `fm.editor_get_lines(start, end)` | `list \| nil` | List of lines in range (1-indexed, inclusive), or nil if invalid |
+
+**Example:**
+```cs
+if (fm.editor_active()) {
+    let path = fm.editor_get_path();
+    let line_count = fm.editor_line_count();
+    let cursor = fm.editor_get_cursor();
+    
+    fm.notify(fmt("Editing: %s (%d lines) at line %d", path, line_count, cursor["line"]));
+    
+    // Get first 10 lines
+    let lines = fm.editor_get_lines(1, 10);
+    for line in lines {
+        print(line);
+    }
+}
+```
+
+#### Modifying Editor Content
+
+| Function | Parameters | Returns | Description |
+|----------|-----------|---------|-------------|
+| `fm.editor_insert_text(text)` | `text: string` | `bool` | Inserts text at current cursor position |
+| `fm.editor_replace_text(...)` | `start_line, start_col, end_line, end_col, text` | `bool` | Replaces text in specified range with new text |
+| `fm.editor_delete_range(...)` | `start_line, start_col, end_line, end_col` | `bool` | Deletes text in specified range |
+| `fm.editor_uppercase_selection()` | - | `bool` | Converts current selection to uppercase (efficient built-in) |
+
+**fm.editor_replace_text(start_line, start_col, end_line, end_col, text)**
+- All coordinates are 1-indexed
+- `text` can include newlines for multi-line replacements
+- Example: `fm.editor_replace_text(1, 1, 1, 10, "new text")` replaces characters 1-10 on line 1
+- See [`plugins/examples/editor_find_replace_demo.cs`](plugins/examples/editor_find_replace_demo.cs) for complete find-and-replace example
+
+**fm.editor_delete_range(start_line, start_col, end_line, end_col)**
+- All coordinates are 1-indexed
+- Deletes text from `(start_line, start_col)` to `(end_line, end_col)`
+- Example: `fm.editor_delete_range(1, 1, 1, 10)` deletes characters 1-10 on line 1
+- See [`plugins/examples/editor_delete_operations_demo.cs`](plugins/examples/editor_delete_operations_demo.cs) for examples including word deletion, line deletion, etc.
+
+**fm.editor_uppercase_selection()**
+- Only works when editor is active and text is selected
+- More efficient than manually getting/replacing text for case conversion
+- See [`plugins/examples/editor_text_manipulation_demo.cs`](plugins/examples/editor_text_manipulation_demo.cs) for usage with Ctrl+U keybinding
+
+#### Complete Editor Example
+
+```cs
+fn on_load() {
+    fm.bind("^F", "find_and_replace");
+}
+
+fn find_and_replace(key) {
+    if (!fm.editor_active()) {
+        fm.notify("Editor not active");
+        return true;
+    }
+    
+    let sel = fm.editor_get_selection();
+    if (sel == nil) {
+        fm.notify("No selection");
+        return true;
+    }
+    
+    let find = fm.prompt("Find:", "");
+    if (find == nil || find == "") return true;
+    
+    let replace = fm.prompt("Replace with:", "");
+    if (replace == nil) return true;
+    
+    // Get selected text
+    let start_line = sel["start_line"];
+    let start_col = sel["start_col"];
+    let end_line = sel["end_line"];
+    let end_col = sel["end_col"];
+    
+    let lines = fm.editor_get_lines(start_line, end_line);
+    // ... process and replace text ...
+    
+    return true;
+}
+```
 
 ### Search Control
 

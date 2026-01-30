@@ -56,6 +56,9 @@ bool editor_insert_text(const char *text);
 // Replaces text in the specified range (1-indexed). Returns false on failure.
 bool editor_replace_text(int start_line, int start_col, int end_line, int end_col, const char *text);
 
+// Deletes text in the specified range (1-indexed). Returns false on failure.
+bool editor_delete_range(int start_line, int start_col, int end_line, int end_col);
+
 /**
  * Now the compiler knows what KeyBindings is 
  * because config.h is included above.

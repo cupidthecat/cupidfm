@@ -24,6 +24,7 @@
 #include <pthread.h>               // For background directory size worker
 #include <errno.h>                 // For permission errors
 #include "../cupidarchive/cupidarchive.h"  // For archive reading
+#include "syntax.h"                       // For syntax highlighting
 
 #ifdef __linux__
 #include <sys/vfs.h>               // statfs
@@ -1190,6 +1191,68 @@ bool editor_replace_text(int start_line, int start_col, int end_line, int end_co
     g_editor_dirty = true;
     return true;
 }
+
+bool editor_delete_range(int start_line, int start_col, int end_line, int end_col) {
+    if (!is_editing || !g_editor_buffer) return false;
+    
+    // Convert to 0-indexed
+    start_line--;
+    start_col--;
+    end_line--;
+    end_col--;
+    
+    if (start_line < 0 || start_line >= g_editor_buffer->num_lines) return false;
+    if (end_line < 0 || end_line >= g_editor_buffer->num_lines) return false;
+    if (start_line > end_line || (start_line == end_line && start_col > end_col)) return false;
+    
+    // Delete the range
+    if (start_line == end_line) {
+        // Same line - delete portion
+        char *line = g_editor_buffer->lines[start_line];
+        if (!line) return false;
+        int len = strlen(line);
+        if (start_col > len || end_col > len) return false;
+        
+        char *new_line = malloc(len - (end_col - start_col) + 1);
+        if (!new_line) return false;
+        
+        memcpy(new_line, line, start_col);
+        strcpy(new_line + start_col, line + end_col);
+        
+        free(g_editor_buffer->lines[start_line]);
+        g_editor_buffer->lines[start_line] = new_line;
+    } else {
+        // Multiple lines - merge first and last, delete middle
+        char *first = g_editor_buffer->lines[start_line];
+        char *last = g_editor_buffer->lines[end_line];
+        
+        char *merged = malloc(start_col + strlen(last + end_col) + 1);
+        if (!merged) return false;
+        
+        memcpy(merged, first, start_col);
+        strcpy(merged + start_col, last + end_col);
+        
+        // Free deleted lines
+        for (int i = start_line; i <= end_line; i++) {
+            free(g_editor_buffer->lines[i]);
+        }
+        
+        // Shift remaining lines
+        g_editor_buffer->lines[start_line] = merged;
+        int lines_deleted = end_line - start_line;
+        memmove(&g_editor_buffer->lines[start_line + 1], &g_editor_buffer->lines[end_line + 1],
+               (g_editor_buffer->num_lines - end_line - 1) * sizeof(char*));
+        g_editor_buffer->num_lines -= lines_deleted;
+    }
+    
+    // Set cursor to start of deleted range
+    g_editor_cursor_line = start_line;
+    g_editor_cursor_col = start_col;
+    g_editor_dirty = true;
+    
+    return true;
+}
+
 /**
  * Function to initialize a TextBuffer
  *
@@ -1766,6 +1829,17 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
     }
     werase(window);
     box(window, 0, 0);
+    
+    // Get syntax definition for the current file
+    static SyntaxDef *current_syntax = NULL;
+    static char last_editor_path[MAX_PATH_LENGTH] = "";
+    if (strcmp(g_editor_path, last_editor_path) != 0) {
+        strncpy(last_editor_path, g_editor_path, sizeof(last_editor_path) - 1);
+        last_editor_path[sizeof(last_editor_path) - 1] = '\0';
+        current_syntax = syntax_get_for_file(g_editor_path);
+    }
+    static int in_block_comment = 0;
+    in_block_comment = 0;  // Reset at each full render
 
     int max_y, max_x;
     getmaxyx(window, max_y, max_x);
@@ -1901,11 +1975,22 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
         int line_length = strlen(line);
 
-        // Print the visible portion of the line
+        // Print the visible portion of the line with syntax highlighting
         if (h_scroll < line_length) {
-            mvwprintw(window, i + 1, content_start, "%.*s", 
-                     content_width,
-                     line + h_scroll);  // Offset the line by h_scroll
+            // Create a substring for the visible portion
+            char visible_line[4096];
+            int visible_len = MIN(line_length - h_scroll, content_width);
+            if (visible_len > (int)sizeof(visible_line) - 1) {
+                visible_len = sizeof(visible_line) - 1;
+            }
+            strncpy(visible_line, line + h_scroll, visible_len);
+            visible_line[visible_len] = '\0';
+            
+            // Use syntax highlighting if available, otherwise plain text
+            int current_line_index = *start_line + i;
+            syntax_highlight_line(window, visible_line, current_syntax, 
+                                 &in_block_comment, i + 1, content_start, content_width,
+                                 buffer->lines, buffer->num_lines, current_line_index);
         } else {
             mvwprintw(window, i + 1, content_start, "%*s", 
                      content_width,

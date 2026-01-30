@@ -1,0 +1,40 @@
+# Bash/Shell Script Syntax Highlighting Configuration
+# Support for Bash, sh, zsh, ksh, and POSIX shell scripts
+
+# Language name
+language = bash
+
+# File extensions to apply this syntax to
+extensions = .sh, .bash
+
+# Shell keywords - control flow and loop constructs
+keywords = if, then, else, elif, fi, case, esac, for, while, until, do, done, in, function, return, break, continue, exit
+
+# Shell statements and test operators
+statements = declare, local, export, readonly, unset, shift, eval, exec, source, set, builtin, command
+
+# Common shell builtins
+types = echo, printf, read, cd, pwd
+
+# Boolean and special constants
+constants = true, false
+
+# Comment delimiters
+line_comment = #
+
+# String delimiters
+string_delim = "
+char_delim = '
+
+# No preprocessor character for bash (# is comment, not preprocessor)
+preprocessor_char = 
+
+# Monokai Color Scheme for Bash
+color_keyword = #e87d3e
+color_type = #b4d273
+color_string = #e5b567
+color_comment = #797979
+color_number = #9e86c8
+color_preprocessor = #b05279
+color_operator = #e87d3e
+color_function = #6c99bb

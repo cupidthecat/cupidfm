@@ -373,6 +373,202 @@ After CupidFM creates this file, you are free to **edit** it to customize keybin
 
 With these steps, you can **fully customize** your keybindings in `~/.cupidfmrc`. If you ever lose or remove it, CupidFM will rewrite the default file and let you know on the next run!
 
+## Syntax Highlighting
+
+CupidFM features a powerful and extensible syntax highlighting system for the built-in text editor. Syntax highlighting enhances code readability by applying different colors to keywords, types, strings, comments, operators, and more.
+
+### Built-in Language Support
+
+Out of the box, CupidFM includes syntax highlighting for:
+- **C/C++** (`.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`, etc.)
+- **Bash/Shell** (`.sh`, `.bash`)
+- **Markdown** (`.md`, `.markdown`)
+
+### Installing Syntax Files
+
+Syntax highlighting configuration files use the `.cupidconf` extension and are stored in:
+
+```
+~/.cupidfm/syntax/
+```
+
+To install a syntax file:
+
+1. **Create the syntax directory** (if it doesn't exist):
+   ```bash
+   mkdir -p ~/.cupidfm/syntax
+   ```
+
+2. **Copy syntax files** to the directory:
+   ```bash
+   cp c.cupidconf ~/.cupidfm/syntax/
+   cp bash.cupidconf ~/.cupidfm/syntax/
+   cp md.cupidconf ~/.cupidfm/syntax/
+   ```
+
+3. **Restart CupidFM** to load the new syntax definitions.
+
+### Writing Custom Syntax Files
+
+Syntax files use a simple key-value format. Here's how to create your own:
+
+#### File Naming
+
+Name your file `<language>.cupidconf`, for example:
+- `python.cupidconf` for Python
+- `javascript.cupidconf` for JavaScript
+- `rust.cupidconf` for Rust
+
+#### Basic Structure
+
+```conf
+# Language name
+language = python
+
+# File extensions (comma-separated)
+extensions = .py, .pyw, .pyi
+
+# Keywords - control flow and main language keywords
+keywords = if, else, elif, for, while, def, class, return, break, continue
+
+# Statements - modifiers and declarations
+statements = import, from, as, with, pass, yield, async, await, lambda
+
+# Types - built-in types
+types = int, str, float, bool, list, dict, tuple, set, None
+
+# Constants - built-in constants
+constants = True, False, None, __name__, __main__
+
+# Preprocessor directives (language-specific)
+preprocessor = 
+
+# Comments
+line_comment = #
+block_comment_start = """
+block_comment_end = """
+
+# String delimiters
+string_delim = "
+char_delim = '
+
+# Preprocessor character (e.g., # for C preprocessor)
+preprocessor_char = 
+
+# Colors (optional - uses Monokai theme by default)
+color_keyword = #e87d3e
+color_type = #b4d273
+color_string = #e5b567
+color_comment = #797979
+color_number = #9e86c8
+color_preprocessor = #b05279
+color_operator = #e87d3e
+color_function = #6c99bb
+```
+
+#### Configuration Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `language` | Language name (informational) | `python` |
+| `extensions` | File extensions to match (comma-separated) | `.py, .pyw` |
+| `keywords` | Control flow keywords (highlighted bold) | `if, else, for` |
+| `statements` | Statement keywords and modifiers | `import, export, const` |
+| `types` | Type keywords and built-in types | `int, str, void` |
+| `constants` | Built-in constants | `true, false, NULL` |
+| `preprocessor` | Preprocessor directive names | `define, include` |
+| `line_comment` | Single-line comment delimiter | `//` or `#` |
+| `block_comment_start` | Block comment start | `/*` or `"""` |
+| `block_comment_end` | Block comment end | `*/` or `"""` |
+| `string_delim` | String quote character | `"` |
+| `char_delim` | Character quote | `'` |
+| `preprocessor_char` | Preprocessor trigger character | `#` |
+
+#### Color Customization (Optional)
+
+You can customize colors using hex format (`#RRGGBB`) or RGB format (`R,G,B`):
+
+```conf
+# Hex format
+color_keyword = #e87d3e
+color_type = #b4d273
+
+# RGB format (alternative)
+color_keyword = 232,125,62
+color_type = 180,210,115
+```
+
+Available color options:
+- `color_keyword` - Control flow keywords
+- `color_type` - Type names and type keywords
+- `color_string` - String and character literals
+- `color_comment` - Comments
+- `color_number` - Numbers and constants
+- `color_preprocessor` - Preprocessor directives
+- `color_operator` - Operators (+, -, *, etc.)
+- `color_function` - Function calls
+
+If colors are not specified, CupidFM uses the default Monokai theme.
+
+### Syntax Features
+
+The syntax highlighter automatically detects and highlights:
+
+- **Keywords** - Control flow statements (bold orange)
+- **Types** - Type declarations and built-in types (green)
+- **Strings** - String and character literals (yellow)
+  - **Escape sequences** - Special highlighting for `\n`, `\t`, `\xHH`, etc. (bold purple)
+- **Comments** - Single-line and block comments (gray)
+- **Numbers** - Integer, floating-point, hex, binary, octal (purple)
+- **Operators** - Arithmetic and logical operators (orange)
+- **Function calls** - Functions followed by `(` (blue)
+- **Labels** - Goto labels at line start (bold pink)
+- **Constants** - ALL_CAPS identifiers (purple)
+- **Type suffixes** - Identifiers ending with `_t` or `_T` (green)
+- **Preprocessor** - Directives like `#include`, `#define` (pink)
+- **Block comments across scrolling** - Maintains comment state when scrolling
+
+### Tips for Writing Syntax Files
+
+1. **Keep keyword lists manageable** - Very long comma-separated lists can cause performance issues. Keep each category under 50 items.
+
+2. **Test with sample files** - Create a test file with various language constructs to verify highlighting works correctly.
+
+3. **Order matters** - More specific patterns should come before general ones in your lists.
+
+4. **Use comments** - Document your syntax file with comments starting with `#`.
+
+5. **File extensions** - Include all common extensions (e.g., `.cpp`, `.cc`, `.cxx` for C++).
+
+### Example: Simple Python Syntax
+
+```conf
+# Python Syntax Highlighting
+language = python
+extensions = .py, .pyw
+
+keywords = if, else, elif, for, while, def, class, return
+statements = import, from, with, as, pass
+types = int, str, float, bool, list, dict, None
+constants = True, False, None
+
+line_comment = #
+string_delim = "
+char_delim = '
+
+color_keyword = #e87d3e
+color_type = #b4d273
+color_string = #e5b567
+color_comment = #797979
+```
+
+### Troubleshooting
+
+- **Syntax file not loaded**: Ensure the file is in `~/.cupidfm/syntax/` and has the `.cupidconf` extension.
+- **Colors not showing**: Check that your terminal supports 256 colors (`echo $TERM` should show `xterm-256color` or similar).
+- **Highlighting incomplete**: Make sure all required fields are present (language, extensions, at least one keyword/type/statement).
+- **Performance issues**: Reduce the number of keywords/types in your syntax file if hovering over files causes lag.
+
 ## Plugins (CupidScript)
 
 CupidFM can load Cupidscript plugins (`.cs`) on startup.

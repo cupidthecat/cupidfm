@@ -1,0 +1,45 @@
+# Markdown Syntax Highlighting Configuration
+# Support for CommonMark, GitHub Flavored Markdown, and extended syntax
+
+# Language name
+language = markdown
+
+# File extensions to apply this syntax to
+extensions = .md, .markdown, .mdown, .mkd, .mkdn, .mdwn, .mdtxt, .mdtext, .text, .Rmd
+
+# Markdown keywords - heading markers and special markers
+keywords = #, ##, ###, ####, #####, ######, -, *, +, >, |, ---, ***, ___, ~~~, ```
+
+# Markdown statements - emphasis and formatting
+statements = **, __, *, _, ~~, ==, ^, ~, [, ], (, )
+
+# Link and reference keywords
+types = http, https, ftp, mailto, tel, file
+
+# Constants - common task list markers and special symbols
+constants = [ ], [x], [X], TODO, FIXME, NOTE, WARNING, IMPORTANT
+
+# Preprocessor - not applicable for markdown, but we can use for YAML front matter
+preprocessor = ---, ...
+
+# Comment delimiters (HTML comments in markdown)
+line_comment = 
+block_comment_start = <!--
+block_comment_end = -->
+
+# String delimiters (for inline code)
+string_delim = `
+char_delim = '
+
+# No preprocessor character for markdown
+preprocessor_char = 
+
+# Monokai-inspired Color Scheme for Markdown
+color_keyword = #e87d3e
+color_type = #6c99bb
+color_string = #e5b567
+color_comment = #797979
+color_number = #9e86c8
+color_preprocessor = #b05279
+color_operator = #e87d3e
+color_function = #b4d273

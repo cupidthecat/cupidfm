@@ -19,6 +19,7 @@
 
 #include "files.h"
 #include "globals.h"
+#include "syntax.h"
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
@@ -548,6 +549,10 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
             char line[256];
             int line_num = 7;
             int current_line = 0;
+            
+            // Get syntax definition for this file
+            SyntaxDef *syntax = syntax_get_for_file(full_path);
+            int in_block_comment = 0;
 
             while (current_line < start_line && fgets(line, sizeof(line), file)) {
                 current_line++;
@@ -567,7 +572,9 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
                     }
                 }
 
-                mvwprintw(window, line_num++, 2, "%.*s", max_x - 4, line);
+                // Use syntax highlighting if available, otherwise plain text
+                syntax_highlight_line(window, line, syntax, &in_block_comment, 
+                                     line_num++, 2, max_x - 4, NULL, 0, 0);
             }
 
             fclose(file);
