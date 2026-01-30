@@ -23,6 +23,10 @@ static SyntaxDef g_syntax_defs[MAX_SYNTAX_DEFS];
 static size_t g_syntax_count = 0;
 static bool g_syntax_initialized = false;
 
+// Store original color values to restore on exit
+static bool g_colors_changed = false;
+static short g_original_colors[8][3]; // Store RGB for colors 8-15
+
 // Forward declarations
 static bool parse_color_rgb(const char *value, int rgb[3]);
 
@@ -268,6 +272,17 @@ void syntax_init(void) {
 
 // Clean up syntax highlighting resources
 void syntax_cleanup(void) {
+    // Restore original terminal colors if we changed them
+    if (g_colors_changed && can_change_color()) {
+        for (int i = 0; i < 8; i++) {
+            init_color(COLOR_MONOKAI_ORANGE + i,
+                      g_original_colors[i][0],
+                      g_original_colors[i][1],
+                      g_original_colors[i][2]);
+        }
+        g_colors_changed = false;
+    }
+    
     for (size_t i = 0; i < g_syntax_count; i++) {
         syntax_def_free(&g_syntax_defs[i]);
     }
@@ -322,6 +337,15 @@ void syntax_init_colors(void) {
     
     // Check if we can define custom colors
     if (can_change_color()) {
+        // Save original color values so we can restore them on exit
+        for (int i = 0; i < 8; i++) {
+            color_content(COLOR_MONOKAI_ORANGE + i, 
+                         &g_original_colors[i][0],
+                         &g_original_colors[i][1],
+                         &g_original_colors[i][2]);
+        }
+        g_colors_changed = true;
+        
         // Define Monokai colors
         // Orange: (232, 125, 62) for keywords
         init_color(COLOR_MONOKAI_ORANGE, rgb_to_ncurses(232), rgb_to_ncurses(125), rgb_to_ncurses(62));

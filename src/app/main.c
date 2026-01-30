@@ -1765,8 +1765,8 @@ input_done:
     delwin(notifwin);
     delwin(mainwin);
     delwin(bannerwin);
+    syntax_cleanup();  // Restore colors before endwin()
     endwin();
-    syntax_cleanup();
     cleanup_temp_files();
     dir_size_cache_stop();
 

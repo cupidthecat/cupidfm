@@ -98,8 +98,14 @@ void show_popup(const char *title, const char *fmt, ...) {
     if (max_rows < 6) max_rows = 6;
     if (max_cols < 20) max_cols = 20;
 
+    // Ensure popup is wide enough for content, title, and footer
+    const char *footer_text = "Press any key to close";
+    size_t footer_len = strlen(footer_text);
+    size_t min_width = footer_len + 4; // footer + padding + borders
+    if (min_width < 30) min_width = 30; // absolute minimum for readability
+    
     int cols = (int)max_line_len + 4; // borders + padding
-    if (cols < 20) cols = 20;
+    if ((size_t)cols < min_width) cols = (int)min_width;
     if (cols > max_cols) cols = max_cols;
 
     // title line + blank + content + blank + footer + borders
@@ -157,7 +163,8 @@ void show_popup(const char *title, const char *fmt, ...) {
     }
 
     // Footer.
-    mvwaddnstr(popup, rows - 2, 2, "Press any key to close", printable_w);
+    const char *footer_msg = "Press any key to close";
+    mvwaddnstr(popup, rows - 2, 2, footer_msg, printable_w);
 
     wrefresh(popup);
     wgetch(popup);
