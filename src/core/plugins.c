@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "../fs/files.h"
+#include "../ui/ui.h"
 #include "clipboard.h"
 #include "console.h"
 #include "cs_http.h"
@@ -31,6 +32,7 @@
 #include "globals.h"
 #include "main.h" // show_notification, draw_scrolling_banner globals
 #include "search.h"
+
 
 typedef struct {
   cs_vm *vm;
@@ -4340,5 +4342,37 @@ void plugins_notify_editor_open(PluginManager *pm, const char *path) {
   // Notify all plugins that a file was opened in the editor
   for (size_t i = 0; i < pm->plugin_count; i++) {
     call_void1_str(pm, pm->plugins[i].vm, "on_editor_open", path);
+  }
+}
+
+void plugins_notify_editor_change(PluginManager *pm, int line, int col,
+                                  const char *text) {
+  if (!pm)
+    return;
+
+  // Notify all plugins that the editor content changed
+  for (size_t i = 0; i < pm->plugin_count; i++) {
+    cs_vm *vm = pm->plugins[i].vm;
+    if (!vm)
+      continue;
+
+    // Call on_editor_change(line, col, text) if it exists
+    cs_value args[3];
+    args[0] = cs_int(line);
+    args[1] = cs_int(col);
+    args[2] = text ? cs_str(vm, text) : cs_str(vm, "");
+
+    cs_value result;
+    cs_call(vm, "on_editor_change", 3, args, &result);
+  }
+}
+
+void plugins_notify_editor_save(PluginManager *pm, const char *path) {
+  if (!pm || !path)
+    return;
+
+  // Notify all plugins that a file was saved in the editor
+  for (size_t i = 0; i < pm->plugin_count; i++) {
+    call_void1_str(pm, pm->plugins[i].vm, "on_editor_save", path);
   }
 }
