@@ -12,6 +12,7 @@
 #include <signal.h>    // for signal, SIGWINCH
 
 #include "globals.h"
+#include "app_input.h" // for keycode_to_string
 
 void hold_notification_for_ms(long ms) {
     if (ms <= 0) {
@@ -174,6 +175,278 @@ void show_popup(const char *title, const char *fmt, ...) {
 
     // Ensure the underlying UI is repainted by the caller; do a minimal refresh
     // so the popup isn't left behind on terminals without full redraw.
+    touchwin(stdscr);
+    refresh();
+}
+
+// --------------------------------------------------------------------
+// Helper: Dynamic string vector for building help content
+// --------------------------------------------------------------------
+typedef struct {
+    char **lines;
+    size_t count;
+    size_t capacity;
+} StrVec;
+
+static void strvec_init(StrVec *v) {
+    v->lines = NULL;
+    v->count = 0;
+    v->capacity = 0;
+}
+
+static void strvec_free(StrVec *v) {
+    for (size_t i = 0; i < v->count; i++) {
+        free(v->lines[i]);
+    }
+    free(v->lines);
+    v->lines = NULL;
+    v->count = 0;
+    v->capacity = 0;
+}
+
+static void strvec_push(StrVec *v, const char *str) {
+    if (v->count >= v->capacity) {
+        size_t new_cap = v->capacity == 0 ? 16 : v->capacity * 2;
+        char **new_lines = realloc(v->lines, new_cap * sizeof(char*));
+        if (!new_lines) return;
+        v->lines = new_lines;
+        v->capacity = new_cap;
+    }
+    v->lines[v->count++] = strdup(str ? str : "");
+}
+
+// --------------------------------------------------------------------
+// Build help content with word-wrapping
+// --------------------------------------------------------------------
+static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) {
+    if (!kb || max_width < 10) return;
+
+    strvec_init(out);
+
+    // Helper to format a keybinding line
+    char line_buf[512];
+    
+    strvec_push(out, "Navigation:");
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Move up", keycode_to_string(kb->key_up));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Move down", keycode_to_string(kb->key_down));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Go to parent directory", keycode_to_string(kb->key_left));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Enter directory / Switch to preview", keycode_to_string(kb->key_right));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Switch between directory and preview", keycode_to_string(kb->key_tab));
+    strvec_push(out, line_buf);
+    strvec_push(out, "");
+
+    strvec_push(out, "File Operations:");
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Edit file", keycode_to_string(kb->key_edit));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Copy file/directory", keycode_to_string(kb->key_copy));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Cut file/directory", keycode_to_string(kb->key_cut));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Paste", keycode_to_string(kb->key_paste));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Delete", keycode_to_string(kb->key_delete));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Rename", keycode_to_string(kb->key_rename));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - New file", keycode_to_string(kb->key_new));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - New directory", keycode_to_string(kb->key_new_dir));
+    strvec_push(out, line_buf);
+    strvec_push(out, "");
+
+    strvec_push(out, "Other Functions:");
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Search", keycode_to_string(kb->key_search));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Select all", keycode_to_string(kb->key_select_all));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - File info", keycode_to_string(kb->key_info));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Undo", keycode_to_string(kb->key_undo));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Redo", keycode_to_string(kb->key_redo));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Change permissions", keycode_to_string(kb->key_permissions));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Console", keycode_to_string(kb->key_console));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Help (this menu)", keycode_to_string(kb->key_help));
+    strvec_push(out, line_buf);
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Exit", keycode_to_string(kb->key_exit));
+    strvec_push(out, line_buf);
+}
+
+// --------------------------------------------------------------------
+// Scrollable help menu using ncurses pad
+// --------------------------------------------------------------------
+void show_help_menu(const KeyBindings *kb) {
+    if (!kb) return;
+    if (!stdscr) initscr();
+
+    // Build help content
+    StrVec help_lines;
+    strvec_init(&help_lines);
+    
+    // Use a reasonable max width for building content (will be clipped to actual popup width)
+    build_help_lines(&help_lines, kb, 120);
+    
+    if (help_lines.count == 0) {
+        strvec_free(&help_lines);
+        return;
+    }
+
+    const char *title = "CupidFM - Help Menu";
+    const char *footer = "↑/↓: Scroll | PgUp/PgDn | Home/End | q/Esc: Close";
+
+    // Create popup window (will be recreated on resize)
+    WINDOW *popup_win = NULL;
+    WINDOW *content_pad = NULL;
+    
+    int scroll_pos = 0;
+    bool done = false;
+
+    while (!done) {
+        // Compute popup size based on current terminal size
+        int term_rows = LINES;
+        int term_cols = COLS;
+        
+        int popup_rows = term_rows - 4;
+        int popup_cols = term_cols - 4;
+        if (popup_rows < 10) popup_rows = 10;
+        if (popup_cols < 50) popup_cols = 50;
+        if (popup_rows > 40) popup_rows = 40;
+        if (popup_cols > 100) popup_cols = 100;
+
+        int starty = (term_rows - popup_rows) / 2;
+        int startx = (term_cols - popup_cols) / 2;
+        if (starty < 0) starty = 0;
+        if (startx < 0) startx = 0;
+
+        // Create/recreate popup window
+        if (popup_win) delwin(popup_win);
+        popup_win = newwin(popup_rows, popup_cols, starty, startx);
+        if (!popup_win) {
+            strvec_free(&help_lines);
+            return;
+        }
+        keypad(popup_win, TRUE);
+        mouseinterval(0);
+        
+        // Draw border and title
+        werase(popup_win);
+        box(popup_win, 0, 0);
+        wattron(popup_win, A_BOLD);
+        mvwprintw(popup_win, 0, 2, "[ %s ]", title);
+        wattroff(popup_win, A_BOLD);
+
+        // Footer
+        mvwaddnstr(popup_win, popup_rows - 1, 2, footer, popup_cols - 4);
+
+        wrefresh(popup_win);
+
+        // Content area dimensions (inside border, minus title and footer rows)
+        int content_start_y = 2;
+        int content_height = popup_rows - 4; // 1 title, 1 blank, 1 footer, 1 border
+        int content_width = popup_cols - 4;  // 2 for left/right border + padding
+
+        if (content_height < 1) content_height = 1;
+        if (content_width < 1) content_width = 1;
+
+        // Create pad for scrollable content
+        int pad_height = (int)help_lines.count;
+        if (pad_height < content_height) pad_height = content_height;
+
+        if (content_pad) delwin(content_pad);
+        content_pad = newpad(pad_height, content_width);
+        if (!content_pad) {
+            delwin(popup_win);
+            strvec_free(&help_lines);
+            return;
+        }
+
+        // Fill pad with help lines
+        for (size_t i = 0; i < help_lines.count; i++) {
+            mvwaddnstr(content_pad, (int)i, 0, help_lines.lines[i], content_width);
+        }
+
+        // Clamp scroll position
+        int max_scroll = (int)help_lines.count - content_height;
+        if (max_scroll < 0) max_scroll = 0;
+        if (scroll_pos < 0) scroll_pos = 0;
+        if (scroll_pos > max_scroll) scroll_pos = max_scroll;
+
+        // Display the visible portion of the pad
+        prefresh(content_pad, 
+                 scroll_pos, 0,                              // pad start position
+                 starty + content_start_y, startx + 2,       // screen start position
+                 starty + content_start_y + content_height - 1, 
+                 startx + popup_cols - 3);                   // screen end position
+
+        // Handle input
+        int ch = wgetch(popup_win);
+
+        switch (ch) {
+            case KEY_UP:
+                if (scroll_pos > 0) scroll_pos--;
+                break;
+            case KEY_DOWN:
+                if (scroll_pos < max_scroll) scroll_pos++;
+                break;
+            case KEY_PPAGE: // Page Up
+                scroll_pos -= content_height;
+                if (scroll_pos < 0) scroll_pos = 0;
+                break;
+            case KEY_NPAGE: // Page Down
+                scroll_pos += content_height;
+                if (scroll_pos > max_scroll) scroll_pos = max_scroll;
+                break;
+            case KEY_HOME:
+                scroll_pos = 0;
+                break;
+            case KEY_END:
+                scroll_pos = max_scroll;
+                break;
+            case KEY_MOUSE: {
+                MEVENT event;
+                if (getmouse(&event) == OK) {
+                    if (event.bstate & BUTTON4_PRESSED) {
+                        // Scroll up (mouse wheel up)
+                        if (scroll_pos > 0) scroll_pos--;
+                    } else if (event.bstate & BUTTON5_PRESSED) {
+                        // Scroll down (mouse wheel down)
+                        if (scroll_pos < max_scroll) scroll_pos++;
+                    }
+                }
+                break;
+            }
+            case 'q':
+            case 'Q':
+            case 27: // ESC
+                done = true;
+                break;
+            case KEY_RESIZE:
+                // Terminal was resized - loop will recreate windows with new dimensions
+                break;
+            default:
+                // Check if it's the help key itself
+                if (ch == kb->key_help || 
+                    (ch == toupper(kb->key_help)) || 
+                    (ch == tolower(kb->key_help))) {
+                    done = true;
+                }
+                break;
+        }
+    }
+
+    // Cleanup
+    if (content_pad) delwin(content_pad);
+    if (popup_win) delwin(popup_win);
+    strvec_free(&help_lines);
+
+    // Refresh screen
     touchwin(stdscr);
     refresh();
 }

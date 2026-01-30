@@ -20,6 +20,7 @@
 #include "files.h"
 #include "globals.h"
 #include "syntax.h"
+#include "mime.h"
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500

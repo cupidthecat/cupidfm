@@ -38,17 +38,33 @@ const char *keycode_to_string(int keycode) {
     }
 
     switch (keycode) {
-        case KEY_UP: return "KEY_UP";
-        case KEY_DOWN: return "KEY_DOWN";
-        case KEY_LEFT: return "KEY_LEFT";
-        case KEY_RIGHT: return "KEY_RIGHT";
+        case KEY_UP: return "Up";
+        case KEY_DOWN: return "Down";
+        case KEY_LEFT: return "Left";
+        case KEY_RIGHT: return "Right";
         case '\t': return "Tab";
         case KEY_BACKSPACE: return "Backspace";
+        case 127: return "Backspace";
+        case KEY_DC: return "Delete";
+        case KEY_HOME: return "Home";
+        case KEY_END: return "End";
+        case KEY_PPAGE: return "PgUp";
+        case KEY_NPAGE: return "PgDn";
+        case KEY_ENTER: return "Enter";
+        case '\n': return "Enter";
+        case '\r': return "Enter";
+        case 27: return "Esc";
         default:
+            // Handle uppercase letters (A-Z) to show as Shift+<letter>
+            if (keycode >= 'A' && keycode <= 'Z') {
+                snprintf(buf, sizeof(buf), "Shift+%c", (char)keycode);
+                return buf;
+            }
             if (keycode >= 32 && keycode <= 126) {
                 snprintf(buf, sizeof(buf), "%c", keycode);
                 return buf;
             }
-            return "UNKNOWN";
+            snprintf(buf, sizeof(buf), "Key_%d", keycode);
+            return buf;
     }
 }

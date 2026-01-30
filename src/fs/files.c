@@ -60,6 +60,7 @@
 #include "config.h"
 #include "console.h"
 #include "plugins.h"
+#include "mime.h"                  // for MIME types and file emoji
 #define MIN_INT_SIZE_T(x, y) (((size_t)(x) > (y)) ? (y) : (x))
 #define FILES_BANNER_UPDATE_INTERVAL 50000 // 50ms in microseconds
 
@@ -93,39 +94,6 @@ static void register_ctrl_arrow_keys_once(void) {
     done = true;
 #endif
 }
-
-// Supported MIME types
-// Key codes for Ctrl+Arrow keys
-// These are used for handling keyboard input in the terminal
-
-const char *supported_mime_types[] = {
-    "text/plain",               // Plain text files
-    "text/x-c",                 // C source files
-    "application/json",         // JSON files
-    "application/xml",          // XML files
-    "text/x-shellscript",       // Shell scripts
-    "text/x-python",            // Python source files (common)
-    "text/x-script.python",     // Python source files (alternative)
-    "text/x-java-source",       // Java source files
-    "text/html",                // HTML files
-    "text/css",                 // CSS files
-    "text/x-c++src",            // C++ source files
-    "application/x-yaml",       // YAML files
-    "application/x-sh",         // Shell scripts
-    "application/x-perl",       // Perl scripts
-    "application/x-php",        // PHP scripts
-    "text/x-rustsrc",           // Rust source files
-    "text/x-go",                // Go source files
-    "text/x-swift",             // Swift source files
-    "text/x-kotlin",            // Kotlin source files
-    "text/x-makefile",          // Makefile files
-    "text/x-script.*",          // Generic scripting files
-    "text/javascript",          // JavaScript files
-    "application/javascript",   // Alternative JavaScript MIME type
-    "application/x-javascript", // Another JavaScript MIME type
-    "text/x-javascript",        // Legacy JavaScript MIME type
-    "text/x-*",                 // Any text-based x- files
-};
 
 typedef enum {
     // Handle Ctrl+Arrow key sequences
@@ -370,7 +338,6 @@ static void ensure_dir_size_worker(void) {
     }
 }
 
-size_t num_supported_mime_types = sizeof(supported_mime_types) / sizeof(supported_mime_types[0]);
 // FileAttributes structure
 struct FileAttributes {
     char *name;  //
@@ -3259,59 +3226,6 @@ bool is_supported_file_type(const char *filename) {
 
     magic_close(magic_cookie);
     return supported;
-}
-
-/**
- * Check if a file is an archive that we can preview.
- * 
- * @param filename The filename to check
- * @return true if the file is a supported archive, false otherwise
- */
-bool is_archive_file(const char *filename) {
-    if (!filename) {
-        return false;
-    }
-    
-    size_t len = strlen(filename);
-    if (len == 0) {
-        return false;
-    }
-    
-    const char *ext = strrchr(filename, '.');
-    if (!ext) {
-        return false;
-    }
-    
-    // Check for ZIP/7z archives
-    if (strcmp(ext, ".zip") == 0 || strcmp(ext, ".7z") == 0) {
-        return true;
-    }
-    
-    // Check for TAR archives (with or without compression)
-    // Note: strrchr finds the LAST dot, so for .tar.gz it finds .gz
-    // We need to check for multi-part extensions
-    
-    // Check single extensions first
-    if (strcmp(ext, ".tar") == 0 ||
-        strcmp(ext, ".tgz") == 0 ||
-        strcmp(ext, ".tbz2") == 0 ||
-        strcmp(ext, ".txz") == 0) {
-        return true;
-    }
-    
-    // Check for multi-part extensions like .tar.gz, .tar.bz2, .tar.xz
-    // For these, strrchr will find .gz/.bz2/.xz, so check if .tar comes before
-    if (strcmp(ext, ".gz") == 0 || strcmp(ext, ".bz2") == 0 || strcmp(ext, ".xz") == 0) {
-        // Check if it contains .tar before the compression extension
-        const char *tar_pos = strstr(filename, ".tar");
-        if (tar_pos && tar_pos < ext) {
-            return true; // It's a TAR archive (e.g., .tar.gz, .tar.bz2)
-        }
-        // If no .tar, it's a single compressed file (also treat as "archive" for preview)
-        return true;
-    }
-    
-    return false;
 }
 
 /**

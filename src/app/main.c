@@ -59,6 +59,46 @@ WINDOW *dirwin = NULL;
 WINDOW *previewwin = NULL;
 
 VecStack directoryStack;
+
+static bool is_ascii_alpha_key(int k) {
+    return (k >= 0 && k < 256 && isalpha((unsigned char)k));
+}
+
+// Match exact key OR (if the binding is a letter) match either case.
+// Safe with ncurses KEY_* values because we only case-fold when both are ASCII.
+static bool key_matches_casefold(int ch, int bind) {
+    if (ch == bind) return true;
+
+    if (ch >= 0 && ch < 256 && is_ascii_alpha_key(bind)) {
+        return tolower((unsigned char)ch) == tolower((unsigned char)bind);
+    }
+    return false;
+}
+
+// Banner: prefer showing uppercase for letter help keys, BUT avoid showing a key
+// that is actually the exit key (exit is checked in the while condition).
+static void banner_help_key_to_string(const KeyBindings *kb, char *out, size_t out_sz) {
+    if (!out || out_sz == 0) return;
+
+    int hk = kb->key_help;
+    int ex = kb->key_exit;
+
+    if (is_ascii_alpha_key(hk)) {
+        int upper = toupper((unsigned char)hk);
+        int lower = tolower((unsigned char)hk);
+
+        int disp = upper;
+        if (disp == ex) disp = lower;   // if uppercase would exit, show lowercase
+        if (disp == ex) disp = upper;   // worst case: both conflict, fall back to upper
+
+        snprintf(out, out_sz, "%c", (char)disp);
+        return;
+    }
+
+    // Non-letters: show normal ncurses name
+    snprintf(out, out_sz, "%s", keycode_to_string(hk));
+}
+
 int main() {
     // Initialize ncurses
     setlocale(LC_ALL, "");
@@ -134,6 +174,7 @@ int main() {
 
     // Initialize keybindings and configs
     KeyBindings kb;
+    memset(&kb, 0, sizeof(kb));
     load_default_keybindings(&kb);
 
     char config_path[1024];
@@ -177,11 +218,27 @@ int main() {
         // For now, we'll proceed with whatever was loaded and keep defaults for invalid entries
     }
 
+    // If help == exit, help can never trigger (and banner would be confusing).
+    if (kb.key_help == kb.key_exit) {
+        kb.key_help = 'h';
+        show_notification(notifwin,
+                          "Keybinding conflict: key_help == key_exit. Reset help to 'h'.");
+        should_clear_notif = false;
+    }
+
     g_kb = kb;
 
-    // Now that keybindings are loaded from config, initialize the banner
-    char banner_text_buffer[256];
-    snprintf(banner_text_buffer, sizeof(banner_text_buffer), "Welcome to CupidFM - Press %s to exit", keycode_to_string(kb.key_exit));
+    // Now that keybindings are loaded from config, initialize the banner.
+    // keycode_to_string() often returns a pointer to a static buffer; calling it
+    // twice inside one snprintf can print the same thing twice (C arg order is unspecified).
+    static char banner_text_buffer[256];
+    char exit_key_buf[32];
+    char help_key_buf[32];
+    snprintf(exit_key_buf, sizeof(exit_key_buf), "%s", keycode_to_string(kb.key_exit));
+    banner_help_key_to_string(&kb, help_key_buf, sizeof(help_key_buf));
+    snprintf(banner_text_buffer, sizeof(banner_text_buffer),
+             "Welcome to CupidFM - Press %s to exit | Press %s for help",
+             exit_key_buf, help_key_buf);
 
     // Assign to global BANNER_TEXT
     BANNER_TEXT = banner_text_buffer;
@@ -1655,6 +1712,13 @@ int main() {
             // Console (Ctrl+O by default)
             else if (ch == kb.key_console) {
                 console_show();
+                should_clear_notif = false;
+                goto input_done;
+            }
+
+            // Help menu (H by default)
+            else if (key_matches_casefold(ch, kb.key_help)) {
+                show_help_menu(&kb);
                 should_clear_notif = false;
                 goto input_done;
             }

@@ -43,6 +43,7 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->key_redo = 25;   // Ctrl+Y (Redo last file op)
     kb->key_permissions = 16; // Ctrl+P (Edit permissions)
     kb->key_console = 15; // Ctrl+O (Open console)
+    kb->key_help = 'H';  // Help menu (accepts both 'h' and 'H' in main.c)
 
     // Editing keys
     kb->edit_up = KEY_UP;
@@ -158,6 +159,7 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "key_permissions", kb->key_permissions, "Edit file permissions (chmod)");
     write_kv_line(fp, "key_console", kb->key_console, "Open plugin console (log output)");
     write_kv_line(fp, "key_save", kb->key_save, "Save changes");
+    write_kv_line(fp, "key_help", kb->key_help, "Show help menu (h/H)");
     fputc('\n', fp);
 
     fputs("# Editing Mode Keys\n", fp);
@@ -245,6 +247,7 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"key_redo", &kb->key_redo},
         {"key_permissions", &kb->key_permissions},
         {"key_console", &kb->key_console},
+        {"key_help", &kb->key_help},
 
         {"edit_up",        &kb->edit_up},
         {"edit_down",      &kb->edit_down},

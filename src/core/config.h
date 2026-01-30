@@ -29,6 +29,7 @@ typedef struct {
     int key_redo;    // e.g., Ctrl+Y (Redo last file op)
     int key_permissions; // e.g., Ctrl+P (Edit permissions)
     int key_console; // e.g., Ctrl+O (Open console)
+    int key_help;    // e.g., H (Show help menu)
 
     // Dedicated editing keys
     int edit_up;

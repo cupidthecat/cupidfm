@@ -19,7 +19,6 @@ void display_files(const char *directory);
 void preview_file(const char *filename);
 void change_directory(const char *new_directory, const char ***files, int *num_files, int *selected_entry, int *start_entry, int *end_entry);
 void path_join(char *result, const char *base, const char *extra);
-const char* get_file_emoji(const char *mime_type, const char *filename);
 void reload_directory(Vector *files, const char *current_directory);
 void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files);
 void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas, size_t *files_loaded, size_t total_files);
