@@ -92,6 +92,9 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                           int *in_block_comment, int y, int x, int max_width,
                           char **lines, int num_lines, int line_index);
 
+// Get initial block comment state by scanning backwards from current_line
+int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax);
+
 // Initialize ncurses color pairs for syntax highlighting
 void syntax_init_colors(void);
 

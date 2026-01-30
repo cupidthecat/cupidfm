@@ -412,43 +412,47 @@ static bool is_followed_by_paren(const char *line, int pos, int len) {
 
 // Helper: scan backwards through lines to determine initial block comment state
 // Returns 1 if we're inside a block comment at the start of the given line, 0 otherwise
-static int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
-    if (!syntax || !syntax->block_comment_start || !syntax->block_comment_end) {
-        return 0;
-    }
-    
-    int block_depth = 0;
+int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
+    if (!syntax || !syntax->block_comment_start || !syntax->block_comment_end) return 0;
+
     const char *start_delim = syntax->block_comment_start;
-    const char *end_delim = syntax->block_comment_end;
-    size_t start_len = strlen(start_delim);
-    size_t end_len = strlen(end_delim);
-    
-    // Scan backwards from current_line - 1 to line 0
-    for (int line_idx = current_line - 1; line_idx >= 0; line_idx--) {
-        if (!lines[line_idx]) continue;
-        const char *line = lines[line_idx];
-        size_t len = strlen(line);
-        
-        // Scan this line backwards
-        for (int pos = (int)len - (int)end_len; pos >= 0; pos--) {
-            // Check for block comment end (which we encounter first when going backwards)
-            if (pos + end_len <= len && strncmp(&line[pos], end_delim, end_len) == 0) {
-                block_depth++;
-                pos -= (end_len - 1); // Skip past this delimiter
+    const char *end_delim   = syntax->block_comment_end;
+    const int start_len = (int)strlen(start_delim);
+    const int end_len   = (int)strlen(end_delim);
+
+    int depth = 0;
+
+    // Walk upward through earlier lines
+    for (int li = current_line - 1; li >= 0; --li) {
+        const char *s = lines[li];
+        if (!s) continue;
+        int L = (int)strlen(s);
+
+        // Scan this line right-to-left
+        for (int pos = L - 1; pos >= 0; --pos) {
+            // Check for end delimiter "*/" ending at pos
+            if (pos - end_len + 1 >= 0 &&
+                strncmp(&s[pos - end_len + 1], end_delim, (size_t)end_len) == 0) {
+                depth++;                 // treat end as an "open" when scanning backwards
+                pos -= (end_len - 1);
+                continue;
             }
-            // Check for block comment start
-            else if (pos + start_len <= len && strncmp(&line[pos], start_delim, start_len) == 0) {
-                block_depth--;
-                pos -= (start_len - 1); // Skip past this delimiter
+
+            // Check for start delimiter "/*" ending at pos
+            if (pos - start_len + 1 >= 0 &&
+                strncmp(&s[pos - start_len + 1], start_delim, (size_t)start_len) == 0) {
+
+                if (depth == 0) {
+                    // Found an unmatched start => we are inside a block comment at current_line
+                    return 1;
+                }
+                depth--;                 // match it against an end we saw later (above current_line)
+                pos -= (start_len - 1);
+                continue;
             }
-        }
-        
-        // If block_depth is positive, we're inside a comment
-        if (block_depth > 0) {
-            return 1;
         }
     }
-    
+
     return 0;
 }
 
@@ -531,11 +535,6 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                           int *in_block_comment, int y, int x, int max_width,
                           char **lines, int num_lines, int line_index) {
     if (!win || !line) return;
-    
-    // Determine initial block comment state by scanning backwards if needed
-    if (in_block_comment && lines && num_lines > 0 && line_index > 0) {
-        *in_block_comment = get_initial_block_comment_state(lines, num_lines, line_index, syntax);
-    }
     
     // No syntax highlighting available - just print the line normally
     if (!syntax) {

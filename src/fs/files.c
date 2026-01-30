@@ -1838,8 +1838,6 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         last_editor_path[sizeof(last_editor_path) - 1] = '\0';
         current_syntax = syntax_get_for_file(g_editor_path);
     }
-    static int in_block_comment = 0;
-    in_block_comment = 0;  // Reset at each full render
 
     int max_y, max_x;
     getmaxyx(window, max_y, max_x);
@@ -1861,6 +1859,14 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         *start_line = MIN(*start_line, buffer->num_lines - content_height);
     } else {
         *start_line = 0;
+    }
+
+    // IMPORTANT: *start_line may have changed above; compute comment state using FINAL start_line.
+    int in_block_comment = 0;
+    if (current_syntax) {
+        in_block_comment = get_initial_block_comment_state(
+            buffer->lines, buffer->num_lines, *start_line, current_syntax
+        );
     }
 
     // Draw separator line for line numbers
@@ -1974,8 +1980,10 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
         // Get the line content
         const char *line = buffer->lines[*start_line + i] ? buffer->lines[*start_line + i] : "";
         int line_length = strlen(line);
+        int current_line_index = *start_line + i;
 
-        // Print the visible portion of the line with syntax highlighting
+        // Always call syntax_highlight_line to maintain block comment state,
+        // even if the line is shorter than h_scroll (important for /** and */ lines)
         if (h_scroll < line_length) {
             // Create a substring for the visible portion
             char visible_line[4096];
@@ -1987,14 +1995,15 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line, int
             visible_line[visible_len] = '\0';
             
             // Use syntax highlighting if available, otherwise plain text
-            int current_line_index = *start_line + i;
             syntax_highlight_line(window, visible_line, current_syntax, 
                                  &in_block_comment, i + 1, content_start, content_width,
                                  buffer->lines, buffer->num_lines, current_line_index);
         } else {
-            mvwprintw(window, i + 1, content_start, "%*s", 
-                     content_width,
-                     "");  // Print empty string if line is shorter than content_width
+            // Line is shorter than h_scroll, but we still need to process it for block comment state
+            // Pass empty string but still update state based on the full line
+            syntax_highlight_line(window, "", current_syntax, 
+                                 &in_block_comment, i + 1, content_start, content_width,
+                                 buffer->lines, buffer->num_lines, current_line_index);
         }
 
         // Highlight selection range (if active)

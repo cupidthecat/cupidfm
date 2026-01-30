@@ -546,21 +546,64 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_supported_file_type(full_path)) {
         FILE *file = fopen(full_path, "r");
         if (file) {
-            char line[256];
-            int line_num = 7;
-            int current_line = 0;
+            // Read all lines into a buffer first to enable proper block comment state tracking
+            char **all_lines = NULL;
+            int total_lines = 0;
+            int capacity = 100;
+            all_lines = malloc(capacity * sizeof(char*));
+            if (!all_lines) {
+                fclose(file);
+                mvwprintw(window, 7, 2, "Memory allocation failed");
+                wrefresh(window);
+                return;
+            }
+            
+            char line_buffer[256];
+            while (fgets(line_buffer, sizeof(line_buffer), file)) {
+                if (total_lines >= capacity) {
+                    capacity *= 2;
+                    char **new_lines = realloc(all_lines, capacity * sizeof(char*));
+                    if (!new_lines) {
+                        for (int i = 0; i < total_lines; i++) free(all_lines[i]);
+                        free(all_lines);
+                        fclose(file);
+                        mvwprintw(window, 7, 2, "Memory allocation failed");
+                        wrefresh(window);
+                        return;
+                    }
+                    all_lines = new_lines;
+                }
+                line_buffer[strcspn(line_buffer, "\n")] = '\0';
+                all_lines[total_lines] = strdup(line_buffer);
+                if (!all_lines[total_lines]) {
+                    for (int i = 0; i < total_lines; i++) free(all_lines[i]);
+                    free(all_lines);
+                    fclose(file);
+                    mvwprintw(window, 7, 2, "Memory allocation failed");
+                    wrefresh(window);
+                    return;
+                }
+                total_lines++;
+            }
+            fclose(file);
             
             // Get syntax definition for this file
             SyntaxDef *syntax = syntax_get_for_file(full_path);
+            
+            // IMPORTANT: Compute block comment state for the first visible line AFTER determining start_line
             int in_block_comment = 0;
-
-            while (current_line < start_line && fgets(line, sizeof(line), file)) {
-                current_line++;
+            if (syntax && start_line > 0) {
+                in_block_comment = get_initial_block_comment_state(all_lines, total_lines, start_line, syntax);
             }
-
-            while (fgets(line, sizeof(line), file) && line_num < max_y - 1) {
-                line[strcspn(line, "\n")] = '\0';
-
+            
+            // Display lines starting from start_line
+            int line_num = 7;
+            for (int i = start_line; i < total_lines && line_num < max_y - 1; i++) {
+                char line[256];
+                strncpy(line, all_lines[i], sizeof(line) - 1);
+                line[sizeof(line) - 1] = '\0';
+                
+                // Clean up non-printable characters
                 for (char *p = line; *p; p++) {
                     unsigned char c = (unsigned char)*p;
                     if (c == '\t') {
@@ -573,11 +616,16 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
                 }
 
                 // Use syntax highlighting if available, otherwise plain text
+                // Pass full buffer context for proper state tracking
                 syntax_highlight_line(window, line, syntax, &in_block_comment, 
-                                     line_num++, 2, max_x - 4, NULL, 0, 0);
+                                     line_num++, 2, max_x - 4, all_lines, total_lines, i);
             }
-
-            fclose(file);
+            
+            // Free all lines
+            for (int i = 0; i < total_lines; i++) {
+                free(all_lines[i]);
+            }
+            free(all_lines);
 
             if (line_num < max_y - 1) {
                 mvwprintw(window, line_num++, 2, "--------------------------------");
