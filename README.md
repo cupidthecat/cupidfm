@@ -642,7 +642,8 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 
 ### Todo List for Command Line Feature
 
-- [ ] Design and implement the command bar UI.
+- [ ] Design and implement the command bar UI. (Most likely in the same spot of notify)
+- [ ] Design API functions for cupidscript to use with the commandline.
 - [ ] Add a command parser to interpret user input.
 - [ ] Implement core file operations (`cd`, `ls`, `open`, etc.).
 - [ ] Add error handling and feedback messages.
