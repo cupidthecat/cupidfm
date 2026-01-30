@@ -261,7 +261,8 @@ void syntax_init(void) {
     while ((entry = readdir(dir)) != NULL) {
         if (!ends_with(entry->d_name, ".cupidconf")) continue;
         
-        char filepath[MAX_PATH_LENGTH];
+        // Use larger buffer to avoid truncation warning (dir path + "/" + filename)
+        char filepath[MAX_PATH_LENGTH + 256];
         snprintf(filepath, sizeof(filepath), "%s/%s", syntax_dir, entry->d_name);
         load_syntax_file(filepath);
     }
