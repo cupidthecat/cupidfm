@@ -23,7 +23,7 @@ ensure_packages() {
     elif command -v pacman >/dev/null 2>&1; then
         log "Using pacman to install dependencies"
         sudo pacman -Syu --noconfirm
-        sudo pacman -S --noconfirm base-devel ncurses libmagic xclip curl unzip
+        sudo pacman -S --noconfirm base-devel ncurses file xclip curl unzip
     elif command -v dnf >/dev/null 2>&1; then
         log "Using dnf to install dependencies"
         sudo dnf install -y gcc make ncurses-devel libmagic-devel file xclip curl unzip
