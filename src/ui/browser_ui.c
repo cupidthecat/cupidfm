@@ -535,6 +535,9 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
         magic_close(magic_cookie);
     } else {
+        if (magic_cookie) {
+            magic_close(magic_cookie);
+        }
         mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
     }
 

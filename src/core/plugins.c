@@ -787,8 +787,12 @@ void plugins_notify_editor_change(PluginManager *pm, int line, int col,
     args[1] = cs_int(col);
     args[2] = text ? cs_str(vm, text) : cs_str(vm, "");
 
-    cs_value result;
+    cs_value result = cs_nil();
     cs_call(vm, "on_editor_change", 3, args, &result);
+    cs_value_release(args[0]);
+    cs_value_release(args[1]);
+    cs_value_release(args[2]);
+    cs_value_release(result);
   }
 }
 

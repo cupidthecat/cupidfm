@@ -182,10 +182,19 @@ static int nf_fm_editor_get_lines(cs_vm *vm, void *ud, int argc,
   for (int i = start; i <= end; i++) {
     char *line = editor_get_line_copy(i);
     if (!line) {
+      cs_value_release(listv);
       *out = cs_nil();
       return 0;
     }
-    (void)cs_list_push(listv, cs_str(vm, line));
+    cs_value v = cs_str(vm, line);
+    if (cs_list_push(listv, v) != 0) {
+      cs_value_release(v);
+      free(line);
+      cs_value_release(listv);
+      *out = cs_nil();
+      return 0;
+    }
+    cs_value_release(v);
     free(line);
   }
 
