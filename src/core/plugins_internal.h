@@ -120,6 +120,10 @@ struct PluginManager {
 cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg, const char *initial);
 bool plugin_modal_confirm(const char *title, const char *msg);
 int plugin_modal_menu(const char *title, char **items, size_t count);
+void plugin_menu_items_free(char **items, size_t count);
+
+// fm.* API registration (from plugins_api.c)
+void plugins_register_fm_api(PluginManager *pm, cs_vm *vm);
 
 // Helper functions used across modules
 void plugin_notify(const char *msg);
