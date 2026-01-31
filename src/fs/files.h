@@ -101,6 +101,29 @@ bool editor_replace_text(int start_line, int start_col, int end_line,
 bool editor_delete_range(int start_line, int start_col, int end_line,
                          int end_col);
 
+// Saves the current editor buffer to disk. Returns false if not editing, no
+// file path, or on write error. On success, clears the editor dirty state and
+// triggers on_editor_save(path) callbacks.
+bool editor_save_current(struct PluginManager *pm);
+
+// Saves the current editor buffer to the given path. Returns false if not
+// editing, invalid path, or on write error. On success, updates the editor's
+// current path, clears the editor dirty state, and triggers on_editor_save(path)
+// callbacks.
+bool editor_save_as(struct PluginManager *pm, const char *path);
+
+// Requests closing the editor. The close is performed by the editor loop.
+// Returns false if the editor is not currently open.
+bool editor_request_close(void);
+
+// Requests reloading the current editor file from disk. Returns false if the
+// editor is not open or there is no current path.
+bool editor_request_reload(void);
+
+// Sets the editor read-only state (prevents modifying the buffer and writing).
+// Returns false if the editor is not currently open.
+bool editor_set_readonly(bool readonly);
+
 /**
  * Now the compiler knows what KeyBindings is
  * because config.h is included above.

@@ -687,10 +687,14 @@ Plugins = Any CupidScript `.cs` file with optional hooks:
 - `fn on_key(key)` — after keypress (return true/false to block/pass)
 - `fn on_dir_change(new_cwd, old_cwd)` — when the panel dir changes
 - `fn on_selection_change(new_name, old_name)` — selection changed
+- `fn on_editor_open(path)` — when a file is opened in the built-in editor
+- `fn on_editor_change(line, col, text)` — when editor content changes (insertions/deletions)
+- n on_editor_save(path)  when a file is saved in the editor
 
 **New:**
 - **Plugin API can export additional custom entry points.**
 - **Error in hook?** Stacktrace with file/line/col will display in notification area.
+
 
 ---
 
@@ -708,6 +712,234 @@ Helpers for mapping:
 
 - `fm.key_code(name)` — string→int
 - `fm.key_name(code)` — int→string
+
+---
+
+## on_editor_open Callback
+
+The `on_editor_open(path)` callback is triggered when a file is opened in CupidFM's built-in text editor.
+
+**Parameters:**
+- `path` (string): Absolute path to the file being opened in the editor
+
+**Use Cases:**
+- Logging file access and editing history
+- Auto-formatting or linting on open
+- Setting editor configurations based on file type
+- Tracking editing patterns and statistics
+- Custom notifications or prompts based on file content
+- Integration with external tools or version control
+
+**Example:**
+```cs
+fn on_editor_open(path) {
+    fm.console(fmt("Opened in editor: %s", path));
+    
+    // Auto-format JSON files
+    if (ends_with(path, ".json")) {
+        fm.notify("JSON file detected - remember to validate syntax!");
+    }
+    
+    // Check for specific patterns
+    if (contains(path, "/config/")) {
+        fm.notify("Editing configuration file - be careful!");
+    }
+}
+```
+
+**Full Example Plugin:**
+See [`editor_open_logger.cs`](file://wsl.localhost/Ubuntu/home/frank/.cupidfm/plugins/editor_open_logger.cs) for a complete example that:
+- Logs all files opened in the editor
+- Tracks statistics by file type
+- Provides helpful tips based on file extension
+- Binds Ctrl+E to show editing statistics
+
+**Note:** This callback fires once when the editor window opens, not on subsequent edits or saves within the same editing session.
+
+**Related Functions:**
+- Use `fm.editor_get_path()` to get the current editor file path at any time (not just when opening)
+- Use `fm.editor_active()` to check if the editor is currently open
+
+---
+
+## on_editor_change Callback
+
+**Signature:** `fn on_editor_change(line, col, text)`
+
+Triggered when editor content changes (text insertions or deletions).
+
+**Parameters:**
+- `line` (int): Line number where change occurred (1-indexed)
+- `col` (int): Column where change occurred (1-indexed)
+- `text` (string): Text that was inserted/deleted
+
+**Example:**
+```cs
+letchanges = 0;
+
+fn on_editor_change(line, col, text) {
+    changes = changes + 1;
+    if (changes % 100 == 0) {
+        fm.notify("100 changes made!");
+    }
+}
+```
+
+**See:** [`editor_change_demo.cs`](file:///\\wsl.localhost\Ubuntu\home\frank\cupidfm\plugins\examples\editor_change_demo.cs)
+
+---
+
+## on_editor_save Callback
+
+The `on_editor_save(path)` callback is triggered whenever a file is successfully saved in CupidFM's built-in text editor.
+
+**Signature:** `fn on_editor_save(path)`
+
+**Parameters:**
+- `path` (string): Absolute path to the file that was just saved
+
+**Use Cases:**
+- Tracking save frequency and editing patterns
+- Auto-backup of important files after save
+- Running post-save actions (linting, formatting, compilation)
+- Logging save history
+- Triggering notifications or external integrations
+- Statistics gathering for productivity tracking
+
+**Example:**
+```cs
+let total_saves = 0;
+
+fn on_editor_save(path) {
+    total_saves = total_saves + 1;
+    let filename = path_basename(path);
+    fm.console(fmt("Saved: %s (save #%d)", filename, total_saves));
+    
+    // Auto-backup for important files
+    let ext = path_ext(path);
+    if (ext == ".c" || ext == ".h") {
+        fm.console("Auto-backup: Important C file saved");
+    }
+}
+```
+
+**Full Example Plugin:**
+See [`editor_save_demo.cs`](plugins/examples/editor_save_demo.cs) for a complete example that:
+- Tracks total saves per session
+- Maintains a history of recently saved files (last 20)
+- Shows congratulatory messages every 5 saves
+- Provides save statistics on Ctrl+D
+- Auto-detects and logs important file types (.c, .h)
+- Uses helper functions with `substr()` for safe string operations
+
+**Key Features in Example:**
+- Uses `path_basename()` to extract filename from full path
+- Uses `path_ext()` for file extension checking
+- Demonstrates list management with spread operator
+- Shows proper use of `slice()` for list trimming
+- Includes statistics display with formatted output
+
+**Note:** This callback fires after the file has been successfully written to disk. If the save operation fails, the callback will not be triggered.
+
+**Related Callbacks:**
+- Use `on_editor_open(path)` to track when files are first opened
+- Use `on_editor_change(line, col, text)` to track individual edits between saves
+
+---
+
+## on_editor_cursor_move Callback
+
+The `on_editor_cursor_move(old_line, old_col, new_line, new_col)` callback is triggered whenever the cursor position changes in CupidFM's built-in text editor.
+
+**Signature:** `fn on_editor_cursor_move(old_line, old_col, new_line, new_col)`
+
+**Parameters:**
+- `old_line` (int): Previous line number (1-indexed)
+- `old_col` (int): Previous column number (1-indexed)
+- `new_line` (int): New line number (1-indexed)
+- `new_col` (int): New column number (1-indexed)
+
+**Use Cases:**
+- Tracking cursor movement patterns and statistics
+- Implementing context-aware features based on cursor position
+- Real-time position monitoring for collaborative editing
+- Building cursor navigation analytics
+- Creating position-based triggers or notifications
+- Implementing smart suggestions based on cursor location
+
+**Example:**
+```cs
+let move_count = 0;
+
+fn on_editor_cursor_move(old_line, old_col, new_line, new_col) {
+    move_count = move_count + 1;
+    
+    // Calculate movement distance
+    let line_delta = new_line - old_line;
+    let col_delta = new_col - old_col;
+    
+    // Log significant jumps (more than 10 lines)
+    if (line_delta > 10 || line_delta < -10) {
+        fm.console(fmt("Large jump: %d -> %d", old_line, new_line));
+    }
+}
+```
+
+**Full Example Plugin:**
+See [`cursor_tracker.cs`](file:///\\wsl.localhost\Ubuntu\home\frank\.cupidfm\plugins\cursor_tracker.cs) for a complete example that:
+- Tracks all cursor movements
+- Calculates movement statistics
+- Displays analytics via Ctrl+M keybinding
+- Demonstrates practical use of the API
+
+**Note:** This callback fires for all cursor movements including arrow keys, mouse clicks, page up/down, home/end, and any other navigation commands. It will not fire if the cursor position doesn't actually change.
+
+**Related Functions:**
+- Use `fm.editor_get_cursor()` to get the current cursor position at any time
+- Use `fm.editor_set_cursor(line, col)` to programmatically move the cursor
+- Use `fm.editor_active()` to check if the editor is currently open
+
+---
+
+### fm.editor_get_path() Function
+
+The `fm.editor_get_path()` function returns the absolute path of the file currently open in the editor, or `nil` if no file is open.
+
+**Returns:**
+- `string`: Absolute path to the currently open file
+- `nil`: If the editor is not currently open
+
+**Use Cases:**
+- Checking which file is being edited
+- Building file-specific tools or commands
+- Tracking editing context
+- Copying file paths to clipboard
+- Conditional behavior based on file location
+
+**Example:**
+```cs
+fn on_key(key) {
+    if (key == "^P") {
+        let path = fm.editor_get_path();
+        
+        if (path == nil) {
+            fm.notify("No file open in editor");
+        } else {
+            fm.popup("Current File", fmt("Editing: %s", path));
+        }
+        return true;
+    }
+    return false;
+}
+```
+
+**Full Example Plugin:**
+See [`editor_path_watcher.cs`](file://wsl.localhost/Ubuntu/home/frank/.cupidfm/plugins/editor_path_watcher.cs) for a complete example that:
+- Binds Ctrl+P to show current editor file path
+- Binds Ctrl+Shift+P to copy path to clipboard
+- Tracks when files change in the editor
+- Extracts and displays filename separately from full path
+
 
 ---
 
@@ -760,6 +992,11 @@ CupidFM provides a comprehensive API for manipulating the built-in text editor f
 |----------|---------|-------------|
 | `fm.editor_active()` | `bool` | True if the built-in text editor is currently open |
 | `fm.editor_get_path()` | `string \| nil` | Current editor file path, or nil if editor not open |
+| `fm.editor_save()` | `bool` | Saves the current editor buffer to disk. Returns false if not editing or on write error. Triggers `on_editor_save(path)` on success |
+| `fm.editor_save_as(path)` | `bool` | Saves the current editor buffer to `path` and updates the current editor file path on success. Triggers `on_editor_save(path)` |
+| `fm.editor_close()` | `bool` | Closes the editor. Returns false if the editor is not open. If there are unsaved changes, CupidFM will ask to confirm discard |
+| `fm.editor_reload()` | `bool` | Reloads the current editor file from disk. Returns false if the editor is not open. If there are unsaved changes, CupidFM will ask to confirm discard |
+| `fm.editor_set_readonly(readonly)` | `bool` | Sets editor read-only mode. When enabled, editing and saving are blocked |
 | `fm.editor_line_count()` | `int` | Total number of lines in the editor, or 0 if not open |
 | `fm.editor_get_cursor()` | `map \| nil` | Cursor position `{line: int, col: int}` (1-indexed), or nil if not editing |
 | `fm.editor_set_cursor(line, col)` | `bool` | Sets cursor position (1-indexed). Returns true on success, false if not editing or invalid position |
@@ -782,10 +1019,48 @@ if (fm.editor_active()) {
     
     fm.notify(fmt("Editing: %s (%d lines) at line %d", path, line_count, cursor["line"]));
     
-    // Get first 10 lines
-    let lines = fm.editor_get_lines(1, 10);
-    for line in lines {
-        print(line);
+    // Get entire file content as a single string
+    let content = fm.editor_get_content();
+    if (content != nil) {
+        let char_count = len(content);
+        fm.console(fmt("File has %d characters", char_count));
+        
+        // Check if content contains a string (manual search)
+        let has_todo = false;
+        for (let i = 0; i < len(content) - 3; i = i + 1) {
+            if (substr(content, i, 4) == "TODO") {
+                has_todo = true;
+                break;
+            }
+        }
+        if (has_todo) {
+            fm.notify("File contains TODO items");
+        }
+    }
+    
+    // Get specific lines as a list
+    let lines = fm.editor_get_lines(1, 10);  // First 10 lines
+    if (lines != nil) {
+        for line in lines {
+            fm.console(line);
+        }
+    }
+    
+    // Get a single line (using get_lines with same start and end)
+    let first_lines = fm.editor_get_lines(1, 1);
+    if (first_lines != nil && len(first_lines) > 0) {
+        fm.console(fmt("First line: %s", first_lines[0]));
+    }
+    
+    // Process a range of lines
+    let cursor = fm.editor_get_cursor();
+    if (cursor != nil) {
+        let current = cursor["line"];
+        // Get 5 lines before and after cursor
+        let context = fm.editor_get_lines(current - 5, current + 5);
+        if (context != nil) {
+            fm.notify(fmt("Got %d lines of context", len(context)));
+        }
     }
     
     // Move cursor to line 5, column 10
@@ -803,6 +1078,50 @@ if (fm.editor_active()) {
 | `fm.editor_replace_text(...)` | `start_line, start_col, end_line, end_col, text` | `bool` | Replaces text in specified range with new text |
 | `fm.editor_delete_range(...)` | `start_line, start_col, end_line, end_col` | `bool` | Deletes text in specified range |
 | `fm.editor_uppercase_selection()` | - | `bool` | Converts current selection to uppercase (efficient built-in) |
+
+#### Saving From Plugins
+
+**fm.editor_save()**
+- Saves the currently open editor buffer to the current editor file on disk
+- Returns `true` on success, `false` if the editor is not open or a write error occurs
+- On success, triggers `on_editor_save(path)` callbacks (same as pressing the editor save key)
+
+See [`plugins/examples/editor_save_api_demo.cs`](plugins/examples/editor_save_api_demo.cs) for a minimal example that binds `^S` to `fm.editor_save()`.
+
+**fm.editor_save_as(path)**
+- Saves the currently open editor buffer to `path`
+- On success, updates the “current editor path” (so `fm.editor_get_path()` returns the new path and subsequent `fm.editor_save()` writes to the new file)
+- Returns `true` on success, `false` if the editor is not open or a write error occurs
+- On success, triggers `on_editor_save(path)` callbacks
+
+See [`plugins/examples/editor_save_as_api_demo.cs`](plugins/examples/editor_save_as_api_demo.cs) for a minimal Save As example.
+
+#### Closing From Plugins
+
+**fm.editor_close()**
+- Requests that CupidFM close the built-in editor
+- Returns `false` if the editor is not open
+- If there are unsaved changes, CupidFM will prompt to confirm discard
+
+See [`plugins/examples/editor_close_api_demo.cs`](plugins/examples/editor_close_api_demo.cs) for a minimal example binding `^Q` to close the editor.
+
+#### Reloading From Plugins
+
+**fm.editor_reload()**
+- Reloads the current editor file from disk into the editor buffer
+- Returns `false` if the editor is not open
+- If there are unsaved changes, CupidFM will prompt to confirm discard before reloading
+
+See [`plugins/examples/editor_reload_api_demo.cs`](plugins/examples/editor_reload_api_demo.cs) for a minimal example binding `^R` to reload.
+
+#### Read-Only From Plugins
+
+**fm.editor_set_readonly(readonly)**
+- Enables/disables editor read-only mode
+- Returns `false` if the editor is not open
+- When enabled, interactive edits and editor saves are blocked, and editor-write APIs return `false`
+
+See [`plugins/examples/editor_readonly_api_demo.cs`](plugins/examples/editor_readonly_api_demo.cs) for a minimal toggle example (`^_O`).
 
 **fm.editor_replace_text(start_line, start_col, end_line, end_col, text)**
 - All coordinates are 1-indexed

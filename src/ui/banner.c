@@ -42,7 +42,9 @@ int banner_initial_offset_for_center(const char *text, const char *build_info) {
     return off;
 }
 
-void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_info, int offset) {
+static void draw_scrolling_banner_impl(WINDOW *window, const char *text,
+                                       const char *build_info, int offset,
+                                       bool do_immediate_refresh) {
     // Include local date/time in the banner (fixed width so the scroll math stays stable).
     time_t t = time(NULL);
     struct tm tm_local;
@@ -81,9 +83,20 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
     werase(window);
     box(window, 0, 0);
     mvwprintw(window, 1, 1, "%.*s", width, scroll_text + offset);
-    wrefresh(window);
+    if (do_immediate_refresh)
+        wrefresh(window);
+    else
+        wnoutrefresh(window);
 
     free(scroll_text);
+}
+
+void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_info, int offset) {
+    draw_scrolling_banner_impl(window, text, build_info, offset, true);
+}
+
+void draw_scrolling_banner_nout(WINDOW *window, const char *text, const char *build_info, int offset) {
+    draw_scrolling_banner_impl(window, text, build_info, offset, false);
 }
 
 void *banner_scrolling_thread(void *arg) {

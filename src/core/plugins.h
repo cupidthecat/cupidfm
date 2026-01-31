@@ -79,9 +79,15 @@ bool plugins_take_fileop_request(PluginManager *pm, PluginFileOp *out);
 void plugins_fileop_free(PluginFileOp *op);
 void editor_apply_uppercase_to_selection(void);
 
+// Request helpers for host-side actions. Safe to call from anywhere that has a
+// PluginManager* without needing access to its internals.
+void plugins_request_reload(PluginManager *pm);
+void plugins_request_select(PluginManager *pm, const char *name);
+
 // Editor event notifications
 void plugins_notify_editor_open(PluginManager *pm, const char *path);
 void plugins_notify_editor_change(PluginManager *pm, int line, int col, const char *text);
 void plugins_notify_editor_save(PluginManager *pm, const char *path);
+void plugins_notify_editor_cursor_move(PluginManager *pm, int old_line, int old_col, int new_line, int new_col);
 
 #endif // PLUGINS_H

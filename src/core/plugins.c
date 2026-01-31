@@ -155,21 +155,19 @@ static int parse_key_name_local(const char *s) {
   return -1;
 }
 
-static void pm_notify(const char *msg) {
-    plugin_notify(msg);
-}
+static void pm_notify(const char *msg) { plugin_notify(msg); }
 
 static cs_value modal_prompt_text(cs_vm *vm, const char *title,
                                   const char *initial) {
-    return plugin_modal_prompt_text(vm, title, "", initial);
+  return plugin_modal_prompt_text(vm, title, "", initial);
 }
 
 static bool modal_confirm(const char *title, const char *msg) {
-    return plugin_modal_confirm(title, msg);
+  return plugin_modal_confirm(title, msg);
 }
 
 static int modal_menu(const char *title, char **items, size_t count) {
-    return plugin_modal_menu(title, items, count);
+  return plugin_modal_menu(title, items, count);
 }
 
 static void fileop_clear(PluginFileOp *op) {
@@ -1897,6 +1895,90 @@ static int nf_fm_editor_delete_range(cs_vm *vm, void *ud, int argc,
   return 0;
 }
 
+static int nf_fm_editor_save(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                             cs_value *out) {
+  (void)vm;
+  (void)argv;
+  PluginManager *pm = (PluginManager *)ud;
+  if (argc != 0) {
+    if (out)
+      *out = cs_bool(false);
+    return 0;
+  }
+
+  bool ok = editor_save_current(pm);
+  if (out)
+    *out = cs_bool(ok);
+  return 0;
+}
+
+static int nf_fm_editor_save_as(cs_vm *vm, void *ud, int argc,
+                                const cs_value *argv, cs_value *out) {
+  (void)vm;
+  PluginManager *pm = (PluginManager *)ud;
+
+  if (argc != 1 || argv[0].type != CS_T_STR) {
+    if (out)
+      *out = cs_bool(false);
+    return 0;
+  }
+
+  const char *path = cs_to_cstr(argv[0]);
+  bool ok = editor_save_as(pm, path);
+  if (out)
+    *out = cs_bool(ok);
+  return 0;
+}
+
+static int nf_fm_editor_close(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                              cs_value *out) {
+  (void)vm;
+  (void)ud;
+  (void)argv;
+  if (argc != 0) {
+    if (out)
+      *out = cs_bool(false);
+    return 0;
+  }
+  bool ok = editor_request_close();
+  if (out)
+    *out = cs_bool(ok);
+  return 0;
+}
+
+static int nf_fm_editor_reload(cs_vm *vm, void *ud, int argc,
+                               const cs_value *argv, cs_value *out) {
+  (void)vm;
+  (void)ud;
+  (void)argv;
+  if (argc != 0) {
+    if (out)
+      *out = cs_bool(false);
+    return 0;
+  }
+
+  bool ok = editor_request_reload();
+  if (out)
+    *out = cs_bool(ok);
+  return 0;
+}
+
+static int nf_fm_editor_set_readonly(cs_vm *vm, void *ud, int argc,
+                                     const cs_value *argv, cs_value *out) {
+  (void)vm;
+  (void)ud;
+  if (argc != 1 || argv[0].type != CS_T_BOOL) {
+    if (out)
+      *out = cs_bool(false);
+    return 0;
+  }
+
+  bool ok = editor_set_readonly(argv[0].as.b != 0);
+  if (out)
+    *out = cs_bool(ok);
+  return 0;
+}
+
 static int nf_fm_clipboard_get(cs_vm *vm, void *ud, int argc,
                                const cs_value *argv, cs_value *out) {
   (void)ud;
@@ -3198,6 +3280,11 @@ static void register_fm_api(PluginManager *pm, cs_vm *vm) {
   cs_register_native(vm, "fm.search_set_mode", nf_fm_search_set_mode, pm);
   cs_register_native(vm, "fm.editor_active", nf_fm_editor_active, pm);
   cs_register_native(vm, "fm.editor_get_path", nf_fm_editor_get_path, pm);
+  cs_register_native(vm, "fm.editor_save", nf_fm_editor_save, pm);
+  cs_register_native(vm, "fm.editor_save_as", nf_fm_editor_save_as, pm);
+  cs_register_native(vm, "fm.editor_close", nf_fm_editor_close, pm);
+  cs_register_native(vm, "fm.editor_reload", nf_fm_editor_reload, pm);
+  cs_register_native(vm, "fm.editor_set_readonly", nf_fm_editor_set_readonly, pm);
   cs_register_native(vm, "fm.editor_get_content", nf_fm_editor_get_content, pm);
   cs_register_native(vm, "fm.editor_get_line", nf_fm_editor_get_line, pm);
   cs_register_native(vm, "fm.editor_get_lines", nf_fm_editor_get_lines, pm);
@@ -3731,7 +3818,7 @@ bool plugins_handle_key(PluginManager *pm, int key) {
     bool handled = call_bool(pm, pm->bindings[i].vm, pm->bindings[i].func, key);
     if (pm->quit_requested)
       return true;
-    if (pm->reload_requested)
+    if (!is_editing && pm->reload_requested)
       return true;
     if (handled)
       return true;
@@ -3742,7 +3829,7 @@ bool plugins_handle_key(PluginManager *pm, int key) {
     bool handled = call_bool(pm, pm->plugins[i].vm, "on_key", key);
     if (pm->quit_requested)
       return true;
-    if (pm->reload_requested)
+    if (!is_editing && pm->reload_requested)
       return true;
     if (handled)
       return true;
@@ -3764,6 +3851,20 @@ bool plugins_take_quit_request(PluginManager *pm) {
   bool v = pm->quit_requested;
   pm->quit_requested = false;
   return v;
+}
+
+void plugins_request_reload(PluginManager *pm) {
+  if (!pm)
+    return;
+  pm->reload_requested = true;
+}
+
+void plugins_request_select(PluginManager *pm, const char *name) {
+  if (!pm || !name || !*name)
+    return;
+  strncpy(pm->select_name, name, sizeof(pm->select_name) - 1);
+  pm->select_name[sizeof(pm->select_name) - 1] = '\0';
+  pm->select_requested = true;
 }
 
 void plugins_poll(PluginManager *pm) {
@@ -3995,5 +4096,37 @@ void plugins_notify_editor_save(PluginManager *pm, const char *path) {
   // Notify all plugins that a file was saved in the editor
   for (size_t i = 0; i < pm->plugin_count; i++) {
     call_void1_str(pm, pm->plugins[i].vm, "on_editor_save", path);
+  }
+}
+
+void plugins_notify_editor_cursor_move(PluginManager *pm, int old_line,
+                                       int old_col, int new_line, int new_col) {
+  if (!pm)
+    return;
+
+  // Notify all plugins that the cursor moved in the editor
+  for (size_t i = 0; i < pm->plugin_count; i++) {
+    cs_vm *vm = pm->plugins[i].vm;
+    if (!vm)
+      continue;
+
+    // Call on_editor_cursor_move(old_line, old_col, new_line, new_col) if it
+    // exists
+    cs_value args[4];
+    args[0] = cs_int(old_line);
+    args[1] = cs_int(old_col);
+    args[2] = cs_int(new_line);
+    args[3] = cs_int(new_col);
+
+    cs_value result = cs_nil();
+    int rc = cs_call(vm, "on_editor_cursor_move", 4, args, &result);
+    if (rc != 0) {
+      const char *err = cs_vm_last_error(vm);
+      if (err && *err) {
+        // Silently ignore errors for optional callbacks
+        cs_error(vm, "");
+      }
+    }
+    cs_value_release(result);
   }
 }
