@@ -2,6 +2,7 @@ CUPID_CFLAGS=-Isrc -Isrc/app -Isrc/core -Isrc/ui -Isrc/fs -Isrc/ds -Ilib -Icupid
 CUPID_FLAGS=--std=c2x
 CUPIDARCHIVE_LIB?=lib/libcupidarchive.a
 CUPIDSCRIPT_LIB?=lib/libcupidscript.a
+CUPIDIMAGE_LIB?=lib/libcupidimage.a
 
 SRC := $(shell find src -name '*.c')
 HDRS := $(shell find src -name '*.h')
@@ -11,7 +12,7 @@ HDRS := $(shell find src -name '*.h')
 CUPIDSCRIPT_INC?=lib/
 CUPID_CFLAGS += -I$(CUPIDSCRIPT_INC)
 # Link order matters: static archives first, then their dependent shared/system libs.
-override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) -lssl -lcrypto -lncursesw -lmagic -lz -lbz2 -llzma -lm
+override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) -lssl -lcrypto -lncursesw -lmagic -lz -lbz2 -llzma -lm
 
 all: cupidfm
 
@@ -23,7 +24,11 @@ $(CUPIDSCRIPT_LIB):
 	@echo "Missing $(CUPIDSCRIPT_LIB). Provide it in ./lib (expected: lib/libcupidscript.a)." 1>&2
 	@exit 1
 
-cupidfm: $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(SRC) $(HDRS) lib/cupidconf.c
+$(CUPIDIMAGE_LIB):
+	@echo "Missing $(CUPIDIMAGE_LIB). Provide it in ./lib (expected: lib/libcupidimage.a)." 1>&2
+	@exit 1
+
+cupidfm: $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(SRC) $(HDRS) lib/cupidconf.c
 	$(CC) -o $@ $(SRC) lib/cupidconf.c $(CUPID_FLAGS) $(CFLAGS) $(CUPID_CFLAGS) $(LDFLAGS) $(CUPID_LIBS) $(LIBS) $(LD_LIBS)
 
 test:

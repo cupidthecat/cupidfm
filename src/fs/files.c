@@ -229,7 +229,7 @@ static void dir_size_cache_clear_locked(void) {
   dir_size_job_tail = NULL;
 }
 
-static long compute_directory_size_full(const char *dir_path) {
+static long __attribute__((unused)) compute_directory_size_full(const char *dir_path) {
   if (strncmp(dir_path, "/proc", 5) == 0 || strncmp(dir_path, "/sys", 4) == 0 ||
       strncmp(dir_path, "/dev", 4) == 0 || strncmp(dir_path, "/run", 4) == 0) {
     return DIR_SIZE_VIRTUAL_FS;
@@ -2499,11 +2499,11 @@ void render_text_buffer(WINDOW *window, TextBuffer *buffer, int *start_line,
       // Compute X and clamp to visible content area
       int cursor_x = content_start + (cc - h_scroll);
       int min_x = content_start;
-      int max_x = content_start + content_width - 1;
+      int max_x_bound = content_start + content_width - 1;
       if (cursor_x < min_x)
         cursor_x = min_x;
-      if (cursor_x > max_x)
-        cursor_x = max_x;
+      if (cursor_x > max_x_bound)
+        cursor_x = max_x_bound;
 
       // Draw a cursor highlight without using ACS glyphs (some terminals show
       // ACS_CKBOARD as 'a').
@@ -3076,6 +3076,8 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
         int max_y = 0, max_x = 0;
         getbegyx(editor_window, win_y, win_x);
         getmaxyx(editor_window, max_y, max_x);
+        (void)win_x;
+        (void)max_x;
 
         int rel_y = ev.y - win_y;
         int content_height = max_y - 2;
@@ -3557,15 +3559,15 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
       if (cursor_line > 0) {
         int old_col = cursor_col;
         cursor_line--;
-        const char *line = text_buffer.lines[cursor_line]
-                               ? text_buffer.lines[cursor_line]
-                               : "";
-        cursor_col = word_left_col(line, old_col);
+        const char *line_text = text_buffer.lines[cursor_line]
+                                    ? text_buffer.lines[cursor_line]
+                                    : "";
+        cursor_col = word_left_col(line_text, old_col);
       } else {
-        const char *line = text_buffer.lines[cursor_line]
-                               ? text_buffer.lines[cursor_line]
-                               : "";
-        cursor_col = word_left_col(line, cursor_col);
+        const char *line_text = text_buffer.lines[cursor_line]
+                                    ? text_buffer.lines[cursor_line]
+                                    : "";
+        cursor_col = word_left_col(line_text, cursor_col);
       }
     }
     // Ctrl+Down (vertical Ctrl+Right: go to line below, then next word)
@@ -3575,30 +3577,30 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
       if (cursor_line < text_buffer.num_lines - 1) {
         int old_col = cursor_col;
         cursor_line++;
-        const char *line = text_buffer.lines[cursor_line]
-                               ? text_buffer.lines[cursor_line]
-                               : "";
-        cursor_col = word_right_col(line, old_col);
+        const char *line_text = text_buffer.lines[cursor_line]
+                                    ? text_buffer.lines[cursor_line]
+                                    : "";
+        cursor_col = word_right_col(line_text, old_col);
       } else {
-        const char *line = text_buffer.lines[cursor_line]
-                               ? text_buffer.lines[cursor_line]
-                               : "";
-        cursor_col = word_right_col(line, cursor_col);
+        const char *line_text = text_buffer.lines[cursor_line]
+                                    ? text_buffer.lines[cursor_line]
+                                    : "";
+        cursor_col = word_right_col(line_text, cursor_col);
       }
     }
     // Ctrl+Left (jump to previous word)
     else if (ch == CTRL_LEFT_CODE || ch == 545 || ch == 546) {
       g_sel_active = false;
-      const char *line =
+      const char *line_text =
           text_buffer.lines[cursor_line] ? text_buffer.lines[cursor_line] : "";
-      cursor_col = word_left_col(line, cursor_col);
+      cursor_col = word_left_col(line_text, cursor_col);
     }
     // Ctrl+Right (jump to next word)
     else if (ch == CTRL_RIGHT_CODE || ch == 560 || ch == 561) {
       g_sel_active = false;
-      const char *line =
+      const char *line_text =
           text_buffer.lines[cursor_line] ? text_buffer.lines[cursor_line] : "";
-      cursor_col = word_right_col(line, cursor_col);
+      cursor_col = word_right_col(line_text, cursor_col);
     }
     // 7) Enter / new line
     else if (ch == '\n') {
@@ -3658,7 +3660,6 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
         editor_undo_record(&um, &text_buffer, cursor_line, cursor_col,
                            start_line);
         char *current_line = text_buffer.lines[cursor_line];
-        char deleted_char[2] = {current_line[cursor_col - 1], '\0'};
         memmove(&current_line[cursor_col - 1], &current_line[cursor_col],
                 strlen(current_line) - cursor_col + 1);
         cursor_col--;

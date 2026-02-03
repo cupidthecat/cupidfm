@@ -119,6 +119,14 @@ struct cs_vm {
     int pending_io_count;
     uint64_t net_default_timeout_ms;  // default 30000 (30 seconds)
 
+#if defined(__linux__)
+    // Background event loop primitives (Linux only)
+    pthread_mutex_t loop_mutex;
+    pthread_cond_t  loop_cond;
+    pthread_t       loop_thread;
+    int             loop_running;    // 0 = stopped, 1 = running
+#endif
+
     // GC auto-collect policy
     size_t gc_threshold;            // collect when tracked_count >= threshold; 0 = disabled
     size_t gc_allocations;          // total allocations since last GC
@@ -142,6 +150,9 @@ struct cs_vm {
     uint64_t prof_match_ms;
     uint64_t prof_optchain_ops;
     uint64_t prof_optchain_ms;
+
+    // String interpolation cache (reusable strbuf to reduce allocations)
+    struct cs_strbuf_obj* interp_cache;
 };
 
 void cs_register_stdlib(cs_vm* vm);
@@ -153,5 +164,20 @@ int cs_promise_reject(cs_vm* vm, cs_value promise, cs_value value);
 int cs_promise_is_pending(cs_value promise);
 void cs_schedule_timer(cs_vm* vm, cs_value promise, uint64_t due_ms);
 cs_value cs_wait_promise(cs_vm* vm, cs_value promise, int* ok);
+
+// Event loop control (Linux: background thread, other platforms: returns false)
+int cs_event_loop_start(cs_vm* vm);    // Start background event loop, returns 1 on success
+int cs_event_loop_stop(cs_vm* vm);     // Stop background event loop, returns 1 on success
+int cs_event_loop_running(cs_vm* vm);  // Check if event loop is running
+
+#if defined(__linux__)
+// VM locking helpers (for event-loop integration)
+void cs_vm_lock(cs_vm* vm);
+void cs_vm_unlock(cs_vm* vm);
+
+// Scheduler helpers for the background loop
+int cs_scheduler_run_once(cs_vm* vm);
+int cs_scheduler_run_due_timers(cs_vm* vm);
+#endif
 
 #endif

@@ -99,32 +99,32 @@ void redraw_all_windows(AppState *state) {
 }
 
 void redraw_frame_after_edit(AppState *state,
-                             WINDOW *dirwin,
-                             WINDOW *previewwin,
-                             WINDOW *mainwin,
-                             WINDOW *notifwin) {
+                             WINDOW *dirwin_local,
+                             WINDOW *previewwin_local,
+                             WINDOW *mainwin_local,
+                             WINDOW *notifwin_local) {
     if (!state) return;
     if (bannerwin) {
         box(bannerwin, 0, 0);
         wrefresh(bannerwin);
     }
-    if (mainwin) {
-        box(mainwin, 0, 0);
-        wrefresh(mainwin);
+    if (mainwin_local) {
+        box(mainwin_local, 0, 0);
+        wrefresh(mainwin_local);
     }
-    if (dirwin) {
-        draw_directory_window(dirwin, state->current_directory, active_files(state), &state->dir_window_cas);
+    if (dirwin_local) {
+        draw_directory_window(dirwin_local, state->current_directory, active_files(state), &state->dir_window_cas);
     }
-    if (previewwin) {
+    if (previewwin_local) {
         if (state->preview_override_active) {
-            draw_preview_window_path(previewwin, state->preview_override_path, NULL, state->preview_start_line);
+            draw_preview_window_path(previewwin_local, state->preview_override_path, NULL, state->preview_start_line);
         } else {
-            draw_preview_window(previewwin, state->current_directory, state->selected_entry, state->preview_start_line);
+            draw_preview_window(previewwin_local, state->current_directory, state->selected_entry, state->preview_start_line);
         }
     }
-    if (notifwin) {
-        box(notifwin, 0, 0);
-        wrefresh(notifwin);
+    if (notifwin_local) {
+        box(notifwin_local, 0, 0);
+        wrefresh(notifwin_local);
     }
 }
 

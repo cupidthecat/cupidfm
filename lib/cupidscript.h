@@ -18,11 +18,14 @@ typedef enum {
     CS_T_STR,
     CS_T_LIST,
     CS_T_MAP,
+    CS_T_SET,
     CS_T_STRBUF,
+    CS_T_BYTES,
     CS_T_RANGE,
     CS_T_FUNC,
     CS_T_NATIVE,
-    CS_T_PROMISE
+    CS_T_PROMISE,
+    CS_T_TUPLE
 } cs_type;
 
 typedef struct {
@@ -81,7 +84,19 @@ cs_value cs_str(cs_vm* vm, const char* s); // makes a VM-owned string
 cs_value cs_str_take(cs_vm* vm, char* owned, uint64_t len); // takes ownership of malloc'd string
 cs_value cs_list(cs_vm* vm);
 cs_value cs_map(cs_vm* vm);
+cs_value cs_set(cs_vm* vm);
 cs_value cs_strbuf(cs_vm* vm);
+cs_value cs_bytes(cs_vm* vm, const uint8_t* data, size_t len);
+cs_value cs_bytes_take(cs_vm* vm, uint8_t* owned, size_t len);
+
+// Tuple operations
+cs_value cs_tuple(cs_vm* vm, size_t field_count); // Create empty tuple
+int cs_tuple_set_positional(cs_value tuple_val, size_t index, cs_value value);
+int cs_tuple_set_named(cs_value tuple_val, const char* name, cs_value value);
+cs_value cs_tuple_get_positional(cs_value tuple_val, size_t index);
+cs_value cs_tuple_get_named(cs_value tuple_val, const char* name);
+size_t cs_tuple_len(cs_value tuple_val);
+const char* cs_tuple_field_name(cs_value tuple_val, size_t index); // Get field name at index (NULL if positional)
 
 // Value lifetime helpers (useful for hosts storing callbacks/values)
 cs_value cs_value_copy(cs_value v);

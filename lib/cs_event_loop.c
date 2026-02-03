@@ -42,7 +42,7 @@ int cs_socket_close(cs_socket_t fd) {
 #ifdef _WIN32
     return closesocket(fd);
 #else
-    return close(fd);
+    return close(fd`);
 #endif
 }
 

@@ -981,21 +981,13 @@ int main() {
                         path_join(file_path, state.current_directory, state.selected_entry);
                     }
                     
-                    // Check if it's a directory or a file
-                    struct stat file_stat;
-                    int total_lines = 0;
-                    if (stat(file_path, &file_stat) == 0 && S_ISDIR(file_stat.st_mode)) {
-                        // It's a directory, count directory tree lines
-                        total_lines = get_directory_tree_total_lines(file_path);
-                    } else {
-                        // It's a file, count file lines
-                        total_lines = get_total_lines(file_path);
-                    }
-
                     int max_x, max_y;
                     getmaxyx(previewwin, max_y, max_x);
                     (void) max_x;
                     int content_height = max_y - 7;
+                    int content_width = max_x - 4;
+
+                    int total_lines = get_preview_total_lines(file_path, content_width, content_height);
                     int max_start_line = total_lines - content_height;
                     if (max_start_line < 0) max_start_line = 0;
 

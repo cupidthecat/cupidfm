@@ -109,12 +109,54 @@ const char* cs_type_name_impl(cs_type t) {
         case CS_T_STR:    return "string";
         case CS_T_LIST:   return "list";
         case CS_T_MAP:    return "map";
+        case CS_T_SET:    return "set";
         case CS_T_STRBUF: return "strbuf";
+        case CS_T_BYTES:  return "bytes";
         case CS_T_RANGE:  return "range";
         case CS_T_FUNC:   return "function";
         case CS_T_NATIVE: return "native";
         case CS_T_PROMISE: return "promise";
+        case CS_T_TUPLE:  return "tuple";
         default:          return "unknown";
+    }
+}
+
+cs_tuple_obj* cs_tuple_new(size_t len) {
+    cs_tuple_obj* t = (cs_tuple_obj*)calloc(1, sizeof(cs_tuple_obj));
+    if (!t) return NULL;
+    t->ref = 1;
+    t->len = len;
+    if (len > 0) {
+        t->fields = (cs_tuple_field*)calloc(len, sizeof(cs_tuple_field));
+        if (!t->fields) {
+            free(t);
+            return NULL;
+        }
+        // Initialize all fields to nil
+        for (size_t i = 0; i < len; i++) {
+            t->fields[i].name = NULL;
+            t->fields[i].value = cs_nil();
+        }
+    } else {
+        t->fields = NULL;
+    }
+    return t;
+}
+
+void cs_tuple_incref(cs_tuple_obj* t) {
+    if (t) t->ref++;
+}
+
+void cs_tuple_decref(cs_tuple_obj* t) {
+    if (!t) return;
+    t->ref--;
+    if (t->ref <= 0) {
+        for (size_t i = 0; i < t->len; i++) {
+            free(t->fields[i].name);
+            cs_value_release(t->fields[i].value);
+        }
+        free(t->fields);
+        free(t);
     }
 }
 
@@ -140,6 +182,21 @@ uint32_t cs_value_hash(cs_value v) {
             cs_string* s = (cs_string*)v.as.p;
             if (!s || !s->data) return 0;
             return hash_bytes((const unsigned char*)s->data, s->len);
+        }
+        case CS_T_BYTES: {
+            cs_bytes_obj* b = (cs_bytes_obj*)v.as.p;
+            if (!b || !b->data) return 0;
+            return hash_bytes(b->data, b->len);
+        }
+        case CS_T_TUPLE: {
+            cs_tuple_obj* t = (cs_tuple_obj*)v.as.p;
+            if (!t) return 0;
+            uint32_t h = 0x9e3779b9u;
+            for (size_t i = 0; i < t->len; i++) {
+                h ^= cs_value_hash(t->fields[i].value);
+                h = (h << 5) | (h >> 27); // rotate left 5 bits
+            }
+            return h;
         }
         default: {
             uintptr_t p = (uintptr_t)v.as.p;
@@ -174,6 +231,24 @@ int cs_value_key_equals(cs_value a, cs_value b) {
             if (!sa || !sb) return sa == sb;
             if (sa->len != sb->len) return 0;
             return memcmp(sa->data, sb->data, sa->len) == 0;
+        }
+        case CS_T_BYTES: {
+            cs_bytes_obj* ba = (cs_bytes_obj*)a.as.p;
+            cs_bytes_obj* bb = (cs_bytes_obj*)b.as.p;
+            if (!ba || !bb) return ba == bb;
+            if (ba->len != bb->len) return 0;
+            return memcmp(ba->data, bb->data, ba->len) == 0;
+        }
+        case CS_T_TUPLE: {
+            cs_tuple_obj* ta = (cs_tuple_obj*)a.as.p;
+            cs_tuple_obj* tb = (cs_tuple_obj*)b.as.p;
+            if (!ta || !tb) return ta == tb;
+            if (ta->len != tb->len) return 0;
+            for (size_t i = 0; i < ta->len; i++) {
+                if (!cs_value_key_equals(ta->fields[i].value, tb->fields[i].value))
+                    return 0;
+            }
+            return 1;
         }
         default:
             return a.as.p == b.as.p;

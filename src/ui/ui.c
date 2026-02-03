@@ -254,6 +254,21 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb,
 
   // Helper to format a keybinding line
   char line_buf[512];
+  char help_key_buf[32];
+
+  // Prefer showing plain letter for help, not "Shift+<letter>"
+  if (kb->key_help >= 0 && kb->key_help < 256 &&
+      isalpha((unsigned char)kb->key_help)) {
+    int upper = toupper((unsigned char)kb->key_help);
+    int lower = tolower((unsigned char)kb->key_help);
+    int disp = upper;
+    if (disp == kb->key_exit) disp = lower;
+    if (disp == kb->key_exit) disp = upper;
+    snprintf(help_key_buf, sizeof(help_key_buf), "%c", (char)disp);
+  } else {
+    snprintf(help_key_buf, sizeof(help_key_buf), "%s",
+             keycode_to_string(kb->key_help));
+  }
 
   strvec_push(out, "Navigation:");
   snprintf(line_buf, sizeof(line_buf), "  %-20s - Move up",
@@ -325,7 +340,7 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb,
            keycode_to_string(kb->key_console));
   strvec_push(out, line_buf);
   snprintf(line_buf, sizeof(line_buf), "  %-20s - Help (this menu)",
-           keycode_to_string(kb->key_help));
+           help_key_buf);
   strvec_push(out, line_buf);
   snprintf(line_buf, sizeof(line_buf), "  %-20s - Exit",
            keycode_to_string(kb->key_exit));

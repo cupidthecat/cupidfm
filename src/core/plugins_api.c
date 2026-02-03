@@ -2352,6 +2352,7 @@ static int nf_fm_cache_set(cs_vm *vm, void *ud, int argc, const cs_value *argv,
 
 static int map_put_move_local(cs_vm *vm, cs_value *map_val, const char *key,
                               cs_value *v) {
+  (void)vm;
   if (!map_val || map_val->type != CS_T_MAP || !key || !v)
     return 0;
   if (cs_map_set(*map_val, key, *v) != 0)

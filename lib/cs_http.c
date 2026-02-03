@@ -6,6 +6,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#if !defined(_WIN32)
+#include <strings.h>
+#endif
 
 #if defined(_WIN32)
 #define strcasecmp _stricmp

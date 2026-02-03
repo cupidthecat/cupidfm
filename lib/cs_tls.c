@@ -83,14 +83,6 @@ int cs_tls_verify_cert(SSL *ssl) {
     return (result == X509_V_OK) ? 0 : -1;
 }
 
-static cs_value make_error(cs_vm* vm, const char* msg, const char* code) {
-    cs_value err = cs_map(vm);
-    if (!err.as.p) return cs_nil();
-    cs_map_set(err, "msg", cs_str(vm, msg));
-    cs_map_set(err, "code", cs_str(vm, code));
-    return err;
-}
-
 // Native function: tls_connect(host, port) -> promise<socket>
 static int nf_tls_connect(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;

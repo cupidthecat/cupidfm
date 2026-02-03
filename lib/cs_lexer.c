@@ -343,6 +343,15 @@ token lex_next(lexer* L) {
         case ')': t = TK_RPAREN; break;
         case '[': t = TK_LBRACKET; break;
         case ']': t = TK_RBRACKET; break;
+        case '#':
+            // Check for #{ (set literal)
+            if (peek(L) == '{') {
+                advance(L);
+                t = TK_HASH_LBRACE;
+            } else {
+                t = TK_ERR;
+            }
+            break;
         case '{':
             t = TK_LBRACE;
             if (L->mode == 2) L->interp_depth++;
@@ -370,7 +379,15 @@ token lex_next(lexer* L) {
                 t = TK_DOT;
             }
             break;
-        case ':': t = TK_COLON; break;
+        case ':':
+            if (peek(L) == '=') {
+                advance(L);
+                t = TK_WALRUS;
+            } else {
+                t = TK_COLON;
+            }
+            break;
+
         case '?':
             if (peek(L) == '?') { advance(L); t = TK_QQ; }
             else if (peek(L) == '.') { advance(L); t = TK_QDOT; }
@@ -418,12 +435,17 @@ token lex_next(lexer* L) {
 
         case '&':
             if (peek(L) == '&') { advance(L); t = TK_ANDAND; }
+            else t = TK_AMP;
             break;
 
         case '|':
             if (peek(L) == '|') { advance(L); t = TK_OROR; }
             else if (peek(L) == '>') { advance(L); t = TK_PIPE; }
+            else t = TK_BAR;
             break;
+        
+        case '^': t = TK_CARET; break;
+        
         default:
             t = TK_ERR;
             break;

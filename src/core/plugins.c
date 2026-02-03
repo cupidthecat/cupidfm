@@ -484,6 +484,7 @@ void plugins_set_context_ex(PluginManager *pm, const PluginsContext *ctx) {
 }
 
 static bool call_bool(PluginManager *pm, cs_vm *vm, const char *fn, int key) {
+  (void)pm;
   if (!vm || !fn)
     return false;
   char keybuf[32];

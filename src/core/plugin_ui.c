@@ -44,6 +44,7 @@ static void banner_tick_for_modal(struct timespec *last_banner_update,
 
 cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg,
                                   const char *initial) {
+    (void)msg;
     // Returns cs_str(...) or cs_nil() if cancelled.
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);

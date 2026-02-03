@@ -1,0 +1,1 @@
+typedef int console_translation_unit_dummy;

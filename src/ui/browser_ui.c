@@ -7,11 +7,13 @@
 #include "browser_ui.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <magic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -21,6 +23,7 @@
 #include "globals.h"
 #include "syntax.h"
 #include "mime.h"
+#include "cupidimage.h"
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
@@ -71,6 +74,515 @@ int get_directory_tree_total_lines(const char *dir_path) {
     int line_count = 0;
     count_directory_tree_lines(dir_path, 0, &line_count);
     return line_count;
+}
+
+typedef struct {
+    int base_pair;
+    int size;
+    bool initialized;
+} ImagePalette;
+
+static ImagePalette image_palette = {0, 0, false};
+static bool last_truecolor_active = false;
+
+static const int image_palette_reserved_start = 32;
+
+static bool supports_truecolor(void) {
+    if (!isatty(fileno(stdout))) return false;
+    const char *ct = getenv("COLORTERM");
+    if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) return true;
+    if (getenv("KITTY_WINDOW_ID")) return true;
+    const char *term = getenv("TERM");
+    if (term && (strstr(term, "kitty") || strstr(term, "direct"))) return true;
+    return false;
+}
+
+static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+    if (content_width <= 0 || content_height <= 0) return;
+
+    int win_y = 0, win_x = 0;
+    getbegyx(window, win_y, win_x);
+
+    for (int row = 0; row < content_height; row++) {
+        int abs_row = win_y + content_top + row;
+        int abs_col = win_x + content_left;
+        printf("\x1b[%d;%dH\x1b[0m", abs_row + 1, abs_col + 1);
+        for (int col = 0; col < content_width; col++) {
+            fputc(' ', stdout);
+        }
+    }
+    fflush(stdout);
+}
+
+static bool is_image_extension(const char *path) {
+    if (!path) return false;
+    const char *ext = strrchr(path, '.');
+    if (!ext) return false;
+    return strcasecmp(ext, ".png") == 0 ||
+           strcasecmp(ext, ".jpg") == 0 ||
+           strcasecmp(ext, ".jpeg") == 0 ||
+           strcasecmp(ext, ".webp") == 0 ||
+           strcasecmp(ext, ".gif") == 0 ||
+           strcasecmp(ext, ".bmp") == 0 ||
+           strcasecmp(ext, ".ico") == 0 ||
+           strcasecmp(ext, ".tif") == 0 ||
+           strcasecmp(ext, ".tiff") == 0;
+}
+
+static int load_cupidimage_image(const char *path, cupidimage_image *out, char *err, size_t errcap) {
+    if (!path || !out) return 0;
+    if (err && errcap > 0) err[0] = '\0';
+
+    int rc = cupidimage_load_image_file(path, out, err, errcap);
+    if (rc != 0) return 1;
+
+    const char *ext = strrchr(path, '.');
+    if (!ext) return 0;
+
+    if (err && errcap > 0) err[0] = '\0';
+    if (strcasecmp(ext, ".png") == 0) {
+        return cupidimage_load_png_file(path, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".jpg") == 0 || strcasecmp(ext, ".jpeg") == 0) {
+        return cupidimage_load_jpeg_file(path, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".webp") == 0) {
+        return cupidimage_load_webp_file(path, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".gif") == 0) {
+        return cupidimage_load_gif_file(path, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".bmp") == 0) {
+        return cupidimage_load_bmp_file(path, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".ico") == 0) {
+        return cupidimage_load_ico_page(path, 0, out, err, errcap) != 0;
+    }
+    if (strcasecmp(ext, ".tif") == 0 || strcasecmp(ext, ".tiff") == 0) {
+        return cupidimage_load_tiff_file(path, out, err, errcap) != 0;
+    }
+
+    return 0;
+}
+
+static bool is_image_file(const char *path) {
+    if (!path || !*path) return false;
+    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
+    if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
+        const char *mime_type = magic_file(magic_cookie, path);
+        bool is_image = (mime_type != NULL && strncmp(mime_type, "image/", 6) == 0);
+        magic_close(magic_cookie);
+        if (is_image) return true;
+    } else if (magic_cookie) {
+        magic_close(magic_cookie);
+    }
+    return is_image_extension(path);
+}
+
+static void ansi256_to_rgb(int idx, int *r, int *g, int *b) {
+    if (idx < 16) {
+        static const int base16[16][3] = {
+            {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
+            {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
+            {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
+            {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255}
+        };
+        *r = base16[idx][0];
+        *g = base16[idx][1];
+        *b = base16[idx][2];
+        return;
+    }
+    if (idx >= 232) {
+        int v = 8 + (idx - 232) * 10;
+        if (v > 255) v = 255;
+        *r = v;
+        *g = v;
+        *b = v;
+        return;
+    }
+    int i = idx - 16;
+    int r6 = i / 36;
+    int g6 = (i / 6) % 6;
+    int b6 = i % 6;
+    static const int steps[6] = {0, 95, 135, 175, 215, 255};
+    *r = steps[r6];
+    *g = steps[g6];
+    *b = steps[b6];
+}
+
+static int rgb_to_ansi256(uint8_t r, uint8_t g, uint8_t b) {
+    if (r == g && g == b) {
+        if (r < 8) return 16;
+        if (r > 248) return 231;
+        return 232 + (int)((r - 8) / 10);
+    }
+    int r6 = (r * 5 + 127) / 255;
+    int g6 = (g * 5 + 127) / 255;
+    int b6 = (b * 5 + 127) / 255;
+    return 16 + 36 * r6 + 6 * g6 + b6;
+}
+
+static int rgb_to_palette_index(uint8_t r, uint8_t g, uint8_t b, int palette_size) {
+    if (palette_size >= 256) {
+        return rgb_to_ansi256(r, g, b);
+    }
+
+    static const uint8_t palette16[16][3] = {
+        {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
+        {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
+        {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
+        {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255}
+    };
+
+    int best_idx = 0;
+    int best_dist = INT32_MAX;
+    int limit = (palette_size >= 16) ? 16 : 8;
+    for (int i = 0; i < limit; i++) {
+        int dr = (int)r - palette16[i][0];
+        int dg = (int)g - palette16[i][1];
+        int db = (int)b - palette16[i][2];
+        int dist = dr * dr + dg * dg + db * db;
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_idx = i;
+        }
+    }
+    return best_idx;
+}
+
+static void ensure_image_palette(void) {
+    if (image_palette.initialized) return;
+    image_palette.initialized = true;
+
+    if (!has_colors()) return;
+
+    int max_colors = COLORS;
+    int max_pairs = COLOR_PAIRS;
+    int desired = 0;
+    if (max_colors >= 256) {
+        desired = 256;
+    } else if (max_colors >= 16) {
+        desired = 16;
+    } else if (max_colors >= 8) {
+        desired = 8;
+    }
+
+    if (desired <= 0 || max_pairs <= 1) return;
+
+    int base = image_palette_reserved_start;
+    if (base <= COLOR_SYNTAX_ESCAPE) {
+        base = COLOR_SYNTAX_ESCAPE + 1;
+    }
+    if (base + desired > max_pairs) {
+        while (desired > 0 && base + desired > max_pairs) {
+            desired /= 2;
+        }
+    }
+
+    if (desired <= 0) return;
+
+    image_palette.base_pair = base;
+    image_palette.size = desired;
+
+    if (can_change_color() && max_colors >= 256) {
+        int max_idx = max_colors - 1;
+        if (max_idx > 255) max_idx = 255;
+        for (int i = 16; i <= max_idx; i++) {
+            int r = 0, g = 0, b = 0;
+            ansi256_to_rgb(i, &r, &g, &b);
+            init_color((short)i,
+                       (short)(r * 1000 / 255),
+                       (short)(g * 1000 / 255),
+                       (short)(b * 1000 / 255));
+        }
+    }
+
+    for (int i = 0; i < desired; i++) {
+        init_pair((short)(base + i), (short)i, COLOR_BLACK);
+    }
+}
+
+static const double image_cell_aspect = 2.0;
+
+static void compute_ansi_scaled_dims(uint32_t src_w, uint32_t src_h,
+                                     int max_width, int max_height,
+                                     int *out_w, int *out_h) {
+    if (src_w == 0 || src_h == 0) {
+        *out_w = 0;
+        *out_h = 0;
+        return;
+    }
+
+    int width = (int)src_w;
+    int height = (int)src_h;
+    double scale = 1.0;
+    if (max_width > 0 && width > max_width) {
+        double s = (double)max_width / (double)width;
+        if (s < scale) scale = s;
+    }
+    if (max_height > 0 && height > max_height) {
+        double s = (double)max_height / (double)height;
+        if (s < scale) scale = s;
+    }
+    int outw = (int)(width * scale);
+    int outh = (int)(height * scale);
+    if (outw < 1) outw = 1;
+    if (outh < 1) outh = 1;
+    *out_w = outw;
+    *out_h = outh;
+}
+
+static void scale_image_to_fit(uint32_t src_w, uint32_t src_h,
+                               int max_width, int max_height,
+                               int *out_w, int *out_h) {
+    if (src_w == 0 || src_h == 0 || max_width <= 0 || max_height <= 0) {
+        *out_w = 0;
+        *out_h = 0;
+        return;
+    }
+
+    double scale_w = (double)max_width / (double)src_w;
+    double scale_h = ((double)max_height * image_cell_aspect) / (double)src_h;
+    double scale = scale_w < scale_h ? scale_w : scale_h;
+    if (scale > 1.0) scale = 1.0;
+    if (scale <= 0.0) {
+        *out_w = 0;
+        *out_h = 0;
+        return;
+    }
+
+    int target_w = (int)(src_w * scale + 0.5);
+    int target_h = (int)(src_h * scale / image_cell_aspect + 0.5);
+    if (target_w < 1) target_w = 1;
+    if (target_h < 1) target_h = 1;
+    if (target_w > max_width) target_w = max_width;
+    if (target_h > max_height) target_h = max_height;
+
+    *out_w = target_w;
+    *out_h = target_h;
+}
+
+static void draw_image_preview(WINDOW *window, const char *full_path, int start_line,
+                               int max_y, int max_x) {
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+
+    if (content_width <= 0 || content_height <= 0) {
+        mvwprintw(window, content_top, 2, "Preview area too small");
+        return;
+    }
+
+    ensure_image_palette();
+    if (image_palette.size <= 0) {
+        mvwprintw(window, content_top, 2, "Image preview requires terminal color support");
+        return;
+    }
+
+    if (access(full_path, R_OK) != 0) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s", strerror(errno));
+        return;
+    }
+
+    cupidimage_image img = {0};
+    char err[256] = {0};
+    if (!load_cupidimage_image(full_path, &img, err, sizeof(err))) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s",
+                  err[0] ? err : "Unsupported format or decode error");
+        return;
+    }
+
+    int target_w = 0;
+    int target_h = 0;
+    scale_image_to_fit(img.width, img.height, content_width, content_height, &target_w, &target_h);
+
+    if (target_w <= 0 || target_h <= 0) {
+        cupidimage_free(&img);
+        mvwprintw(window, content_top, 2, "Image preview failed: invalid image size");
+        return;
+    }
+
+    if (start_line < 0) start_line = 0;
+    if (start_line >= target_h) start_line = target_h - 1;
+
+    int rows_to_draw = MIN(content_height, target_h - start_line);
+    int cols_to_draw = MIN(content_width, target_w);
+
+    bool use_alpha = false;
+    bool alpha_all_zero = true;
+    bool alpha_all_opaque = true;
+    bool alpha_seen_zero = false;
+    bool alpha_seen_opaque = false;
+    size_t total_pixels = (size_t)img.width * (size_t)img.height;
+    size_t step = total_pixels / 10000;
+    if (step < 1) step = 1;
+    for (size_t i = 0; i < total_pixels; i += step) {
+        uint8_t a = img.rgba[i * 4 + 3];
+        if (a != 0) alpha_all_zero = false;
+        if (a != 255) alpha_all_opaque = false;
+        if (a == 0) alpha_seen_zero = true;
+        if (a == 255) alpha_seen_opaque = true;
+        if (a > 0 && a < 255) {
+            use_alpha = true;
+            break;
+        }
+    }
+    if (!use_alpha && alpha_seen_zero && alpha_seen_opaque) {
+        use_alpha = true;
+    }
+    if (alpha_all_zero || alpha_all_opaque) {
+        use_alpha = false;
+    }
+
+    for (int row = 0; row < rows_to_draw; row++) {
+        int out_y = content_top + row;
+        int render_y = start_line + row;
+            int src_y = (int)(((uint64_t)render_y * img.height) / target_h);
+
+        wmove(window, out_y, content_left);
+
+        int current_pair = -1;
+        for (int col = 0; col < cols_to_draw; col++) {
+            int src_x = (int)(((uint64_t)col * img.width) / target_w);
+            size_t idx = ((size_t)src_y * img.width + (size_t)src_x) * 4;
+            uint8_t r = img.rgba[idx];
+            uint8_t g = img.rgba[idx + 1];
+            uint8_t b = img.rgba[idx + 2];
+            uint8_t a = img.rgba[idx + 3];
+
+            int pair = -1;
+            if (!use_alpha || a > 16) {
+                int palette_idx = rgb_to_palette_index(r, g, b, image_palette.size);
+                if (palette_idx >= image_palette.size) palette_idx = image_palette.size - 1;
+                pair = image_palette.base_pair + palette_idx;
+            }
+
+            if (pair != current_pair) {
+                if (pair >= 0) {
+                    wattrset(window, COLOR_PAIR(pair));
+                } else {
+                    wattrset(window, A_NORMAL);
+                }
+                current_pair = pair;
+            }
+
+            if (pair >= 0) {
+                waddch(window, ACS_BLOCK);
+            } else {
+                waddch(window, ' ');
+            }
+        }
+
+        if (current_pair >= 0) {
+            wattrset(window, A_NORMAL);
+        }
+    }
+
+    cupidimage_free(&img);
+}
+
+static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, int start_line,
+                                         int max_y, int max_x) {
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+
+    last_truecolor_active = false;
+    if (content_width <= 0 || content_height <= 0) {
+        mvwprintw(window, content_top, 2, "Preview area too small");
+        wrefresh(window);
+        return;
+    }
+
+    if (access(full_path, R_OK) != 0) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s", strerror(errno));
+        wrefresh(window);
+        return;
+    }
+
+    cupidimage_image img = {0};
+    char err[256] = {0};
+    if (!load_cupidimage_image(full_path, &img, err, sizeof(err))) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s",
+                  err[0] ? err : "Unsupported format or decode error");
+        wrefresh(window);
+        return;
+    }
+
+    int ansi_max_h = (int)((double)content_height / image_cell_aspect + 0.5);
+    if (ansi_max_h < 1) ansi_max_h = 1;
+
+    int out_w = 0;
+    int out_h = 0;
+    compute_ansi_scaled_dims(img.width, img.height, content_width, ansi_max_h, &out_w, &out_h);
+
+    if (start_line < 0) start_line = 0;
+    if (start_line >= out_h) start_line = out_h - 1;
+
+    char *buf = NULL;
+    size_t buf_len = 0;
+    FILE *mem = open_memstream(&buf, &buf_len);
+    if (!mem) {
+        cupidimage_free(&img);
+        mvwprintw(window, content_top, 2, "Image preview failed: out of memory");
+        wrefresh(window);
+        return;
+    }
+
+    if (!cupidimage_render_ansi(&img, mem, content_width, ansi_max_h)) {
+        fclose(mem);
+        free(buf);
+        cupidimage_free(&img);
+        mvwprintw(window, content_top, 2, "Image preview failed: render error");
+        wrefresh(window);
+        return;
+    }
+    fclose(mem);
+
+    wrefresh(window);
+
+    clear_truecolor_overlay(window, max_y, max_x);
+
+    int win_y = 0, win_x = 0;
+    getbegyx(window, win_y, win_x);
+
+    char *line_start = buf;
+    int current_line = 0;
+    while (current_line < start_line && line_start) {
+        char *nl = strchr(line_start, '\n');
+        if (!nl) {
+            line_start = NULL;
+            break;
+        }
+        line_start = nl + 1;
+        current_line++;
+    }
+
+    int rows_to_draw = MIN(content_height, out_h - start_line);
+    for (int row = 0; row < rows_to_draw && line_start; row++) {
+        char *nl = strchr(line_start, '\n');
+        size_t line_len = nl ? (size_t)(nl - line_start) : strlen(line_start);
+
+        int abs_row = win_y + content_top + row;
+        int abs_col = win_x + content_left;
+        printf("\x1b[%d;%dH", abs_row + 1, abs_col + 1);
+        if (line_len > 0) {
+            fwrite(line_start, 1, line_len, stdout);
+        }
+        fflush(stdout);
+
+        line_start = nl ? nl + 1 : NULL;
+    }
+
+    free(buf);
+    cupidimage_free(&img);
+    last_truecolor_active = true;
 }
 
 static void show_directory_tree(WINDOW *window,
@@ -275,6 +787,36 @@ int get_total_lines(const char *file_path) {
 
     fclose(file);
     return total_lines;
+}
+
+int get_preview_total_lines(const char *file_path, int content_width, int content_height) {
+    if (!file_path || !*file_path) return 0;
+
+    struct stat file_stat;
+    if (stat(file_path, &file_stat) == 0 && S_ISDIR(file_stat.st_mode)) {
+        return get_directory_tree_total_lines(file_path);
+    }
+
+    if (is_image_file(file_path)) {
+        cupidimage_image img = {0};
+        char err[256] = {0};
+        if (load_cupidimage_image(file_path, &img, err, sizeof(err))) {
+            int target_w = 0;
+            int target_h = 0;
+            if (supports_truecolor()) {
+                int ansi_max_h = (int)((double)content_height / image_cell_aspect + 0.5);
+                if (ansi_max_h < 1) ansi_max_h = 1;
+                compute_ansi_scaled_dims(img.width, img.height, content_width, ansi_max_h, &target_w, &target_h);
+            } else {
+                scale_image_to_fit(img.width, img.height, content_width, content_height, &target_w, &target_h);
+            }
+            cupidimage_free(&img);
+            return target_h;
+        }
+        return 0;
+    }
+
+    return get_total_lines(file_path);
 }
 
 void draw_directory_window(WINDOW *window,
@@ -529,9 +1071,14 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
     mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
 
+    bool is_image = false;
+    bool used_truecolor = false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         const char *mime_type = magic_file(magic_cookie, full_path);
+        if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
+            is_image = true;
+        }
         mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
         magic_close(magic_cookie);
     } else {
@@ -540,6 +1087,14 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         }
         mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
     }
+    if (!is_image) {
+        is_image = is_image_extension(full_path);
+    }
+
+    if (last_truecolor_active && supports_truecolor() && !is_image) {
+        clear_truecolor_overlay(window, max_y, max_x);
+        last_truecolor_active = false;
+    }
 
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
@@ -547,6 +1102,13 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line, &current_count);
     } else if (is_archive_file(full_path)) {
         display_archive_preview(window, full_path, start_line, max_y, max_x);
+    } else if (is_image) {
+        if (supports_truecolor()) {
+            draw_image_preview_truecolor(window, full_path, start_line, max_y, max_x);
+            used_truecolor = true;
+        } else {
+            draw_image_preview(window, full_path, start_line, max_y, max_x);
+        }
     } else if (is_supported_file_type(full_path)) {
         FILE *file = fopen(full_path, "r");
         if (file) {
@@ -642,7 +1204,9 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         mvwprintw(window, 7, 2, "No preview available");
     }
 
-    wrefresh(window);
+    if (!used_truecolor) {
+        wrefresh(window);
+    }
 }
 
 void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {

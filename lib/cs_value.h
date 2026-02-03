@@ -50,6 +50,13 @@ typedef struct cs_strbuf_obj {
     char* data;
 } cs_strbuf_obj;
 
+typedef struct cs_bytes_obj {
+    int ref;
+    size_t len;
+    size_t cap;
+    unsigned char* data;
+} cs_bytes_obj;
+
 typedef struct cs_range_obj {
     int ref;
     int64_t start;
@@ -64,6 +71,17 @@ typedef struct cs_promise_obj {
     cs_value value;
 } cs_promise_obj;
 
+typedef struct cs_tuple_field {
+    char* name;      // NULL for positional fields
+    cs_value value;
+} cs_tuple_field;
+
+typedef struct cs_tuple_obj {
+    int ref;
+    size_t len;
+    cs_tuple_field* fields;
+} cs_tuple_obj;
+
 // refcounted heap objects
 cs_string* cs_str_new(const char* s);
 cs_string* cs_str_new_take(char* owned, size_t len);
@@ -71,6 +89,11 @@ void       cs_str_incref(cs_string* s);
 void       cs_str_decref(cs_string* s);
 
 const char* cs_type_name_impl(cs_type t);
+
+// Tuple operations
+cs_tuple_obj* cs_tuple_new(size_t len);
+void cs_tuple_incref(cs_tuple_obj* t);
+void cs_tuple_decref(cs_tuple_obj* t);
 
 // Hash and equality helpers for map keys
 uint32_t cs_value_hash(cs_value v);

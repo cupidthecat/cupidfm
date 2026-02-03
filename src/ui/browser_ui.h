@@ -32,5 +32,6 @@ void fix_cursor(CursorAndSlice *cas);
 
 int get_total_lines(const char *file_path);
 int get_directory_tree_total_lines(const char *dir_path);
+int get_preview_total_lines(const char *file_path, int content_width, int content_height);
 
 #endif // BROWSER_UI_H

@@ -4,7 +4,13 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 
 ![preview](img/preview2.png)
 
-<video src="img/demo.mp4" width="320" height="240" controls></video>
+## Demo
+
+![Demo 1](img/imagedemo.png)
+![Demo 2](img/editdemo.png)
+![Demo 3](img/syntaxdemo.png)
+![Demo 4](img/helpdemo.png)
+![Demo 5](img/consoledemo.png)
 
 ## Prerequisites
 
@@ -40,6 +46,7 @@ If emojis aren't displaying correctly:
 3. Try updating your terminal emulator to a newer version
 
 Note: Some terminal emulators like Alacritty, iTerm2, Konsole, and Kitty are known to work better with unicode/emojis. 
+Note: Image preview uses 256-color blocks; a terminal with 256-color support will provide the best results.
 
 ## Libraries used
 
@@ -54,6 +61,7 @@ Project libraries (customized/updated versions):
 - [cupidconf](https://github.com/cupidthecat/cupidconf) (config loader; this repo vendors a customized version in `lib/cupidconf.c`)
 - [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
 - [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
+- [cupidimage](https://github.com/cupidthecat/cupidimage) (image preview; linked as `lib/libcupidimage.a`)
 
 To build and run cupidfm, you must have the following packages installed:
 
@@ -123,6 +131,7 @@ Error logs (if any) will be saved to `log.txt`.
 - View file details and preview supported file types
 - Display MIME types based on file content using `libmagic`
 - Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
+- **Image preview** for common image formats (PNG, JPEG, WebP, GIF, BMP, ICO, TIFF) rendered directly in the terminal using 256-color blocks via `cupidimage` (requires color support)
 - File type indicators with emoji icons:
   - 📄 Text files
   - 📝 C source files
@@ -626,7 +635,6 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 
 ### High Priority
 - [ ] Add file filtering options
-- [ ] Add image preview (in house lib?)
 - [ ] Write custom magic library for in-house MIME type detection
 
 ### Features
@@ -654,6 +662,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [ ] Allow user-defined aliases in a configuration file.
 
 ### Completed
+- [X] Add image preview (in house lib?)
 - [X] Fallback to extension-based detection instead of MIME type when detection fails
 - [X] Fix directory list not staying within the border
 - [X] Implement directory tree preview for directories

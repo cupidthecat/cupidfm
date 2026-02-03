@@ -58,6 +58,7 @@ static int expect(parser* P, token_type t, const char* msg) {
 static ast* parse_stmt(parser* P);
 static ast* parse_block(parser* P);
 static ast* parse_expr(parser* P);
+static ast* parse_comp_expr(parser* P);
 static ast* parse_fn(parser* P, int is_async);
 static ast* parse_fn_expr(parser* P, int is_async);
 static ast* parse_interpolated_string(parser* P);
@@ -324,27 +325,206 @@ static ast* parse_primary(parser* P) {
     }
 
     if (accept(P, TK_LBRACKET)) {
-        ast* n = node(P, N_LISTLIT);
-        size_t cap = 8, cnt = 0;
-        ast** items = NULL;
-        if (P->tok.type != TK_RBRACKET) {
-            items = (ast**)malloc(sizeof(ast*) * cap);
-            while (1) {
-                if (cnt == cap) { cap *= 2; items = (ast**)realloc(items, sizeof(ast*) * cap); }
-                if (accept(P, TK_DOTDOTDOT)) {
-                    ast* sp = node(P, N_SPREAD);
-                    sp->as.spread.expr = parse_expr(P);
-                    items[cnt++] = sp;
+        // Could be list literal or list comprehension
+        // Lookahead: if we see expr followed by 'for', it's a comprehension
+        if (P->tok.type == TK_RBRACKET) {
+            // Empty list
+            ast* n = node(P, N_LISTLIT);
+            next(P);  // consume ]
+            n->as.listlit.items = NULL;
+            n->as.listlit.count = 0;
+            return n;
+        }
+        
+        // Parse first expression (handle spread)
+        ast* first_expr = NULL;
+        if (accept(P, TK_DOTDOTDOT)) {
+            ast* sp = node(P, N_SPREAD);
+            sp->as.spread.expr = parse_expr(P);
+            first_expr = sp;
+        } else {
+            first_expr = parse_comp_expr(P);  // Use parse_comp_expr to support Python-style if-else
+        }
+
+        // Check if this is a comprehension
+        if (first_expr && first_expr->type != N_SPREAD && P->tok.type == TK_FOR) {
+            // List comprehension: [expr for var in iterable] or [expr for var1 in iter1 for var2 in iter2]
+            ast* n = node(P, N_LISTCOMP);
+            n->as.listcomp.expr = first_expr;
+            n->as.listcomp.vars = NULL;
+            n->as.listcomp.vars2 = NULL;
+            n->as.listcomp.iterables = NULL;
+            n->as.listcomp.iter_count = 0;
+            n->as.listcomp.filter = NULL;
+
+            // Allocate arrays for iteration clauses (start with capacity of 4)
+            size_t capacity = 4;
+            n->as.listcomp.vars = (char**)malloc(sizeof(char*) * capacity);
+            n->as.listcomp.vars2 = (char**)malloc(sizeof(char*) * capacity);
+            n->as.listcomp.iterables = (ast**)malloc(sizeof(ast*) * capacity);
+            if (!n->as.listcomp.vars || !n->as.listcomp.vars2 || !n->as.listcomp.iterables) {
+                ast_free(n);
+                if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                return NULL;
+            }
+
+            // Parse all 'for var in iterable' clauses
+            while (accept(P, TK_FOR)) {
+                int is_destructuring = 0;
+                char* var1 = NULL;
+                char* var2 = NULL;
+
+                // Check for list destructuring pattern: for [a, b] in ...
+                if (P->tok.type == TK_LBRACKET) {
+                    is_destructuring = 1;
+                    next(P); // consume '['
+                    
+                    if (P->tok.type != TK_IDENT) {
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    var1 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    if (!accept(P, TK_COMMA)) {
+                        free(var1);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected ',' in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    if (P->tok.type != TK_IDENT) {
+                        free(var1);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected second identifier in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    var2 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    if (!accept(P, TK_RBRACKET)) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected ']' after destructuring pattern");
+                        return NULL;
+                    }
+                } else if (P->tok.type == TK_IDENT) {
+                    // Regular identifier or comma-separated pair
+                    var1 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    // Check for second variable
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type != TK_IDENT) {
+                            free(var1);
+                            ast_free(n);
+                            if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after ','");
+                            return NULL;
+                        }
+                        var2 = cs_strndup2(P->tok.start, P->tok.len);
+                        next(P);
+                    }
                 } else {
-                    items[cnt++] = parse_expr(P);
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier or '[' after 'for'");
+                    return NULL;
                 }
-                if (accept(P, TK_COMMA)) {
-                    if (P->tok.type == TK_RBRACKET) break;
-                    continue;
+
+                // Grow arrays if needed
+                if (n->as.listcomp.iter_count >= capacity) {
+                    capacity *= 2;
+                    char** new_vars = (char**)realloc(n->as.listcomp.vars, sizeof(char*) * capacity);
+                    char** new_vars2 = (char**)realloc(n->as.listcomp.vars2, sizeof(char*) * capacity);
+                    ast** new_iterables = (ast**)realloc(n->as.listcomp.iterables, sizeof(ast*) * capacity);
+                    if (!new_vars || !new_vars2 || !new_iterables) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                        return NULL;
+                    }
+                    n->as.listcomp.vars = new_vars;
+                    n->as.listcomp.vars2 = new_vars2;
+                    n->as.listcomp.iterables = new_iterables;
                 }
-                break;
+
+                // If destructuring, prefix var1 with '@' to mark it
+                if (is_destructuring) {
+                    char* prefixed = (char*)malloc(strlen(var1) + 2);
+                    if (!prefixed) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                        return NULL;
+                    }
+                    prefixed[0] = '@';
+                    strcpy(prefixed + 1, var1);
+                    free(var1);
+                    var1 = prefixed;
+                }
+
+                n->as.listcomp.vars[n->as.listcomp.iter_count] = var1;
+                n->as.listcomp.vars2[n->as.listcomp.iter_count] = var2;
+
+                if (!accept(P, TK_IN)) {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected 'in' in comprehension");
+                    return NULL;
+                }
+
+                n->as.listcomp.iterables[n->as.listcomp.iter_count] = parse_expr(P);
+                if (!n->as.listcomp.iterables[n->as.listcomp.iter_count]) {
+                    ast_free(n);
+                    return NULL;
+                }
+
+                n->as.listcomp.iter_count++;
+            }
+
+            // Optional filter: if condition
+            if (accept(P, TK_IF)) {
+                n->as.listcomp.filter = parse_expr(P);
+                if (!n->as.listcomp.filter) {
+                    ast_free(n);
+                    return NULL;
+                }
+            }
+            
+            expect(P, TK_RBRACKET, "expected ']'");
+            return n;
+        }
+        
+        // Regular list literal
+        ast* n = node(P, N_LISTLIT);
+        size_t cap = 8, cnt = 1;
+        ast** items = (ast**)malloc(sizeof(ast*) * cap);
+        items[0] = first_expr;
+        
+        if (accept(P, TK_COMMA)) {
+            if (P->tok.type != TK_RBRACKET) {
+                while (1) {
+                    if (cnt == cap) { cap *= 2; items = (ast**)realloc(items, sizeof(ast*) * cap); }
+                    if (accept(P, TK_DOTDOTDOT)) {
+                        ast* sp = node(P, N_SPREAD);
+                        sp->as.spread.expr = parse_expr(P);
+                        items[cnt++] = sp;
+                    } else {
+                        items[cnt++] = parse_expr(P);
+                    }
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type == TK_RBRACKET) break;
+                        continue;
+                    }
+                    break;
+                }
             }
         }
+        
         expect(P, TK_RBRACKET, "expected ']'");
         n->as.listlit.items = items;
         n->as.listlit.count = cnt;
@@ -352,46 +532,571 @@ static ast* parse_primary(parser* P) {
     }
 
     if (accept(P, TK_LBRACE)) {
-        ast* n = node(P, N_MAPLIT);
-        size_t cap = 8, cnt = 0;
+        // Could be map literal or map comprehension
+        if (P->tok.type == TK_RBRACE) {
+            // Empty map
+            ast* n = node(P, N_MAPLIT);
+            next(P);  // consume }
+            n->as.maplit.keys = NULL;
+            n->as.maplit.vals = NULL;
+            n->as.maplit.count = 0;
+            return n;
+        }
+
+        // Parse first key expression (handle spread)
+        ast* first_key = NULL;
+        if (accept(P, TK_DOTDOTDOT)) {
+            ast* sp = node(P, N_SPREAD);
+            sp->as.spread.expr = parse_expr(P);
+            first_key = sp;
+        } else {
+            first_key = parse_comp_expr(P);  // Use parse_comp_expr to support Python-style if-else
+        }
+
+        // Declare shared variables for map literal parsing
+        // (needed because of goto between different code paths)
+        ast* n = NULL;
+        size_t cap = 0, cnt = 0;
         ast** keys = NULL;
         ast** vals = NULL;
-        if (P->tok.type != TK_RBRACE) {
+
+        // Check for set comprehension: {expr for var in iter} (no colon)
+        if (first_key && first_key->type != N_SPREAD && P->tok.type == TK_FOR) {
+            // Set comprehension: {expr for var in iterable} or multiple for clauses
+            ast* n = node(P, N_SETCOMP);
+            n->as.setcomp.expr = first_key;
+            n->as.setcomp.vars = NULL;
+            n->as.setcomp.vars2 = NULL;
+            n->as.setcomp.iterables = NULL;
+            n->as.setcomp.iter_count = 0;
+            n->as.setcomp.filter = NULL;
+
+            // Allocate arrays for iteration clauses (start with capacity of 4)
+            size_t capacity = 4;
+            n->as.setcomp.vars = (char**)malloc(sizeof(char*) * capacity);
+            n->as.setcomp.vars2 = (char**)malloc(sizeof(char*) * capacity);
+            n->as.setcomp.iterables = (ast**)malloc(sizeof(ast*) * capacity);
+            if (!n->as.setcomp.vars || !n->as.setcomp.vars2 || !n->as.setcomp.iterables) {
+                ast_free(n);
+                if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                return NULL;
+            }
+
+            // Parse all 'for var in iterable' clauses
+            while (accept(P, TK_FOR)) {
+                int is_destructuring = 0;
+
+                // Check for list destructuring pattern: for [a, b] in ...
+                if (P->tok.type == TK_LBRACKET) {
+                    is_destructuring = 1;
+                    next(P); // consume '['
+                }
+
+                if (P->tok.type != TK_IDENT) {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after 'for'");
+                    return NULL;
+                }
+
+                // Grow arrays if needed
+                if (n->as.setcomp.iter_count >= capacity) {
+                    capacity *= 2;
+                    char** new_vars = (char**)realloc(n->as.setcomp.vars, sizeof(char*) * capacity);
+                    char** new_vars2 = (char**)realloc(n->as.setcomp.vars2, sizeof(char*) * capacity);
+                    ast** new_iterables = (ast**)realloc(n->as.setcomp.iterables, sizeof(ast*) * capacity);
+                    if (!new_vars || !new_vars2 || !new_iterables) {
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                        return NULL;
+                    }
+                    n->as.setcomp.vars = new_vars;
+                    n->as.setcomp.vars2 = new_vars2;
+                    n->as.setcomp.iterables = new_iterables;
+                }
+
+                // Parse first variable
+                char* var1 = cs_strndup2(P->tok.start, P->tok.len);
+                next(P);
+
+                // Check for second variable
+                char* var2 = NULL;
+                if (accept(P, TK_COMMA)) {
+                    if (P->tok.type != TK_IDENT) {
+                        free(var1);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after ','");
+                        return NULL;
+                    }
+                    var2 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                }
+
+                // If destructuring, expect closing bracket
+                if (is_destructuring) {
+                    if (!accept(P, TK_RBRACKET)) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected ']' after destructuring pattern");
+                        return NULL;
+                    }
+                    // For destructuring, we need to mark var1 specially
+                    // Prefix with '@' to indicate destructuring mode
+                    char* prefixed = (char*)malloc(strlen(var1) + 2);
+                    prefixed[0] = '@';
+                    strcpy(prefixed + 1, var1);
+                    free(var1);
+                    var1 = prefixed;
+                }
+
+                n->as.setcomp.vars[n->as.setcomp.iter_count] = var1;
+                n->as.setcomp.vars2[n->as.setcomp.iter_count] = var2;
+
+                if (!accept(P, TK_IN)) {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected 'in' in comprehension");
+                    return NULL;
+                }
+
+                n->as.setcomp.iterables[n->as.setcomp.iter_count] = parse_expr(P);
+                if (!n->as.setcomp.iterables[n->as.setcomp.iter_count]) {
+                    ast_free(n);
+                    return NULL;
+                }
+
+                n->as.setcomp.iter_count++;
+            }
+
+            // Optional filter: if condition
+            if (accept(P, TK_IF)) {
+                n->as.setcomp.filter = parse_expr(P);
+                if (!n->as.setcomp.filter) {
+                    ast_free(n);
+                    return NULL;
+                }
+            }
+            
+            expect(P, TK_RBRACE, "expected '}'");
+            return n;
+        }
+
+        // Check for comprehension: {k: v for k, v in iter}
+        // Now accepts arbitrary expressions as keys, not just identifiers
+        if (first_key && P->tok.type == TK_COLON) {
+            // Could be either map literal or map comprehension
+            // Save identifier name if key is an identifier (for shorthand syntax)
+            char* key_ident = (first_key->type == N_IDENT) ? strdup(first_key->as.ident.name) : NULL;
+            next(P);  // consume ':'
+
+            ast* first_val = parse_comp_expr(P);  // Use parse_comp_expr to support Python-style if-else
+
+            if (P->tok.type == TK_FOR) {
+                // Map comprehension: {key_expr: val_expr for k, v in iterable} or multiple for clauses
+                ast* n = node(P, N_MAPCOMP);
+                n->as.mapcomp.key_expr = first_key;
+                n->as.mapcomp.val_expr = first_val;
+                n->as.mapcomp.key_vars = NULL;
+                n->as.mapcomp.val_vars = NULL;
+                n->as.mapcomp.iterables = NULL;
+                n->as.mapcomp.iter_count = 0;
+                n->as.mapcomp.filter = NULL;
+
+                // Allocate arrays for iteration clauses (start with capacity of 4)
+                size_t capacity = 4;
+                n->as.mapcomp.key_vars = (char**)malloc(sizeof(char*) * capacity);
+                n->as.mapcomp.val_vars = (char**)malloc(sizeof(char*) * capacity);
+                n->as.mapcomp.iterables = (ast**)malloc(sizeof(ast*) * capacity);
+                if (!n->as.mapcomp.key_vars || !n->as.mapcomp.val_vars || !n->as.mapcomp.iterables) {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                    return NULL;
+                }
+
+                // Parse all 'for var in iterable' clauses
+                while (accept(P, TK_FOR)) {
+                    int is_destructuring = 0;
+
+                    // Check for list destructuring pattern: for [a, b] in ...
+                    if (P->tok.type == TK_LBRACKET) {
+                        is_destructuring = 1;
+                        next(P); // consume '['
+                    }
+
+                    if (P->tok.type != TK_IDENT) {
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after 'for'");
+                        return NULL;
+                    }
+
+                    // Grow arrays if needed
+                    if (n->as.mapcomp.iter_count >= capacity) {
+                        capacity *= 2;
+                        char** new_key_vars = (char**)realloc(n->as.mapcomp.key_vars, sizeof(char*) * capacity);
+                        char** new_val_vars = (char**)realloc(n->as.mapcomp.val_vars, sizeof(char*) * capacity);
+                        ast** new_iterables = (ast**)realloc(n->as.mapcomp.iterables, sizeof(ast*) * capacity);
+                        if (!new_key_vars || !new_val_vars || !new_iterables) {
+                            ast_free(n);
+                            if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                            return NULL;
+                        }
+                        n->as.mapcomp.key_vars = new_key_vars;
+                        n->as.mapcomp.val_vars = new_val_vars;
+                        n->as.mapcomp.iterables = new_iterables;
+                    }
+
+                    // Parse first variable
+                    char* var1 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+
+                    // Check for second variable
+                    char* var2 = NULL;
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type != TK_IDENT) {
+                            free(var1);
+                            ast_free(n);
+                            if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after ','");
+                            return NULL;
+                        }
+                        var2 = cs_strndup2(P->tok.start, P->tok.len);
+                        next(P);
+                    }
+
+                    // If destructuring, expect closing bracket
+                    if (is_destructuring) {
+                        if (!accept(P, TK_RBRACKET)) {
+                            free(var1);
+                            free(var2);
+                            ast_free(n);
+                            if (!P->error) P->error = fmt_err(P, &P->tok, "expected ']' after destructuring pattern");
+                            return NULL;
+                        }
+                        // For destructuring, we need to mark var1 specially
+                        // Prefix with '@' to indicate destructuring mode
+                        char* prefixed = (char*)malloc(strlen(var1) + 2);
+                        prefixed[0] = '@';
+                        strcpy(prefixed + 1, var1);
+                        free(var1);
+                        var1 = prefixed;
+                    }
+
+                    n->as.mapcomp.key_vars[n->as.mapcomp.iter_count] = var1;
+                    n->as.mapcomp.val_vars[n->as.mapcomp.iter_count] = var2;
+
+                    if (!accept(P, TK_IN)) {
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected 'in' in comprehension");
+                        return NULL;
+                    }
+
+                    n->as.mapcomp.iterables[n->as.mapcomp.iter_count] = parse_expr(P);
+                    if (!n->as.mapcomp.iterables[n->as.mapcomp.iter_count]) {
+                        ast_free(n);
+                        return NULL;
+                    }
+
+                    n->as.mapcomp.iter_count++;
+                }
+
+                // Optional filter
+                if (accept(P, TK_IF)) {
+                    n->as.mapcomp.filter = parse_expr(P);
+                    if (!n->as.mapcomp.filter) {
+                        ast_free(n);
+                        return NULL;
+                    }
+                }
+                
+                expect(P, TK_RBRACE, "expected '}'");
+                if (key_ident) free(key_ident);
+                return n;
+            }
+
+            // Regular map literal
+            // Only apply shorthand key conversion if key was an identifier
+            if (key_ident) {
+                ast* key_lit = make_quoted_str_lit(P, first_key->as.ident.name);
+                ast_free(first_key);
+                first_key = key_lit;
+                free(key_ident);
+            }
+
+            n = node(P, N_MAPLIT);
+            cap = 8;
+            cnt = 1;
             keys = (ast**)malloc(sizeof(ast*) * cap);
             vals = (ast**)malloc(sizeof(ast*) * cap);
-            while (1) {
-                if (cnt == cap) {
-                    cap *= 2;
-                    keys = (ast**)realloc(keys, sizeof(ast*) * cap);
-                    vals = (ast**)realloc(vals, sizeof(ast*) * cap);
+            keys[0] = first_key;
+            vals[0] = first_val;
+            
+            if (accept(P, TK_COMMA)) {
+                if (P->tok.type != TK_RBRACE) {
+                    goto continue_map_literal;
                 }
-                if (accept(P, TK_DOTDOTDOT)) {
-                    ast* sp = node(P, N_SPREAD);
-                    sp->as.spread.expr = parse_expr(P);
-                    keys[cnt] = sp;
-                    vals[cnt] = NULL;
-                } else {
-                    keys[cnt] = parse_expr(P);
-                    if (keys[cnt] && keys[cnt]->type == N_IDENT && P->tok.type == TK_COLON) {
-                        ast* key_lit = make_quoted_str_lit(P, keys[cnt]->as.ident.name);
-                        ast_free(keys[cnt]);
-                        keys[cnt] = key_lit;
+            }
+            
+            expect(P, TK_RBRACE, "expected '}'");
+            n->as.maplit.keys = keys;
+            n->as.maplit.vals = vals;
+            n->as.maplit.count = cnt;
+            return n;
+        }
+
+        // Regular map literal
+        n = node(P, N_MAPLIT);
+        cap = 8;
+        cnt = 1;
+        keys = (ast**)malloc(sizeof(ast*) * cap);
+        vals = (ast**)malloc(sizeof(ast*) * cap);
+
+        if (first_key && first_key->type == N_SPREAD) {
+            keys[0] = first_key;
+            vals[0] = NULL;
+        } else {
+            keys[0] = first_key;
+            expect(P, TK_COLON, "expected ':' in map literal");
+            vals[0] = parse_expr(P);
+        }
+        
+        if (accept(P, TK_COMMA)) {
+            if (P->tok.type != TK_RBRACE) {
+                continue_map_literal:
+                while (1) {
+                    if (cnt == cap) {
+                        cap *= 2;
+                        keys = (ast**)realloc(keys, sizeof(ast*) * cap);
+                        vals = (ast**)realloc(vals, sizeof(ast*) * cap);
                     }
-                    expect(P, TK_COLON, "expected ':' in map literal");
-                    vals[cnt] = parse_expr(P);
+                    if (accept(P, TK_DOTDOTDOT)) {
+                        ast* sp = node(P, N_SPREAD);
+                        sp->as.spread.expr = parse_expr(P);
+                        keys[cnt] = sp;
+                        vals[cnt] = NULL;
+                    } else {
+                        keys[cnt] = parse_expr(P);
+                        if (keys[cnt] && keys[cnt]->type == N_IDENT && P->tok.type == TK_COLON) {
+                            ast* key_lit = make_quoted_str_lit(P, keys[cnt]->as.ident.name);
+                            ast_free(keys[cnt]);
+                            keys[cnt] = key_lit;
+                        }
+                        expect(P, TK_COLON, "expected ':' in map literal");
+                        vals[cnt] = parse_expr(P);
+                    }
+                    cnt++;
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type == TK_RBRACE) break;
+                        continue;
+                    }
+                    break;
                 }
-                cnt++;
-                if (accept(P, TK_COMMA)) {
-                    if (P->tok.type == TK_RBRACE) break;
-                    continue;
-                }
-                break;
             }
         }
+        
         expect(P, TK_RBRACE, "expected '}'");
         n->as.maplit.keys = keys;
         n->as.maplit.vals = vals;
         n->as.maplit.count = cnt;
+        return n;
+    }
+
+    if (accept(P, TK_HASH_LBRACE)) {
+        // Set literal: #{expr, expr, ...} or set comprehension: #{expr for var in iterable}
+        if (P->tok.type == TK_RBRACE) {
+            // Empty set
+            ast* n = node(P, N_SETLIT);
+            next(P);  // consume }
+            n->as.setlit.items = NULL;
+            n->as.setlit.count = 0;
+            return n;
+        }
+
+        // Parse first expression (handle spread)
+        ast* first_expr = NULL;
+        if (accept(P, TK_DOTDOTDOT)) {
+            ast* sp = node(P, N_SPREAD);
+            sp->as.spread.expr = parse_expr(P);
+            first_expr = sp;
+        } else {
+            first_expr = parse_comp_expr(P);
+        }
+
+        // Check if this is a set comprehension
+        if (first_expr && first_expr->type != N_SPREAD && P->tok.type == TK_FOR) {
+            // Set comprehension: #{expr for var in iterable}
+            ast* n = node(P, N_SETCOMP);
+            n->as.setcomp.expr = first_expr;
+            n->as.setcomp.vars = NULL;
+            n->as.setcomp.vars2 = NULL;
+            n->as.setcomp.iterables = NULL;
+            n->as.setcomp.iter_count = 0;
+            n->as.setcomp.filter = NULL;
+
+            // Allocate arrays for iteration clauses
+            size_t capacity = 4;
+            n->as.setcomp.vars = (char**)malloc(sizeof(char*) * capacity);
+            n->as.setcomp.vars2 = (char**)malloc(sizeof(char*) * capacity);
+            n->as.setcomp.iterables = (ast**)malloc(sizeof(ast*) * capacity);
+            if (!n->as.setcomp.vars || !n->as.setcomp.vars2 || !n->as.setcomp.iterables) {
+                ast_free(n);
+                if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                return NULL;
+            }
+
+            // Parse all 'for var in iterable' clauses
+            while (accept(P, TK_FOR)) {
+                int is_destructuring = 0;
+                char* var1 = NULL;
+                char* var2 = NULL;
+
+                if (P->tok.type == TK_LBRACKET) {
+                    is_destructuring = 1;
+                    next(P);
+                    
+                    if (P->tok.type != TK_IDENT) {
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    var1 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    if (!accept(P, TK_COMMA)) {
+                        free(var1);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected ',' in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    if (P->tok.type != TK_IDENT) {
+                        free(var1);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected second identifier in destructuring pattern");
+                        return NULL;
+                    }
+                    
+                    var2 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    if (!accept(P, TK_RBRACKET)) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected ']' after destructuring pattern");
+                        return NULL;
+                    }
+                } else if (P->tok.type == TK_IDENT) {
+                    var1 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                    
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type != TK_IDENT) {
+                            free(var1);
+                            ast_free(n);
+                            if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier after ','");
+                            return NULL;
+                        }
+                        var2 = cs_strndup2(P->tok.start, P->tok.len);
+                        next(P);
+                    }
+                } else {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected identifier or '[' after 'for'");
+                    return NULL;
+                }
+
+                // Grow arrays if needed
+                if (n->as.setcomp.iter_count >= capacity) {
+                    capacity *= 2;
+                    char** new_vars = (char**)realloc(n->as.setcomp.vars, sizeof(char*) * capacity);
+                    char** new_vars2 = (char**)realloc(n->as.setcomp.vars2, sizeof(char*) * capacity);
+                    ast** new_iterables = (ast**)realloc(n->as.setcomp.iterables, sizeof(ast*) * capacity);
+                    if (!new_vars || !new_vars2 || !new_iterables) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                        return NULL;
+                    }
+                    n->as.setcomp.vars = new_vars;
+                    n->as.setcomp.vars2 = new_vars2;
+                    n->as.setcomp.iterables = new_iterables;
+                }
+
+                if (is_destructuring) {
+                    char* prefixed = (char*)malloc(strlen(var1) + 2);
+                    if (!prefixed) {
+                        free(var1);
+                        free(var2);
+                        ast_free(n);
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+                        return NULL;
+                    }
+                    prefixed[0] = '@';
+                    strcpy(prefixed + 1, var1);
+                    free(var1);
+                    var1 = prefixed;
+                }
+
+                n->as.setcomp.vars[n->as.setcomp.iter_count] = var1;
+                n->as.setcomp.vars2[n->as.setcomp.iter_count] = var2;
+
+                if (!accept(P, TK_IN)) {
+                    ast_free(n);
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected 'in' in comprehension");
+                    return NULL;
+                }
+
+                n->as.setcomp.iterables[n->as.setcomp.iter_count] = parse_expr(P);
+                if (!n->as.setcomp.iterables[n->as.setcomp.iter_count]) {
+                    ast_free(n);
+                    return NULL;
+                }
+
+                n->as.setcomp.iter_count++;
+            }
+
+            // Optional filter
+            if (accept(P, TK_IF)) {
+                n->as.setcomp.filter = parse_expr(P);
+                if (!n->as.setcomp.filter) {
+                    ast_free(n);
+                    return NULL;
+                }
+            }
+            
+            expect(P, TK_RBRACE, "expected '}'");
+            return n;
+        }
+
+        // Regular set literal
+        ast* n = node(P, N_SETLIT);
+        size_t cap = 8, cnt = 1;
+        ast** items = (ast**)malloc(sizeof(ast*) * cap);
+        items[0] = first_expr;
+        
+        if (accept(P, TK_COMMA)) {
+            if (P->tok.type != TK_RBRACE) {
+                while (1) {
+                    if (cnt == cap) { cap *= 2; items = (ast**)realloc(items, sizeof(ast*) * cap); }
+                    if (accept(P, TK_DOTDOTDOT)) {
+                        ast* sp = node(P, N_SPREAD);
+                        sp->as.spread.expr = parse_expr(P);
+                        items[cnt++] = sp;
+                    } else {
+                        items[cnt++] = parse_expr(P);
+                    }
+                    if (accept(P, TK_COMMA)) {
+                        if (P->tok.type == TK_RBRACE) break;
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+        
+        expect(P, TK_RBRACE, "expected '}'");
+        n->as.setlit.items = items;
+        n->as.setlit.count = cnt;
         return n;
     }
 
@@ -408,9 +1113,135 @@ static ast* parse_primary(parser* P) {
     }
 
     if (accept(P, TK_LPAREN)) {
-        ast* e = parse_expr(P);
-        expect(P, TK_RPAREN, "expected ')'");
-        return e;
+        // Could be grouped expression or tuple literal
+        // Tuple patterns:
+        //   - Empty: ()
+        //   - Named: (name: value, ...)
+        //   - Positional with comma: (value, value, ...)
+        //   - Single with trailing comma: (value,)
+        // Grouped: (expr)
+        
+        if (P->tok.type == TK_RPAREN) {
+            // Empty tuple: ()
+            expect(P, TK_RPAREN, "expected ')'");
+            ast* n = node(P, N_TUPLELIT);
+            n->as.tuplelit.field_names = NULL;
+            n->as.tuplelit.field_values = NULL;
+            n->as.tuplelit.count = 0;
+            return n;
+        }
+        
+        // Check for named tuple: identifier followed by colon
+        int is_named_tuple = 0;
+        if (P->tok.type == TK_IDENT) {
+            // Save position to potentially backtrack
+            token saved_tok = P->tok;
+            size_t saved_pos = P->L.pos;
+            int saved_line = P->L.line;
+            int saved_col = P->L.col;
+            
+            next(P); // consume identifier
+            if (P->tok.type == TK_COLON) {
+                is_named_tuple = 1;
+            }
+            
+            // Restore position
+            P->tok = saved_tok;
+            P->L.pos = saved_pos;
+            P->L.line = saved_line;
+            P->L.col = saved_col;
+        }
+        
+        if (is_named_tuple) {
+            // Parse named tuple: (name: value, name: value, ...)
+            ast* n = node(P, N_TUPLELIT);
+            size_t cap = 4, cnt = 0;
+            char** names = (char**)malloc(sizeof(char*) * cap);
+            ast** vals = (ast**)malloc(sizeof(ast*) * cap);
+            
+            while (P->tok.type != TK_RPAREN) {
+                if (cnt == cap) {
+                    cap *= 2;
+                    names = (char**)realloc(names, sizeof(char*) * cap);
+                    vals = (ast**)realloc(vals, sizeof(ast*) * cap);
+                }
+                
+                // Expect identifier
+                if (P->tok.type != TK_IDENT) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected field name");
+                    free(names);
+                    free(vals);
+                    return NULL;
+                }
+                
+                names[cnt] = cs_strndup2(P->tok.start, P->tok.len);
+                next(P);
+                
+                expect(P, TK_COLON, "expected ':' after field name");
+                vals[cnt] = parse_expr(P);
+                cnt++;
+                
+                if (!accept(P, TK_COMMA)) break;
+            }
+            
+            expect(P, TK_RPAREN, "expected ')'");
+            n->as.tuplelit.field_names = names;
+            n->as.tuplelit.field_values = vals;
+            n->as.tuplelit.count = cnt;
+            return n;
+        }
+        
+        // Parse first element/expression for positional tuple or grouped expression
+        ast* first = parse_expr(P);
+        
+        if (accept(P, TK_COMMA)) {
+            // Could be tuple: (expr, ...) or (expr,)
+            // Check for trailing comma case: (expr,)
+            if (P->tok.type == TK_RPAREN) {
+                // Single element tuple with trailing comma
+                ast* n = node(P, N_TUPLELIT);
+                char** names = (char**)calloc(1, sizeof(char*));
+                ast** vals = (ast**)malloc(sizeof(ast*));
+                names[0] = NULL;
+                vals[0] = first;
+                expect(P, TK_RPAREN, "expected ')'");
+                n->as.tuplelit.field_names = names;
+                n->as.tuplelit.field_values = vals;
+                n->as.tuplelit.count = 1;
+                return n;
+            }
+            
+            // Multi-element positional tuple: (expr, expr, ...)
+            ast* n = node(P, N_TUPLELIT);
+            size_t cap = 4, cnt = 1;
+            char** names = (char**)calloc(cap, sizeof(char*));
+            ast** vals = (ast**)malloc(sizeof(ast*) * cap);
+            names[0] = NULL;
+            vals[0] = first;
+            
+            // Parse remaining elements
+            while (P->tok.type != TK_RPAREN) {
+                if (cnt == cap) {
+                    cap *= 2;
+                    names = (char**)realloc(names, sizeof(char*) * cap);
+                    vals = (ast**)realloc(vals, sizeof(ast*) * cap);
+                }
+                names[cnt] = NULL;
+                vals[cnt] = parse_expr(P);
+                cnt++;
+                if (!accept(P, TK_COMMA)) break;
+            }
+            
+            expect(P, TK_RPAREN, "expected ')'");
+            n->as.tuplelit.field_names = names;
+            n->as.tuplelit.field_values = vals;
+            n->as.tuplelit.count = cnt;
+            return n;
+        } else {
+            // No comma after first expr: grouped expression (expr)
+            expect(P, TK_RPAREN, "expected ')'");
+            return first;
+        }
     }
 
     if (P->tok.type == TK_PLACEHOLDER) {
@@ -686,15 +1517,57 @@ static ast* parse_eq(parser* P) {
     return left;
 }
 
-static ast* parse_and(parser* P) {
+static ast* parse_bitwise_and(parser* P) {
     ast* left = parse_eq(P);
-    while (P->tok.type == TK_ANDAND) {
+    while (P->tok.type == TK_AMP) {
         int op = P->tok.type;
         next(P);
         ast* n = node(P, N_BINOP);
         n->as.binop.op = op;
         n->as.binop.left = left;
         n->as.binop.right = parse_eq(P);
+        left = n;
+    }
+    return left;
+}
+
+static ast* parse_bitwise_xor(parser* P) {
+    ast* left = parse_bitwise_and(P);
+    while (P->tok.type == TK_CARET) {
+        int op = P->tok.type;
+        next(P);
+        ast* n = node(P, N_BINOP);
+        n->as.binop.op = op;
+        n->as.binop.left = left;
+        n->as.binop.right = parse_bitwise_and(P);
+        left = n;
+    }
+    return left;
+}
+
+static ast* parse_bitwise_or(parser* P) {
+    ast* left = parse_bitwise_xor(P);
+    while (P->tok.type == TK_BAR) {
+        int op = P->tok.type;
+        next(P);
+        ast* n = node(P, N_BINOP);
+        n->as.binop.op = op;
+        n->as.binop.left = left;
+        n->as.binop.right = parse_bitwise_xor(P);
+        left = n;
+    }
+    return left;
+}
+
+static ast* parse_and(parser* P) {
+    ast* left = parse_bitwise_or(P);
+    while (P->tok.type == TK_ANDAND) {
+        int op = P->tok.type;
+        next(P);
+        ast* n = node(P, N_BINOP);
+        n->as.binop.op = op;
+        n->as.binop.left = left;
+        n->as.binop.right = parse_bitwise_or(P);
         left = n;
     }
     return left;
@@ -741,6 +1614,23 @@ static ast* parse_pipe(parser* P) {
 
 static ast* parse_expr(parser* P) {
     ast* cond = parse_pipe(P);
+    if (!cond) return NULL;  // Guard against parse errors
+
+    // Check for walrus operator (:=)
+    if (accept(P, TK_WALRUS)) {
+        if (cond->type != N_IDENT) {
+            if (!P->error) P->error = fmt_err(P, &P->tok, "walrus operator requires identifier on left side");
+            ast_free(cond);
+            return NULL;
+        }
+        ast* n = node(P, N_WALRUS);
+        n->as.walrus.name = cond->as.ident.name;
+        cond->as.ident.name = NULL; // transfer ownership
+        n->as.walrus.value = parse_expr(P);
+        ast_free(cond);
+        return n;
+    }
+    
     if (accept(P, TK_QMARK)) {
         ast* n = node(P, N_TERNARY);
         n->as.ternary.cond = cond;
@@ -750,6 +1640,49 @@ static ast* parse_expr(parser* P) {
         return n;
     }
     return cond;
+}
+
+// Parse comprehension expression with support for Python-style if-else
+// Supports both: expr ? a : b  and  a if expr else b
+static ast* parse_comp_expr(parser* P) {
+    ast* first = parse_pipe(P);
+    
+    // Check for Python-style: then_val if condition else else_val
+    if (P->tok.type == TK_IF && first) {
+        next(P);  // consume 'if'
+        ast* condition = parse_pipe(P);
+        
+        if (accept(P, TK_ELSE)) {
+            ast* else_val = parse_comp_expr(P);  // Recursive for right-associativity
+            
+            // Create ternary node with reordered parts
+            ast* n = node(P, N_TERNARY);
+            n->as.ternary.cond = condition;
+            n->as.ternary.then_e = first;
+            n->as.ternary.else_e = else_val;
+            return n;
+        } else {
+            // Just 'if' without 'else' - this is an error in this context
+            if (!P->error) {
+                P->error = fmt_err(P, &P->tok, "expected 'else' after 'if' in conditional expression");
+            }
+            ast_free(first);
+            ast_free(condition);
+            return NULL;
+        }
+    }
+    
+    // Check for traditional ternary: condition ? then_val : else_val
+    if (accept(P, TK_QMARK)) {
+        ast* n = node(P, N_TERNARY);
+        n->as.ternary.cond = first;
+        n->as.ternary.then_e = parse_comp_expr(P);
+        expect(P, TK_COLON, "expected ':' in ternary");
+        n->as.ternary.else_e = parse_comp_expr(P);
+        return n;
+    }
+    
+    return first;
 }
 
 static void maybe_semi(parser* P) {
@@ -1561,40 +2494,41 @@ static ast* parse_stmt(parser* P) {
                     n->as.for_c_style_stmt.init = parse_let_stmt(P, 0, 0);
                 } else if (accept(P, TK_CONST)) {
                     n->as.for_c_style_stmt.init = parse_let_stmt(P, 0, 1);
-                } else {
-                // Try to parse as assignment (check for identifier followed by =)
-                if (P->tok.type == TK_IDENT) {
+                } else if (P->tok.type == TK_IDENT) {
+                    // Check if this is an assignment (lookahead)
                     lexer saveL = P->L;
                     token saveT = P->tok;
-                    next(P); // skip identifier
-                    if (P->tok.type == TK_ASSIGN || P->tok.type == TK_PLUSEQ || 
-                        P->tok.type == TK_MINUSEQ || P->tok.type == TK_STAREQ || 
-                        P->tok.type == TK_SLASHEQ) {
-                        // It's an assignment, rewind and parse it
-                        P->L = saveL;
-                        P->tok = saveT;
-                        
+
+                    (void)parse_lvalue(P);
+                    token_type assign_op = P->tok.type;
+                    int is_assign = (assign_op == TK_ASSIGN || assign_op == TK_PLUSEQ || assign_op == TK_MINUSEQ ||
+                                     assign_op == TK_STAREQ || assign_op == TK_SLASHEQ);
+
+                    // Rewind
+                    P->L = saveL;
+                    P->tok = saveT;
+
+                    if (is_assign) {
+                        // Parse as assignment
                         ast* lv = parse_lvalue(P);
                         token_type op = P->tok.type;
                         next(P);
                         ast* rhs = parse_expr(P);
                         n->as.for_c_style_stmt.init = build_assignment(P, lv, op, rhs);
                     } else {
-                        // Not an assignment, rewind and parse as expression
-                        P->L = saveL;
-                        P->tok = saveT;
+                        // Parse as expression
                         n->as.for_c_style_stmt.init = parse_expr(P);
                     }
                 } else {
+                    // Parse as expression (handles walrus operator)
                     n->as.for_c_style_stmt.init = parse_expr(P);
-                }
                 }
             } else {
                 n->as.for_c_style_stmt.init = NULL;
             }
             expect(P, TK_SEMI, "expected ';' after for loop init");
             
-            // Parse condition (can be empty)
+            // Parse condition (can be empty) - use parse_expr to support walrus
             if (P->tok.type != TK_SEMI) {
                 n->as.for_c_style_stmt.cond = parse_expr(P);
             } else {
@@ -1602,32 +2536,35 @@ static ast* parse_stmt(parser* P) {
             }
             expect(P, TK_SEMI, "expected ';' after for loop condition");
             
-            // Parse increment (can be empty, or an assignment statement)
+            // Parse increment (can be empty) - can be assignment or expression
             if (P->tok.type != TK_RPAREN) {
-                // Try to parse as assignment (check for identifier followed by =)
                 if (P->tok.type == TK_IDENT) {
+                    // Check if this is an assignment (lookahead)
                     lexer saveL = P->L;
                     token saveT = P->tok;
-                    next(P); // skip identifier
-                    if (P->tok.type == TK_ASSIGN || P->tok.type == TK_PLUSEQ || 
-                        P->tok.type == TK_MINUSEQ || P->tok.type == TK_STAREQ || 
-                        P->tok.type == TK_SLASHEQ) {
-                        // It's an assignment, rewind and parse it
-                        P->L = saveL;
-                        P->tok = saveT;
-                        
+
+                    (void)parse_lvalue(P);
+                    token_type assign_op = P->tok.type;
+                    int is_assign = (assign_op == TK_ASSIGN || assign_op == TK_PLUSEQ || assign_op == TK_MINUSEQ ||
+                                     assign_op == TK_STAREQ || assign_op == TK_SLASHEQ);
+
+                    // Rewind
+                    P->L = saveL;
+                    P->tok = saveT;
+
+                    if (is_assign) {
+                        // Parse as assignment
                         ast* lv = parse_lvalue(P);
                         token_type op = P->tok.type;
                         next(P);
                         ast* rhs = parse_expr(P);
                         n->as.for_c_style_stmt.incr = build_assignment(P, lv, op, rhs);
                     } else {
-                        // Not an assignment, rewind and parse as expression
-                        P->L = saveL;
-                        P->tok = saveT;
+                        // Parse as expression
                         n->as.for_c_style_stmt.incr = parse_expr(P);
                     }
                 } else {
+                    // Parse as expression (handles walrus operator)
                     n->as.for_c_style_stmt.incr = parse_expr(P);
                 }
             } else {
@@ -1639,13 +2576,63 @@ static ast* parse_stmt(parser* P) {
             return n;
         } else {
             // for-in style: for name in iterable { body }
+            // Also supports: for name, name2 in iterable { body }
+            // Also supports destructuring: for [name, name2] in iterable { body }
             ast* n = node(P, N_FORIN);
-            if (P->tok.type != TK_IDENT) {
-                if (!P->error) P->error = fmt_err(P, &P->tok, "expected loop variable name");
+
+            // Check for destructuring syntax
+            if (accept(P, TK_LBRACKET)) {
+                // Parse [name, name2] destructuring pattern
+                if (P->tok.type != TK_IDENT) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected first variable name in destructuring pattern");
+                    return n;
+                }
+                n->as.forin_stmt.name = cs_strndup2(P->tok.start, P->tok.len);
+                next(P);
+
+                if (!accept(P, TK_COMMA)) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected ',' in destructuring pattern");
+                    return n;
+                }
+
+                if (P->tok.type != TK_IDENT) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected second variable name in destructuring pattern");
+                    return n;
+                }
+                n->as.forin_stmt.name2 = cs_strndup2(P->tok.start, P->tok.len);
+                next(P);
+
+                if (!accept(P, TK_RBRACKET)) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected ']' after destructuring pattern");
+                    return n;
+                }
+            } else {
+                // Original syntax: name or name, name2
+                if (P->tok.type != TK_IDENT) {
+                    if (!P->error) P->error = fmt_err(P, &P->tok, "expected loop variable name");
+                    return n;
+                }
+                n->as.forin_stmt.name = cs_strndup2(P->tok.start, P->tok.len);
+                n->as.forin_stmt.name2 = NULL;
+                next(P);
+
+                // Check for second variable
+                if (accept(P, TK_COMMA)) {
+                    if (P->tok.type != TK_IDENT) {
+                        if (!P->error) P->error = fmt_err(P, &P->tok, "expected second loop variable name");
+                        return n;
+                    }
+                    n->as.forin_stmt.name2 = cs_strndup2(P->tok.start, P->tok.len);
+                    next(P);
+                }
+            }
+
+            // Check for walrus operator and provide helpful error
+            if (P->tok.type == TK_WALRUS) {
+                if (!P->error) P->error = fmt_err(P, &P->tok, "walrus operator not allowed in for-in loop (use C-style for loop with parentheses instead)");
                 return n;
             }
-            n->as.forin_stmt.name = cs_strndup2(P->tok.start, P->tok.len);
-            next(P);
+
             expect(P, TK_IN, "expected 'in' in for loop");
             n->as.forin_stmt.iterable = parse_expr(P);
             n->as.forin_stmt.body = parse_block(P);
@@ -1823,6 +2810,7 @@ void ast_free(ast* node) {
             break;
         case N_FORIN:
             free(node->as.forin_stmt.name);
+            free(node->as.forin_stmt.name2);
             ast_free(node->as.forin_stmt.iterable);
             ast_free(node->as.forin_stmt.body);
             break;
@@ -1984,6 +2972,51 @@ void ast_free(ast* node) {
             free(node->as.maplit.keys);
             free(node->as.maplit.vals);
             break;
+        case N_TUPLELIT:
+            for (size_t i = 0; i < node->as.tuplelit.count; i++) {
+                free(node->as.tuplelit.field_names[i]);
+                ast_free(node->as.tuplelit.field_values[i]);
+            }
+            free(node->as.tuplelit.field_names);
+            free(node->as.tuplelit.field_values);
+            break;
+        case N_LISTCOMP:
+            ast_free(node->as.listcomp.expr);
+            for (size_t i = 0; i < node->as.listcomp.iter_count; i++) {
+                free(node->as.listcomp.vars[i]);
+                if (node->as.listcomp.vars2[i]) free(node->as.listcomp.vars2[i]);
+                ast_free(node->as.listcomp.iterables[i]);
+            }
+            free(node->as.listcomp.vars);
+            free(node->as.listcomp.vars2);
+            free(node->as.listcomp.iterables);
+            ast_free(node->as.listcomp.filter);
+            break;
+        case N_MAPCOMP:
+            ast_free(node->as.mapcomp.key_expr);
+            ast_free(node->as.mapcomp.val_expr);
+            for (size_t i = 0; i < node->as.mapcomp.iter_count; i++) {
+                free(node->as.mapcomp.key_vars[i]);
+                if (node->as.mapcomp.val_vars[i]) free(node->as.mapcomp.val_vars[i]);
+                ast_free(node->as.mapcomp.iterables[i]);
+            }
+            free(node->as.mapcomp.key_vars);
+            free(node->as.mapcomp.val_vars);
+            free(node->as.mapcomp.iterables);
+            ast_free(node->as.mapcomp.filter);
+            break;
+        case N_SETCOMP:
+            ast_free(node->as.setcomp.expr);
+            for (size_t i = 0; i < node->as.setcomp.iter_count; i++) {
+                free(node->as.setcomp.vars[i]);
+                if (node->as.setcomp.vars2[i]) free(node->as.setcomp.vars2[i]);
+                ast_free(node->as.setcomp.iterables[i]);
+            }
+            free(node->as.setcomp.vars);
+            free(node->as.setcomp.vars2);
+            free(node->as.setcomp.iterables);
+            ast_free(node->as.setcomp.filter);
+            break;
         case N_PATTERN_LIST:
             for (size_t i = 0; i < node->as.list_pattern.count; i++) {
                 free(node->as.list_pattern.names[i]);
@@ -2029,6 +3062,10 @@ void ast_free(ast* node) {
         case N_BREAK:
         case N_CONTINUE:
             // No dynamic allocations
+            break;
+        
+        default:
+            // Handle any other cases
             break;
     }
     

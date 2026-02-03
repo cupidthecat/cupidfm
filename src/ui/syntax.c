@@ -438,6 +438,7 @@ static bool is_followed_by_paren(const char *line, int pos, int len) {
 // Helper: scan backwards through lines to determine initial block comment state
 // Returns 1 if we're inside a block comment at the start of the given line, 0 otherwise
 int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
+    (void)num_lines;
     if (!syntax || !syntax->block_comment_start || !syntax->block_comment_end) return 0;
 
     const char *start_delim = syntax->block_comment_start;
@@ -560,6 +561,9 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                           int *in_block_comment, int y, int x, int max_width,
                           char **lines, int num_lines, int line_index) {
     if (!win || !line) return;
+    (void)lines;
+    (void)num_lines;
+    (void)line_index;
     
     // No syntax highlighting available - just print the line normally
     if (!syntax) {
@@ -881,7 +885,6 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
         if (is_operator_char(line[pos])) {
             wattron(win, COLOR_PAIR(COLOR_SYNTAX_OPERATOR));
             // Handle multi-character operators
-            int op_start = pos;
             while (pos < (int)len && is_operator_char(line[pos]) && col < max_x) {
                 mvwaddch(win, y, col++, line[pos++]);
             }
