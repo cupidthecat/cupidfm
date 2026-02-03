@@ -1,0 +1,8 @@
+!<arch>
+debian-binary/  0           0     0     644     4         `
+1.0
+plain.txt/      0           0     0     644     116       `
+This is a plain text file.
+It exists to test archive parsing.
+Unicode: café naïve jalapeño
+Binary-ish bytes: 
