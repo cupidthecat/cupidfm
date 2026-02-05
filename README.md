@@ -11,6 +11,7 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 ![Demo 3](img/syntaxdemo.png)
 ![Demo 4](img/helpdemo.png)
 ![Demo 5](img/consoledemo.png)
+![Demo 6](img/gitdemo.png)
 
 ## Prerequisites
 
