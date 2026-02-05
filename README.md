@@ -48,7 +48,7 @@ If emojis aren't displaying correctly:
 3. Try updating your terminal emulator to a newer version
 
 Note: Some terminal emulators like Alacritty, iTerm2, Konsole, and Kitty are known to work better with unicode/emojis. 
-Note: Image preview uses 256-color blocks or ANSI truecolor rendering. **Kitty terminal users** get native graphics protocol support for the highest quality image previews.
+Note: Image preview uses 256-color blocks or ANSI truecolor rendering. **Kitty terminal users** get native graphics protocol support for the highest quality image previews. **Sixel-capable terminals** (mlterm, foot, xterm, Konsole 22+, VTE 0.52+, Windows Terminal, iTerm2) get high-quality color-quantized image previews with dithering.
 
 ## Libraries used
 
@@ -64,7 +64,7 @@ Project libraries (customized/updated versions):
 - [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
 - [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
 - [cupidimage](https://github.com/cupidthecat/cupidimage) (image preview; linked as `lib/libcupidimage.a`)
-- [cupidgit](https://github.com/cupidthecat/cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
+- [cupidgit](https://github.com/cupidthecat/Please cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
 
 To build and run cupidfm, you must have the following packages installed:
 
@@ -136,6 +136,7 @@ Error logs (if any) will be saved to `log.txt`.
 - Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
 - **Image preview** for common image formats (PNG, JPEG, WebP, GIF, BMP, ICO, TIFF) rendered directly in the terminal via `cupidimage`:
   - **Kitty terminal**: Native graphics protocol with full color fidelity and hardware acceleration
+  - **Sixel terminals**: High-quality color quantization with dithering support (mlterm, foot, xterm, Konsole 22+, VTE 0.52+, Windows Terminal, iTerm2)
   - **Truecolor terminals**: ANSI escape sequence rendering with 24-bit color
   - **256-color terminals**: Fallback to 256-color palette rendering
 - **Git integration** - Visual git status indicators displayed inline with file listings via `cupidgit`:
@@ -875,4 +876,3 @@ Contributions are welcome! Please submit a pull request or open an issue for any
 ## License
 
 This project is licensed under the GNU General Public License v3.0 terms.
-

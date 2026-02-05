@@ -101,6 +101,9 @@ int cupidimage_render_ansi(const cupidimage_image *img, FILE *out, int max_width
 /* Include Kitty graphics protocol support */
 #include "cupidimage_kitty.h"
 
+/* Include Sixel graphics protocol support */
+#include "cupidimage_sixel.h"
+
 #ifdef __cplusplus
 }
 #endif

@@ -86,6 +86,7 @@ typedef struct {
 static ImagePalette image_palette = {0, 0, false};
 static bool last_truecolor_active = false;
 static char last_kitty_image_path[MAX_PATH_LENGTH] = {0};
+static char last_sixel_image_path[MAX_PATH_LENGTH] = {0};
 
 static const int image_palette_reserved_start = 32;
 
@@ -117,6 +118,74 @@ static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
             fputc(' ', stdout);
         }
     }
+    fflush(stdout);
+}
+
+/* Clear Sixel graphics from the content area by overwriting with a black Sixel image */
+static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+    if (content_width <= 0 || content_height <= 0) return;
+
+    int win_y = 0, win_x = 0;
+    getbegyx(window, win_y, win_x);
+
+    /* Calculate pixel dimensions to cover the entire content area */
+    const int cell_width_px = 8;
+    const int cell_height_px = 16;
+    int pixel_width = content_width * cell_width_px;
+    int pixel_height = content_height * cell_height_px;
+    
+    /* Limit size to prevent huge allocations */
+    if (pixel_width > 2000) pixel_width = 2000;
+    if (pixel_height > 2000) pixel_height = 2000;
+
+    /* Position cursor at content area */
+    int abs_row = win_y + content_top;
+    int abs_col = win_x + content_left;
+    printf("\x1b[%d;%dH", abs_row + 1, abs_col + 1);
+    
+    /* Output a black Sixel image that covers the content area
+     * Sixel encodes 6 vertical pixels per row, character '?' (0x3F) = all 6 pixels off (black with color 0)
+     * Format: DCS q "1;1;W;H (raster attributes) #0;2;0;0;0 (color 0 = black) <data> ST */
+    printf("\x1bPq");
+    printf("\"1;1;%d;%d", pixel_width, pixel_height);  /* Raster attributes */
+    printf("#0;2;0;0;0");  /* Define color 0 as black (RGB 0,0,0) */
+    printf("#0");  /* Select color 0 */
+    
+    /* Output Sixel data - '?' means all 6 pixels are off (transparent/background)
+     * We need to cover pixel_height/6 sixel rows */
+    int sixel_rows = (pixel_height + 5) / 6;
+    for (int row = 0; row < sixel_rows; row++) {
+        /* Output a row of '?' characters (all pixels off) for the width */
+        /* Use run-length encoding: !<count><char> */
+        if (pixel_width > 3) {
+            printf("!%d?", pixel_width);
+        } else {
+            for (int x = 0; x < pixel_width; x++) {
+                putchar('?');
+            }
+        }
+        /* Move to next sixel row (except for last row) */
+        if (row + 1 < sixel_rows) {
+            putchar('-');  /* Graphics newline */
+        }
+    }
+    
+    printf("\x1b\\");  /* String Terminator - end Sixel sequence */
+    
+    /* Also clear the text layer */
+    for (int row = 0; row < content_height; row++) {
+        abs_row = win_y + content_top + row;
+        abs_col = win_x + content_left;
+        printf("\x1b[%d;%dH\x1b[0m", abs_row + 1, abs_col + 1);
+        for (int col = 0; col < content_width; col++) {
+            fputc(' ', stdout);
+        }
+    }
+    
     fflush(stdout);
 }
 
@@ -609,20 +678,19 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
         return;
     }
 
+    /* Check if this is the same image we already displayed - do this BEFORE loading */
+    if (last_kitty_image_path[0] != '\0' && strcmp(last_kitty_image_path, full_path) == 0) {
+        /* Same image, no need to re-render */
+        last_truecolor_active = true;
+        return;
+    }
+
     cupidimage_image img = {0};
     char err[256] = {0};
     if (!load_cupidimage_image(full_path, &img, err, sizeof(err))) {
         mvwprintw(window, content_top, 2, "Image preview failed: %s",
                   err[0] ? err : "Unsupported format or decode error");
         wrefresh(window);
-        return;
-    }
-
-    /* Check if this is the same image we already displayed */
-    if (last_kitty_image_path[0] != '\0' && strcmp(last_kitty_image_path, full_path) == 0) {
-        /* Same image, no need to re-render */
-        cupidimage_free(&img);
-        last_truecolor_active = true;
         return;
     }
 
@@ -639,6 +707,11 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
     int win_y = 0, win_x = 0;
     getbegyx(window, win_y, win_x);
 
+    /* Hide cursor during image rendering */
+    curs_set(0);
+    printf("\x1b[?25l");   /* Also hide via escape sequence for terminals that need it */
+    fflush(stdout);
+
     /* Move cursor to content area */
     int abs_row = win_y + content_top;
     int abs_col = win_x + content_left;
@@ -653,6 +726,12 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
     /* Use content dimensions as display size in character cells */
     if (!cupidimage_render_kitty_with_options(&img, stdout, content_width, content_height,
                                              &opts, err, sizeof(err))) {
+        /* Reset cursor to safe position */
+        printf("\x1b[%d;%dH", 1, 1);
+        fflush(stdout);
+        wmove(window, 0, 0);
+        wrefresh(window);
+        curs_set(0);
         cupidimage_free(&img);
         mvwprintw(window, content_top, 2, "Kitty preview failed: %s", 
                   err[0] ? err : "Render error");
@@ -660,8 +739,198 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
         return;
     }
 
+    /* Reset cursor to top-left of window to prevent it getting stuck */
+    printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
+    fflush(stdout);
+    
+    /* Sync ncurses cursor position and refresh */
+    wmove(window, 0, 0);
+    wrefresh(window);
+    curs_set(0);  /* Keep cursor hidden */
+
     /* Track this image path to avoid re-rendering */
     snprintf(last_kitty_image_path, sizeof(last_kitty_image_path), "%s", full_path);
+    
+    cupidimage_free(&img);
+    last_truecolor_active = true;
+}
+
+static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int start_line,
+                                     int max_y, int max_x) {
+    (void)start_line;  /* Sixel renders full image, no line scrolling needed */
+    
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+
+    last_truecolor_active = false;
+    if (content_width <= 0 || content_height <= 0) {
+        mvwprintw(window, content_top, 2, "Preview area too small");
+        wrefresh(window);
+        return;
+    }
+
+    if (access(full_path, R_OK) != 0) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s", strerror(errno));
+        wrefresh(window);
+        return;
+    }
+
+    /* Check if this is the same image we already displayed - do this BEFORE loading */
+    if (last_sixel_image_path[0] != '\0' && strcmp(last_sixel_image_path, full_path) == 0) {
+        /* Same image, no need to re-render */
+        last_truecolor_active = true;
+        return;
+    }
+
+    cupidimage_image img = {0};
+    char err[256] = {0};
+    if (!load_cupidimage_image(full_path, &img, err, sizeof(err))) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s",
+                  err[0] ? err : "Unsupported format or decode error");
+        wrefresh(window);
+        return;
+    }
+
+    wrefresh(window);
+    
+    /* Clear any previous Sixel image before rendering new one */
+    if (last_sixel_image_path[0] != '\0') {
+        clear_sixel_overlay(window, max_y, max_x);
+    }
+    clear_truecolor_overlay(window, max_y, max_x);
+
+    /* Calculate pixel dimensions for the content area
+     * Typical terminal character cells are ~8x16 pixels (width x height)
+     * We use conservative estimates to ensure image fits within bounds */
+    const int cell_width_px = 8;
+    const int cell_height_px = 16;
+    int max_pixel_width = content_width * cell_width_px;
+    int max_pixel_height = content_height * cell_height_px;
+
+    /* Scale image to fit within the content area */
+    uint32_t src_w = img.width;
+    uint32_t src_h = img.height;
+    int target_w = (int)src_w;
+    int target_h = (int)src_h;
+
+    if (src_w > 0 && src_h > 0 && (target_w > max_pixel_width || target_h > max_pixel_height)) {
+        double scale_w = (double)max_pixel_width / (double)src_w;
+        double scale_h = (double)max_pixel_height / (double)src_h;
+        double scale = scale_w < scale_h ? scale_w : scale_h;
+        if (scale > 1.0) scale = 1.0;
+        
+        target_w = (int)(src_w * scale);
+        target_h = (int)(src_h * scale);
+        if (target_w < 1) target_w = 1;
+        if (target_h < 1) target_h = 1;
+    }
+
+    /* Resize image if needed */
+    cupidimage_image scaled_img = {0};
+    cupidimage_image *render_img = &img;
+
+    if (target_w != (int)src_w || target_h != (int)src_h) {
+        scaled_img.width = (uint32_t)target_w;
+        scaled_img.height = (uint32_t)target_h;
+        scaled_img.rgba = (uint8_t *)malloc((size_t)target_w * (size_t)target_h * 4);
+        
+        if (!scaled_img.rgba) {
+            cupidimage_free(&img);
+            mvwprintw(window, content_top, 2, "Sixel preview failed: out of memory");
+            wrefresh(window);
+            return;
+        }
+
+        /* Bilinear interpolation resize */
+        for (int y = 0; y < target_h; y++) {
+            for (int x = 0; x < target_w; x++) {
+                double src_x = (double)x * (double)(src_w - 1) / (double)(target_w - 1 > 0 ? target_w - 1 : 1);
+                double src_y = (double)y * (double)(src_h - 1) / (double)(target_h - 1 > 0 ? target_h - 1 : 1);
+                
+                int x0 = (int)src_x;
+                int y0 = (int)src_y;
+                int x1 = x0 + 1 < (int)src_w ? x0 + 1 : x0;
+                int y1 = y0 + 1 < (int)src_h ? y0 + 1 : y0;
+                
+                double xf = src_x - x0;
+                double yf = src_y - y0;
+                
+                for (int c = 0; c < 4; c++) {
+                    double v00 = img.rgba[(y0 * src_w + x0) * 4 + c];
+                    double v10 = img.rgba[(y0 * src_w + x1) * 4 + c];
+                    double v01 = img.rgba[(y1 * src_w + x0) * 4 + c];
+                    double v11 = img.rgba[(y1 * src_w + x1) * 4 + c];
+                    
+                    double v = v00 * (1 - xf) * (1 - yf) +
+                               v10 * xf * (1 - yf) +
+                               v01 * (1 - xf) * yf +
+                               v11 * xf * yf;
+                    
+                    scaled_img.rgba[(y * target_w + x) * 4 + c] = (uint8_t)(v + 0.5);
+                }
+            }
+        }
+        
+        render_img = &scaled_img;
+    }
+
+    /* Get window position for absolute cursor positioning */
+    int win_y = 0, win_x = 0;
+    getbegyx(window, win_y, win_x);
+
+    /* Hide cursor during image rendering */
+    curs_set(0);
+    printf("\x1b[?25l");   /* Also hide via escape sequence for terminals that need it */
+    fflush(stdout);
+
+    /* Move cursor to content area */
+    int abs_row = win_y + content_top;
+    int abs_col = win_x + content_left;
+    printf("\x1b[%d;%dH", abs_row + 1, abs_col + 1);
+    fflush(stdout);
+
+    /* Render using Sixel graphics protocol */
+    cupidimage_sixel_options opts = {0};
+    opts.max_colors = 256;           /* Use full 256-color palette */
+    opts.dither_mode = 1;            /* Floyd-Steinberg dithering for best quality */
+    opts.use_transparency = 0;       /* Blend with background */
+    opts.background_color = 0x000000; /* Black background to match terminal */
+    opts.pixel_aspect_ratio = 1.0f;  /* Image is already properly scaled */
+    opts.delete_previous = 0;        /* Don't clear screen */
+    
+    /* Render the (possibly scaled) image */
+    if (!cupidimage_render_sixel_with_options(render_img, stdout, 0, 0,
+                                              &opts, err, sizeof(err))) {
+        /* Reset cursor to safe position */
+        printf("\x1b[%d;%dH", 1, 1);
+        fflush(stdout);
+        wmove(window, 0, 0);
+        wrefresh(window);
+        curs_set(0);
+        if (scaled_img.rgba) free(scaled_img.rgba);
+        cupidimage_free(&img);
+        mvwprintw(window, content_top, 2, "Sixel preview failed: %s", 
+                  err[0] ? err : "Render error");
+        wrefresh(window);
+        return;
+    }
+
+    /* Reset cursor to top-left of window to prevent it getting stuck */
+    printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
+    fflush(stdout);
+    
+    /* Sync ncurses cursor position and refresh */
+    wmove(window, 0, 0);
+    wrefresh(window);
+    curs_set(0);  /* Keep cursor hidden */
+
+    /* Clean up scaled image if we created one */
+    if (scaled_img.rgba) free(scaled_img.rgba);
+
+    /* Track this image path to avoid re-rendering */
+    snprintf(last_sixel_image_path, sizeof(last_sixel_image_path), "%s", full_path);
     
     cupidimage_free(&img);
     last_truecolor_active = true;
@@ -1175,15 +1444,24 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         is_image = is_image_extension(full_path);
     }
 
-    if (last_truecolor_active && supports_truecolor() && !is_image) {
-        clear_truecolor_overlay(window, max_y, max_x);
-        /* Also clear any Kitty graphics if we were using them */
-        if (cupidimage_is_kitty_terminal() && last_kitty_image_path[0] != '\0') {
+    /* Clear any previous graphics when switching away from images */
+    if (!is_image) {
+        /* Clear Sixel graphics if we had a Sixel image displayed */
+        if (last_sixel_image_path[0] != '\0') {
+            clear_sixel_overlay(window, max_y, max_x);
+            last_sixel_image_path[0] = '\0';
+        }
+        /* Clear Kitty graphics if we had a Kitty image displayed */
+        if (last_kitty_image_path[0] != '\0') {
             cupidimage_kitty_delete_all(stdout, NULL, 0);
             fflush(stdout);
-            last_kitty_image_path[0] = '\0';  /* Clear the tracked path */
+            last_kitty_image_path[0] = '\0';
         }
-        last_truecolor_active = false;
+        /* Clear truecolor overlay if active */
+        if (last_truecolor_active) {
+            clear_truecolor_overlay(window, max_y, max_x);
+            last_truecolor_active = false;
+        }
     }
 
     if (S_ISDIR(file_stat.st_mode)) {
@@ -1195,6 +1473,9 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_image) {
         if (cupidimage_is_kitty_terminal()) {
             draw_image_preview_kitty(window, full_path, start_line, max_y, max_x);
+            used_truecolor = true;
+        } else if (cupidimage_is_sixel_terminal()) {
+            draw_image_preview_sixel(window, full_path, start_line, max_y, max_x);
             used_truecolor = true;
         } else if (supports_truecolor()) {
             draw_image_preview_truecolor(window, full_path, start_line, max_y, max_x);
