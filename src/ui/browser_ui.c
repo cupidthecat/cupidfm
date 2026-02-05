@@ -85,6 +85,7 @@ typedef struct {
 
 static ImagePalette image_palette = {0, 0, false};
 static bool last_truecolor_active = false;
+static char last_kitty_image_path[MAX_PATH_LENGTH] = {0};
 
 static const int image_palette_reserved_start = 32;
 
@@ -582,6 +583,86 @@ static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, 
     }
 
     free(buf);
+    cupidimage_free(&img);
+    last_truecolor_active = true;
+}
+
+static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int start_line,
+                                    int max_y, int max_x) {
+    (void)start_line;  /* Kitty renders full image, no line scrolling needed */
+    
+    int content_top = 7;
+    int content_left = 2;
+    int content_width = max_x - 4;
+    int content_height = max_y - content_top - 1;
+
+    last_truecolor_active = false;
+    if (content_width <= 0 || content_height <= 0) {
+        mvwprintw(window, content_top, 2, "Preview area too small");
+        wrefresh(window);
+        return;
+    }
+
+    if (access(full_path, R_OK) != 0) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s", strerror(errno));
+        wrefresh(window);
+        return;
+    }
+
+    cupidimage_image img = {0};
+    char err[256] = {0};
+    if (!load_cupidimage_image(full_path, &img, err, sizeof(err))) {
+        mvwprintw(window, content_top, 2, "Image preview failed: %s",
+                  err[0] ? err : "Unsupported format or decode error");
+        wrefresh(window);
+        return;
+    }
+
+    /* Check if this is the same image we already displayed */
+    if (last_kitty_image_path[0] != '\0' && strcmp(last_kitty_image_path, full_path) == 0) {
+        /* Same image, no need to re-render */
+        cupidimage_free(&img);
+        last_truecolor_active = true;
+        return;
+    }
+
+    wrefresh(window);
+    clear_truecolor_overlay(window, max_y, max_x);
+
+    /* Clear any previous Kitty graphics only when switching images */
+    if (last_kitty_image_path[0] != '\0') {
+        cupidimage_kitty_delete_all(stdout, NULL, 0);
+        fflush(stdout);
+    }
+
+    /* Get window position for absolute cursor positioning */
+    int win_y = 0, win_x = 0;
+    getbegyx(window, win_y, win_x);
+
+    /* Move cursor to content area */
+    int abs_row = win_y + content_top;
+    int abs_col = win_x + content_left;
+    printf("\x1b[%d;%dH", abs_row + 1, abs_col + 1);
+    fflush(stdout);
+
+    /* Render using Kitty graphics protocol */
+    cupidimage_kitty_options opts = {0};
+    opts.compression = 1;  /* Enable compression */
+    opts.delete_previous = 0;  /* Don't delete other images */
+    
+    /* Use content dimensions as display size in character cells */
+    if (!cupidimage_render_kitty_with_options(&img, stdout, content_width, content_height,
+                                             &opts, err, sizeof(err))) {
+        cupidimage_free(&img);
+        mvwprintw(window, content_top, 2, "Kitty preview failed: %s", 
+                  err[0] ? err : "Render error");
+        wrefresh(window);
+        return;
+    }
+
+    /* Track this image path to avoid re-rendering */
+    snprintf(last_kitty_image_path, sizeof(last_kitty_image_path), "%s", full_path);
+    
     cupidimage_free(&img);
     last_truecolor_active = true;
 }
@@ -1096,6 +1177,12 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
 
     if (last_truecolor_active && supports_truecolor() && !is_image) {
         clear_truecolor_overlay(window, max_y, max_x);
+        /* Also clear any Kitty graphics if we were using them */
+        if (cupidimage_is_kitty_terminal() && last_kitty_image_path[0] != '\0') {
+            cupidimage_kitty_delete_all(stdout, NULL, 0);
+            fflush(stdout);
+            last_kitty_image_path[0] = '\0';  /* Clear the tracked path */
+        }
         last_truecolor_active = false;
     }
 
@@ -1106,7 +1193,10 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_archive_file(full_path)) {
         display_archive_preview(window, full_path, start_line, max_y, max_x);
     } else if (is_image) {
-        if (supports_truecolor()) {
+        if (cupidimage_is_kitty_terminal()) {
+            draw_image_preview_kitty(window, full_path, start_line, max_y, max_x);
+            used_truecolor = true;
+        } else if (supports_truecolor()) {
             draw_image_preview_truecolor(window, full_path, start_line, max_y, max_x);
             used_truecolor = true;
         } else {

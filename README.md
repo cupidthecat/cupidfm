@@ -12,6 +12,7 @@ cupidfm is a terminal-based file manager implemented in C. It uses the `ncurses`
 ![Demo 4](img/helpdemo.png)
 ![Demo 5](img/consoledemo.png)
 ![Demo 6](img/gitdemo.png)
+![Demo 7](img/kittydemo.png)
 
 ## Prerequisites
 
@@ -47,7 +48,7 @@ If emojis aren't displaying correctly:
 3. Try updating your terminal emulator to a newer version
 
 Note: Some terminal emulators like Alacritty, iTerm2, Konsole, and Kitty are known to work better with unicode/emojis. 
-Note: Image preview uses 256-color blocks; a terminal with 256-color support will provide the best results.
+Note: Image preview uses 256-color blocks or ANSI truecolor rendering. **Kitty terminal users** get native graphics protocol support for the highest quality image previews.
 
 ## Libraries used
 
@@ -133,7 +134,10 @@ Error logs (if any) will be saved to `log.txt`.
 - View file details and preview supported file types
 - Display MIME types based on file content using `libmagic`
 - Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
-- **Image preview** for common image formats (PNG, JPEG, WebP, GIF, BMP, ICO, TIFF) rendered directly in the terminal using 256-color blocks via `cupidimage` (requires color support)
+- **Image preview** for common image formats (PNG, JPEG, WebP, GIF, BMP, ICO, TIFF) rendered directly in the terminal via `cupidimage`:
+  - **Kitty terminal**: Native graphics protocol with full color fidelity and hardware acceleration
+  - **Truecolor terminals**: ANSI escape sequence rendering with 24-bit color
+  - **256-color terminals**: Fallback to 256-color palette rendering
 - **Git integration** - Visual git status indicators displayed inline with file listings via `cupidgit`:
   - 🔴 Modified files (tracked files with uncommitted changes)
   - 🟢 Untracked files (files not in git index)
