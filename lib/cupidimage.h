@@ -98,6 +98,9 @@ void cupidimage_free_animation(cupidimage_animation *anim);
 
 int cupidimage_render_ansi(const cupidimage_image *img, FILE *out, int max_width, int max_height);
 
+/* Include Kitty graphics protocol support */
+#include "cupidimage_kitty.h"
+
 #ifdef __cplusplus
 }
 #endif
