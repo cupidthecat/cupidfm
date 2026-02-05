@@ -64,7 +64,7 @@ Project libraries (customized/updated versions):
 - [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
 - [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
 - [cupidimage](https://github.com/cupidthecat/cupidimage) (image preview; linked as `lib/libcupidimage.a`)
-- [cupidgit](cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
+- [cupidgit](https://github.com/cupidthecat/cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
 
 To build and run cupidfm, you must have the following packages installed:
 
@@ -875,3 +875,4 @@ Contributions are welcome! Please submit a pull request or open an issue for any
 ## License
 
 This project is licensed under the GNU General Public License v3.0 terms.
+
