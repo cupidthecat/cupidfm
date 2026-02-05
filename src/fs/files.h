@@ -2,6 +2,7 @@
 #define FILES_H
 
 #include "core/main.h"
+#include "git.h"
 #include <stdbool.h>
 
 // Ctrl+Shift+Letter key codes (defined in files.c)
@@ -51,6 +52,7 @@ typedef struct FileAttributes *FileAttr;
 
 const char *FileAttr_get_name(FileAttr fa);
 bool FileAttr_is_dir(FileAttr fa);
+GitStatus FileAttr_get_git_status(FileAttr fa);
 void free_attr(FileAttr fa);
 void append_files_to_vec(Vector *v, const char *name);
 void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,

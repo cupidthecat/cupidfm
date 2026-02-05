@@ -349,6 +349,7 @@ struct FileAttributes {
   char *name;  //
   ino_t inode; // Change from int inode;
   bool is_dir;
+  GitStatus git_status;  // Git status for this file
 };
 // TextBuffer structure
 typedef struct {
@@ -1669,6 +1670,15 @@ const char *FileAttr_get_name(FileAttr fa) {
  * @return true if the file type is supported, false otherwise
  */
 bool FileAttr_is_dir(FileAttr fa) { return fa != NULL && fa->is_dir; }
+
+GitStatus FileAttr_get_git_status(FileAttr fa) {
+  if (fa != NULL) {
+    return fa->git_status;
+  } else {
+    return GIT_STATUS_ERROR;
+  }
+}
+
 /**
  * Function to format a file size in a human-readable format
  *
@@ -1711,6 +1721,7 @@ FileAttr mk_attr(const char *name, bool is_dir, ino_t inode) {
 
     fa->inode = inode;
     fa->is_dir = is_dir;
+    fa->git_status = GIT_STATUS_ERROR;  // Default to no status
     return fa;
   } else {
     // Handle memory allocation failure for the FileAttr
@@ -1789,6 +1800,11 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,
         FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
 
         if (file_attr != NULL) { // Only add if not NULL
+          // Query git status for this file
+          char full_path[4096];
+          snprintf(full_path, sizeof(full_path), "%s/%s", name, entry->d_name);
+          file_attr->git_status = git_query_file_status(full_path);
+
           Vector_add(v, 1);
           v->el[Vector_len(*v)] = file_attr;
           Vector_set_len(v, Vector_len(*v) + 1);
@@ -1831,6 +1847,11 @@ void append_files_to_vec(Vector *v, const char *name) {
         FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
 
         if (file_attr != NULL) { // Only add if not NULL
+          // Query git status for this file
+          char full_path[4096];
+          snprintf(full_path, sizeof(full_path), "%s/%s", name, entry->d_name);
+          file_attr->git_status = git_query_file_status(full_path);
+
           Vector_add(v, 1);
           v->el[Vector_len(*v)] = file_attr;
           Vector_set_len(v, Vector_len(*v) + 1);

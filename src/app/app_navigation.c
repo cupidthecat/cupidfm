@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "files.h"
+#include "git.h"
 #include "globals.h"
 #include "main.h"
 #include "search.h"
@@ -118,6 +119,7 @@ void navigate_left(char **current_directory,
                 free(state->lazy_load.directory_path);
             }
             state->lazy_load.directory_path = strdup(*current_directory);
+            git_update_directory(*current_directory);
             reload_directory_lazy(files, *current_directory,
                                   &state->lazy_load.files_loaded, &state->lazy_load.total_files);
         }
@@ -129,6 +131,7 @@ void navigate_left(char **current_directory,
             free(state->lazy_load.directory_path);
         }
         state->lazy_load.directory_path = strdup(*current_directory);
+        git_update_directory(*current_directory);
         reload_directory_lazy(files, *current_directory,
                               &state->lazy_load.files_loaded, &state->lazy_load.total_files);
     }
@@ -224,6 +227,7 @@ void navigate_right(AppState *state,
     state->lazy_load.directory_path = strdup(*current_directory);
     state->lazy_load.last_load_time = (struct timespec){0};
 
+    git_update_directory(*current_directory);
     reload_directory_lazy(&state->files, *current_directory,
                           &state->lazy_load.files_loaded, &state->lazy_load.total_files);
 

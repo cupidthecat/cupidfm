@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "vector.h"
 #include "files.h"
+#include "git.h"
 #include "vecstack.h"
 #include "main.h"
 #include "globals.h"
@@ -275,8 +276,12 @@ int main() {
     state.lazy_load.is_loading = false;
     state.lazy_load.last_load_time = (struct timespec){0};
     
+    // Initialize git integration
+    git_init();
+    git_update_directory(state.current_directory);
+
     // Use lazy loading for initial directory load
-    reload_directory_lazy(&state.files, state.current_directory, 
+    reload_directory_lazy(&state.files, state.current_directory,
                          &state.lazy_load.files_loaded, &state.lazy_load.total_files);
     dir_size_cache_start();
 
@@ -1825,6 +1830,7 @@ input_done:
     endwin();
     cleanup_temp_files();
     dir_size_cache_stop();
+    git_cleanup();
 
     // Destroy directory stack
     VecStack_bye(&directoryStack);

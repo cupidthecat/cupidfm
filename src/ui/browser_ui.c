@@ -20,6 +20,7 @@
 #include <ctype.h>
 
 #include "files.h"
+#include "git.h"
 #include "globals.h"
 #include "syntax.h"
 #include "mime.h"
@@ -872,6 +873,7 @@ void draw_directory_window(WINDOW *window,
             }
 
             const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
+            const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
 
             wmove(window, i + 1, 1);
             for (int j = 1; j < cols - 1; j++) {
@@ -892,16 +894,16 @@ void draw_directory_window(WINDOW *window,
                 if (is_symlink && target_len > 0) {
                     int name_part = available_width / 2;
                     int target_part = available_width - name_part - 4;
-                    mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji,
+                    mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
                               name_part, name, target_part, symlink_target);
                 } else {
-                    mvwprintw(window, i + 1, 1, "%s %.*s", emoji, available_width, name);
+                    mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
                 }
             } else {
                 if (is_symlink && target_len > 0) {
-                    mvwprintw(window, i + 1, 1, "%s %s -> %s", emoji, name, symlink_target);
+                    mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name, symlink_target);
                 } else {
-                    mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                    mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
                 }
             }
 
@@ -938,6 +940,7 @@ void draw_directory_window(WINDOW *window,
             const char *mime_type = magic_file(magic_cookie, full_path);
             emoji = get_file_emoji(mime_type, name);
         }
+        const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
 
         wmove(window, i + 1, 1);
         for (int j = 1; j < cols - 1; j++) {
@@ -958,16 +961,16 @@ void draw_directory_window(WINDOW *window,
             if (is_symlink && target_len > 0) {
                 int name_part = available_width / 2;
                 int target_part = available_width - name_part - 4;
-                mvwprintw(window, i + 1, 1, "%s %.*s -> %.*s...", emoji,
+                mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
                           name_part, name, target_part, symlink_target);
             } else {
-                mvwprintw(window, i + 1, 1, "%s %.*s", emoji, available_width, name);
+                mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
             }
         } else {
             if (is_symlink && target_len > 0) {
-                mvwprintw(window, i + 1, 1, "%s %s -> %s", emoji, name, symlink_target);
+                mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name, symlink_target);
             } else {
-                mvwprintw(window, i + 1, 1, "%s %s", emoji, name);
+                mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
             }
         }
 

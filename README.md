@@ -62,6 +62,7 @@ Project libraries (customized/updated versions):
 - [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
 - [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
 - [cupidimage](https://github.com/cupidthecat/cupidimage) (image preview; linked as `lib/libcupidimage.a`)
+- [cupidgit](cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
 
 To build and run cupidfm, you must have the following packages installed:
 
@@ -132,6 +133,12 @@ Error logs (if any) will be saved to `log.txt`.
 - Display MIME types based on file content using `libmagic`
 - Archive preview for common formats (`.zip`, `.tar`, `.tar.gz`, `.7z`, etc.) via `cupidarchive`
 - **Image preview** for common image formats (PNG, JPEG, WebP, GIF, BMP, ICO, TIFF) rendered directly in the terminal using 256-color blocks via `cupidimage` (requires color support)
+- **Git integration** - Visual git status indicators displayed inline with file listings via `cupidgit`:
+  - 🔴 Modified files (tracked files with uncommitted changes)
+  - 🟢 Untracked files (files not in git index)
+  - ⚪ Unmodified files (tracked files with no changes)
+  - Automatic repository detection when navigating directories
+  - No external git dependency - uses custom SHA-1 implementation
 - File type indicators with emoji icons:
   - 📄 Text files
   - 📝 C source files
