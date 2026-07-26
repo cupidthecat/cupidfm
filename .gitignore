@@ -1,3 +1,13 @@
 cupidfm
 *.o
 log.txt
+/tests/benchmark
+/tests/test_integration
+/tests/test_memory_safety
+/tests/test_mutation
+/tests/test_path_fuzz
+/tests/test_path_join
+/tests/test_plugins_api
+/tests/test_property
+/tests/test_vecstack
+/tests/test_vector

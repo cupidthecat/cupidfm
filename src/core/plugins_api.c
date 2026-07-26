@@ -618,10 +618,6 @@ static void selected_paths_clear(PluginManager *pm) {
   }
   pm->selected_paths = NULL;
   pm->selected_path_count = 0;
-  pm->event_bindings = NULL;
-  pm->event_bind_count = pm->event_bind_cap = 0;
-  pm->marks = NULL;
-  pm->mark_count = pm->mark_cap = 0;
 }
 
 static bool selected_paths_set_from_value(PluginManager *pm, cs_value v) {
@@ -898,6 +894,32 @@ static bool buffer_append_limited(char **buf, size_t *len, size_t *cap,
   (*buf)[*len] = '\0';
   return true;
 }
+
+static void exec_pipe_close(int pipefd[2]) {
+  if (!pipefd)
+    return;
+  if (pipefd[0] >= 0) {
+    close(pipefd[0]);
+    pipefd[0] = -1;
+  }
+  if (pipefd[1] >= 0) {
+    close(pipefd[1]);
+    pipefd[1] = -1;
+  }
+}
+
+static void exec_pipes_close(int out_pipe[2], int err_pipe[2]) {
+  exec_pipe_close(out_pipe);
+  exec_pipe_close(err_pipe);
+}
+
+#ifdef CUPIDFM_TESTING
+static int (*exec_pipe_call)(int pipefd[2]) = pipe;
+static pid_t (*exec_fork_call)(void) = fork;
+#else
+#define exec_pipe_call pipe
+#define exec_fork_call fork
+#endif
 
 static int nf_fm_on(cs_vm *vm, void *ud, int argc, const cs_value *argv,
                     cs_value *out) {
@@ -1898,16 +1920,35 @@ static int nf_fm_exec(cs_vm *vm, void *ud, int argc, const cs_value *argv,
   }
   cargv[ai] = NULL;
 
-  int out_pipe[2];
-  int err_pipe[2];
-  if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0) {
+  int out_pipe[2] = {-1, -1};
+  int err_pipe[2] = {-1, -1};
+  if (exec_pipe_call(out_pipe) != 0) {
     for (size_t i = 0; i < ai; i++)
       free(cargv[i]);
     free(cargv);
     return 0;
   }
+  if (exec_pipe_call(err_pipe) != 0) {
+    int pipe_errno = errno;
+    exec_pipe_close(out_pipe);
+    for (size_t i = 0; i < ai; i++)
+      free(cargv[i]);
+    free(cargv);
+    errno = pipe_errno;
+    return 0;
+  }
 
-  pid_t pid = fork();
+  pid_t pid = exec_fork_call();
+  if (pid < 0) {
+    int fork_errno = errno;
+    exec_pipes_close(out_pipe, err_pipe);
+    for (size_t i = 0; i < ai; i++)
+      free(cargv[i]);
+    free(cargv);
+    errno = fork_errno;
+    return 0;
+  }
+
   if (pid == 0) {
     setpgid(0, 0);
     if (cwd_opt && *cwd_opt) {

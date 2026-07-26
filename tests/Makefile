@@ -6,7 +6,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -39,6 +39,11 @@ test_mutation: test_mutation.c mutation_test.h test_runner.h
 test_integration: test_integration.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_integration.c $(LIBS)
 
+test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -o $@ test_plugins_api.c ../lib/libcupidscript.a \
+		$(LIBS) -fsanitize=address -fsanitize=undefined -lpthread -lssl -lcrypto -lm
+
 benchmark: benchmark.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o benchmark benchmark.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS)
 
@@ -64,6 +69,9 @@ test: all
 	@echo ""
 	@echo "Running integration tests..."
 	@./test_integration
+	@echo ""
+	@echo "Running plugin API tests..."
+	@./test_plugins_api
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -108,6 +116,9 @@ test-asan: clean
 	@echo ""
 	@echo "Running integration tests with AddressSanitizer..."
 	@./test_integration
+	@echo ""
+	@echo "Running plugin API tests with AddressSanitizer..."
+	@./test_plugins_api
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 
@@ -160,7 +171,7 @@ run-benchmark: benchmark
 
 clean:
 	@echo "Cleaning test artifacts..."
-	rm -f test_vector test_path_join test_path_utils test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_all benchmark
+	rm -f $(TEST_TARGETS) test_path_utils test_all benchmark
 	rm -f test_inversion test_logic test_mut_debug debug_mutation test_utils_coverage
 	rm -f test_*_debug debug_*
 	rm -f *.o *.gcda *.gcno *.gcov

@@ -371,6 +371,9 @@ int main() {
 
     int ch;
     while ((ch = getch()) != kb.key_exit) {
+        struct timespec loop_start_time;
+        clock_gettime(CLOCK_MONOTONIC, &loop_start_time);
+
         if (state.plugins) {
             plugins_update_context(&state, active_window);
             bool handled = plugins_handle_key(state.plugins, ch);
@@ -894,8 +897,6 @@ int main() {
                 goto input_done;
             }
         }
-        struct timespec loop_start_time;
-        clock_gettime(CLOCK_MONOTONIC, &loop_start_time);
         if (resized) {
             resized = 0;
             redraw_all_windows(&state);
