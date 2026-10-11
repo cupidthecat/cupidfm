@@ -15,6 +15,11 @@ CUPID_CFLAGS += -I$(CUPIDSCRIPT_INC)
 # Link order matters: static archives first, then their dependent shared/system libs.
 override CUPID_LIBS := $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT_LIB) -lssl -lcrypto -lncursesw -lmagic -lz -lbz2 -llzma -lm
 
+# The checked-in archives may contain ASan/UBSan instrumentation. Link only the
+# runtimes they actually reference; source-built uninstrumented archives need none.
+NM ?= nm
+PREBUILT_SANITIZER_LIBS ?= $(shell $(NM) -u $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT_LIB) 2>/dev/null | awk '/ U __asan_/ {a=1} / U __ubsan_/ {u=1} END {if(a) printf "-fsanitize=address "; if(u) printf "-fsanitize=undefined "}')
+
 all: cupidfm
 
 $(CUPIDARCHIVE_LIB):
@@ -34,7 +39,7 @@ $(CUPIDGIT_LIB):
 	@exit 1
 
 cupidfm: $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT_LIB) $(SRC) $(HDRS) lib/cupidconf.c
-	$(CC) -o $@ $(SRC) lib/cupidconf.c $(CUPID_FLAGS) $(CFLAGS) $(CUPID_CFLAGS) $(LDFLAGS) $(CUPID_LIBS) $(LIBS) $(LD_LIBS)
+	$(CC) -o $@ $(SRC) lib/cupidconf.c $(CUPID_FLAGS) $(CFLAGS) $(CUPID_CFLAGS) $(LDFLAGS) $(CUPID_LIBS) $(PREBUILT_SANITIZER_LIBS) $(LIBS) $(LD_LIBS)
 
 test:
 	$(MAKE) -C tests test

@@ -11,3 +11,5 @@ log.txt
 /tests/test_property
 /tests/test_vecstack
 /tests/test_vector
+
+/tests/file_command_driver

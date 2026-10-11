@@ -4,6 +4,8 @@
 #endif
 
 #include "clipboard.h"
+#include "process.h"
+#include <fcntl.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -14,9 +16,12 @@
 
 bool clipboard_set_from_file(const char *path) {
     if (!path || !*path) return false;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "xclip -selection clipboard -i < \"%s\"", path);
-    return system(cmd) != -1;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return false;
+    char *args[] = {"xclip", "-selection", "clipboard", "-i", NULL};
+    bool ok = run_process(args, fd, -1);
+    close(fd);
+    return ok;
 }
 
 bool ensure_cut_storage_dir(char *out_dir, size_t out_len) {

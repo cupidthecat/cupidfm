@@ -39,6 +39,7 @@
 #include "console.h"
 #include "banner.h"
 #include "clipboard.h"
+#include "process.h"
 #include "tempfiles.h"
 #include "browser_ui.h"
 #include "app_state.h"
@@ -789,12 +790,8 @@ int main() {
 
                                 if (access(dst, F_OK) == 0) continue;
 
-                                char cmd[4096];
                                 if (op.kind == PLUGIN_FILEOP_COPY) {
-                                    snprintf(cmd, sizeof(cmd), "cp %s \"%s\" \"%s\"",
-                                             (S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) ? "-r" : "",
-                                             src, dst);
-                                    if (system(cmd) != -1) {
+                                    if (file_command_copy(src, dst, S_ISDIR(st.st_mode))) {
                                         if (items) {
                                             items[did].src = strdup(src);
                                             items[did].dst = strdup(dst);
@@ -804,8 +801,7 @@ int main() {
                                 } else {
                                     // MOVE
                                     if (rename(src, dst) != 0) {
-                                        snprintf(cmd, sizeof(cmd), "mv \"%s\" \"%s\"", src, dst);
-                                        if (system(cmd) == -1) continue;
+                                        if (!file_command_move(src, dst)) continue;
                                     }
                                     if (items) {
                                         items[did].src = strdup(src);
@@ -1242,12 +1238,7 @@ int main() {
                                 continue;
                             }
 
-                            char mv_cmd[2048];
-                            n = snprintf(mv_cmd, sizeof(mv_cmd), "mv \"%s\" \"%s\"", src_path, dst_path);
-                            if (n < 0 || (size_t)n >= sizeof(mv_cmd)) {
-                                continue;
-                            }
-                            if (system(mv_cmd) == -1) {
+                            if (!file_command_move(src_path, dst_path)) {
                                 continue;
                             }
 

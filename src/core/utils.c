@@ -21,6 +21,8 @@
 
 // Local includes
 #include "utils.h"
+#include "process.h"
+#include "clipboard.h"
 #include "files.h"  // Include the header for FileAttr and related functions
 #include "globals.h"
 #include "main.h"
@@ -136,18 +138,18 @@ void create_file(const char *filename) {
 }
 
 void browse_files(const char *directory) {
-    char command[256];
-    snprintf(command, sizeof(command), "xdg-open %s", directory);
-
-    int result = system(command);
-
-    if (result == -1) {
-        // Error launching the file manager
-        printf("Error: Unable to open the file manager.\n");
-    } else if (WIFEXITED(result) && WEXITSTATUS(result) != 0) {
-        // The file manager exited with a non-zero status, indicating an issue
-        printf("Error: The file manager returned a non-zero status.\n");
+    if (!directory || !*directory) return;
+    /* xdg-open has no -- delimiter; prefix relative option-like paths. */
+    char *operand = NULL;
+    if (directory[0] == '-') {
+        operand = malloc(strlen(directory) + 3);
+        if (!operand) return;
+        snprintf(operand, strlen(directory) + 3, "./%s", directory);
     }
+    char *args[] = {"xdg-open", operand ? operand : (char *)directory, NULL};
+    if (!run_process(args, -1, -1))
+        fprintf(stderr, "Error: Unable to open the file manager.\n");
+    free(operand);
 }
 /**
  * Function to display the contents of a directory in the terminal
@@ -312,12 +314,10 @@ void copy_to_clipboard(const char *path) {
     fclose(temp);
 
     // Copy the temp file content to clipboard
-    char command[1024];
-    snprintf(command, sizeof(command), "xclip -selection clipboard -i < %s", temp_path);
-    
-    int result = system(command);
-    if (result == -1) {
+    if (!clipboard_set_from_file(temp_path)) {
         fprintf(stderr, "Error: Unable to copy to clipboard.\n");
+        unlink(temp_path);
+        return;
     }
 
     // Clean up
@@ -411,28 +411,20 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         log->src = NULL;
         log->dst = NULL;
     }
-    char temp_path[512];
-    snprintf(temp_path, sizeof(temp_path), "/tmp/cupidfm_paste_%d", getpid());
-    
-    char command[1024];
-    snprintf(command, sizeof(command), "xclip -selection clipboard -o > %s", temp_path);
-    
-    if (system(command) == -1) {
+    FILE *temp = tmpfile();
+    if (!temp) return -1;
+    char *args[] = {"xclip", "-selection", "clipboard", "-o", NULL};
+    if (!run_process(args, -1, fileno(temp))) {
         fprintf(stderr, "Error: Unable to read from clipboard.\n");
+        fclose(temp);
         return -1;
     }
-    
-    FILE *temp = fopen(temp_path, "r");
-    if (!temp) {
-        unlink(temp_path);
-        return -1;
-    }
+    rewind(temp);
 
     // Try new multi-item clipboard format first.
     char first_line[512] = {0};
     if (!fgets(first_line, sizeof(first_line), temp)) {
         fclose(temp);
-        unlink(temp_path);
         return -1;
     }
     first_line[strcspn(first_line, "\n")] = '\0';
@@ -442,7 +434,6 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         char n_line[64] = {0};
         if (!fgets(op_line, sizeof(op_line), temp) || !fgets(n_line, sizeof(n_line), temp)) {
             fclose(temp);
-            unlink(temp_path);
             return -1;
         }
         op_line[strcspn(op_line, "\n")] = '\0';
@@ -454,7 +445,6 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         if (strncmp(n_line, "N=", 2) == 0) n = strtol(n_line + 2, NULL, 10);
         if (!op || n <= 0) {
             fclose(temp);
-            unlink(temp_path);
             return -1;
         }
 
@@ -486,10 +476,7 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
             snprintf(dst_full, sizeof(dst_full), "%s/%s", target_directory, unique_filename);
 
             if (is_cut) {
-                char mv_command[2048];
-                snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s/%s\"",
-                         source_path, target_directory, unique_filename);
-                if (system(mv_command) == -1) {
+                if (!file_command_move(source_path, dst_full)) {
                     fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
                     continue;
                 }
@@ -498,10 +485,7 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
                     log = NULL;
                 }
             } else {
-                char cp_command[2048];
-                snprintf(cp_command, sizeof(cp_command), "cp %s \"%s\" \"%s/%s\"",
-                         is_directory ? "-r" : "", source_path, target_directory, unique_filename);
-                if (system(cp_command) == -1) {
+                if (!file_command_copy(source_path, dst_full, is_directory != 0)) {
                     fprintf(stderr, "Error: Unable to copy file.\n");
                     continue;
                 }
@@ -514,7 +498,6 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         }
 
         fclose(temp);
-        unlink(temp_path);
         return pasted;
     }
 
@@ -526,11 +509,9 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
 
     if (fscanf(temp, "%511[^\n]\n%d\n%9s", source_path, &is_directory, operation) < 2) {
         fclose(temp);
-        unlink(temp_path);
         return -1;
     }
     fclose(temp);
-    unlink(temp_path);
 
     // Check if this is a cut operation.
     bool is_cut = (operation[0] == 'C' && operation[1] == 'U' && operation[2] == 'T');
@@ -554,20 +535,14 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         snprintf(temp_storage, sizeof(temp_storage), "/tmp/cupidfm_cut_storage_%d", getpid());
 
         // Move from temporary storage to target directory with the unique name.
-        char mv_command[2048];
-        snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s/%s\"",
-                 temp_storage, target_directory, unique_filename);
-        if (system(mv_command) == -1) {
+        if (!file_command_move(temp_storage, dst_full)) {
             fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
             return -1;
         }
         (void)paste_log_append(log, kind, temp_storage, dst_full);
     } else {
         // Handle regular copy operation.
-        char cp_command[2048];
-        snprintf(cp_command, sizeof(cp_command), "cp %s \"%s\" \"%s/%s\"",
-                 is_directory ? "-r" : "", source_path, target_directory, unique_filename);
-        if (system(cp_command) == -1) {
+        if (!file_command_copy(source_path, dst_full, is_directory != 0)) {
             fprintf(stderr, "Error: Unable to copy file.\n");
             return -1;
         }
@@ -600,12 +575,10 @@ void cut_and_paste(const char *path, char *out_storage_path, size_t out_len) {
     fclose(temp);
 
     // Copy the temp file content to clipboard
-    char command[1024];
-    snprintf(command, sizeof(command), "xclip -selection clipboard -i < %s", temp_path);
-    
-    int result = system(command);
-    if (result == -1) {
+    if (!clipboard_set_from_file(temp_path)) {
         fprintf(stderr, "Error: Unable to copy to clipboard.\n");
+        unlink(temp_path);
+        return;
     }
 
     // Clean up
@@ -616,10 +589,7 @@ void cut_and_paste(const char *path, char *out_storage_path, size_t out_len) {
     snprintf(temp_storage, sizeof(temp_storage), "/tmp/cupidfm_cut_storage_%d", getpid());
     
     // Move the file to temporary storage
-    char mv_command[2048];
-    snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s\"", path, temp_storage);
-    
-    if (system(mv_command) == -1) {
+    if (!file_command_move(path, temp_storage)) {
         fprintf(stderr, "Error: Unable to move file to temporary storage.\n");
         return;
     }
@@ -667,12 +637,7 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
     }
 
     // Soft delete: move into per-session trash so we can undo.
-    char mv_command[2048];
-    n = snprintf(mv_command, sizeof(mv_command), "mv \"%s\" \"%s\"", path, dst_path);
-    if (n < 0 || (size_t)n >= sizeof(mv_command)) {
-        return false;
-    }
-    if (system(mv_command) == -1) {
+    if (!file_command_move(path, dst_path)) {
         fprintf(stderr, "Error: Unable to move to trash: %s\n", path);
         return false;
     }
