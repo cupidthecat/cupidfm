@@ -30,3 +30,8 @@ jobs:
           rm tests/test_editor_ranges
           make -C tests test_editor_ranges CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_editor_ranges
+      - name: Run editor allocation failures with sanitizers
+        run: |
+          rm tests/test_editor_allocations
+          make -C tests test_editor_allocations CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_editor_allocations
