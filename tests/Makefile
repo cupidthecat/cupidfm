@@ -6,7 +6,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -42,7 +42,14 @@ test_integration: test_integration.c test_runner.h
 test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ test_plugins_api.c ../lib/libcupidscript.a \
-		$(LIBS) -fsanitize=address -fsanitize=undefined -lpthread -lssl -lcrypto -lm
+		$(LIBS) -fsanitize=address -fsanitize=undefined -lpthread -lssl -lcrypto -lm -lz
+
+file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/fs/clipboard.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -o $@ file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/utils.c ../src/fs/clipboard.c $(LIBS)
+
+test-file-commands: file_command_driver
+	python3 test_file_commands.py
 
 benchmark: benchmark.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o benchmark benchmark.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS)
@@ -72,6 +79,7 @@ test: all
 	@echo ""
 	@echo "Running plugin API tests..."
 	@./test_plugins_api
+	@python3 test_file_commands.py
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -119,6 +127,7 @@ test-asan: clean
 	@echo ""
 	@echo "Running plugin API tests with AddressSanitizer..."
 	@./test_plugins_api
+	@python3 test_file_commands.py
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 

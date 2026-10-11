@@ -1,0 +1,22 @@
+name: Build and tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev python3
+      - name: Build application
+        run: make
+      - name: Run tests
+        run: make test
+      - name: Run file-command regressions with sanitizers
+        run: |
+          rm tests/file_command_driver
+          make -C tests test-file-commands CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'

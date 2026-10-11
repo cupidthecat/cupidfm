@@ -4,6 +4,7 @@
 #endif
 
 #include "undo.h"
+#include "process.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -79,9 +80,7 @@ static bool move_path(const char *src, const char *dst, char *err, size_t err_le
     (void)ensure_parent_dir(dst);
     if (rename(src, dst) == 0) return true;
     // Cross-device moves or other cases: fall back to mv.
-    char cmd[4096];
-    snprintf(cmd, sizeof(cmd), "mv \"%s\" \"%s\"", src, dst);
-    if (system(cmd) == -1) {
+    if (!file_command_move(src, dst)) {
         if (err && err_len) snprintf(err, err_len, "Move failed");
         return false;
     }
@@ -100,9 +99,7 @@ static bool remove_path_any(const char *path, char *err, size_t err_len) {
         return false;
     }
     if (S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode)) {
-        char cmd[4096];
-        snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", path);
-        if (system(cmd) == -1) {
+        if (!file_command_remove_directory(path)) {
             if (err && err_len) snprintf(err, err_len, "Remove directory failed");
             return false;
         }
@@ -131,9 +128,7 @@ static bool copy_path(const char *src, const char *dst, char *err, size_t err_le
         return false;
     }
     (void)ensure_parent_dir(dst);
-    char cmd[4096];
-    snprintf(cmd, sizeof(cmd), "cp %s \"%s\" \"%s\"", S_ISDIR(st.st_mode) ? "-r" : "", src, dst);
-    if (system(cmd) == -1) {
+    if (!file_command_copy(src, dst, S_ISDIR(st.st_mode))) {
         if (err && err_len) snprintf(err, err_len, "Copy failed");
         return false;
     }
