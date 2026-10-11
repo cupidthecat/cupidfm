@@ -36,6 +36,18 @@ int main(int argc, char **argv) {
         return clipboard_set_paths((const char *const *)&argv[2], (size_t)argc - 2, false) ? 0 : 1;
     if (strcmp(argv[1], "cut-clipboard") == 0)
         return clipboard_set_paths((const char *const *)&argv[2], (size_t)argc - 2, true) ? 0 : 1;
+    if (strcmp(argv[1], "trash-small") == 0) {
+        char trashed[1];
+        return delete_item(argv[2], trashed, sizeof(trashed)) ? 0 : 1;
+    }
+    if (strcmp(argv[1], "trash") == 0) {
+        for (int i = 2; i < argc; ++i) {
+            char trashed[4096] = {0};
+            if (!delete_item(argv[i], trashed, sizeof(trashed))) return 1;
+            printf("%s\n", trashed);
+        }
+        return 0;
+    }
     UndoState state;
     undo_state_init(&state);
     char error[256] = {0};
