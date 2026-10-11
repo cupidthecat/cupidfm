@@ -357,21 +357,31 @@ void paste_log_free(PasteLog *log) {
 
 static bool paste_log_append(PasteLog *log, PasteKind kind, const char *src, const char *dst) {
     if (!log) return true;
-    if (log->kind == PASTE_KIND_NONE) log->kind = kind;
-
+    if (log->count >= (size_t)-1 / sizeof(char *)) return false;
     size_t n = log->count + 1;
-    char **new_src = (char **)realloc(log->src, n * sizeof(char *));
-    char **new_dst = (char **)realloc(log->dst, n * sizeof(char *));
-    if (!new_src || !new_dst) {
+    char **new_src = malloc(n * sizeof(char *));
+    char **new_dst = malloc(n * sizeof(char *));
+    char *src_copy = src ? strdup(src) : NULL;
+    char *dst_copy = dst ? strdup(dst) : NULL;
+    if (!new_src || !new_dst || (src && !src_copy) || (dst && !dst_copy)) {
         free(new_src);
         free(new_dst);
+        free(src_copy);
+        free(dst_copy);
         return false;
     }
+    if (log->count) {
+        memcpy(new_src, log->src, log->count * sizeof(char *));
+        memcpy(new_dst, log->dst, log->count * sizeof(char *));
+    }
+    new_src[log->count] = src_copy;
+    new_dst[log->count] = dst_copy;
+    free(log->src);
+    free(log->dst);
     log->src = new_src;
     log->dst = new_dst;
-    log->src[log->count] = src ? strdup(src) : NULL;
-    log->dst[log->count] = dst ? strdup(dst) : NULL;
     log->count = n;
+    if (log->kind == PASTE_KIND_NONE) log->kind = kind;
     return true;
 }
 
