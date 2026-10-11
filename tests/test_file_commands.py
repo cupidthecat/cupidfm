@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -105,6 +106,61 @@ class FileCommands(unittest.TestCase):
         self.assertEqual((dest / 'source (2).txt').read_text(), 'data')
         self.assertTrue((dest / 'source.txt').is_symlink())
         self.assertTrue((dest / 'source (1).txt').is_symlink())
+
+    def trash(self, paths):
+        process = subprocess.Popen([str(DRIVER), 'trash', *map(str, paths)],
+                                   cwd=self.root, env=self.env, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        trash_dir = Path('/tmp') / f'cupidfm_trash_{process.pid}'
+        self.addCleanup(shutil.rmtree, trash_dir, True)
+        stdout, stderr = process.communicate()
+        self.assertEqual(process.returncode, 0, stderr)
+        return [Path(line) for line in stdout.splitlines()]
+
+    def test_trash_rejects_truncated_undo_path(self):
+        source = self.root / 'source'
+        source.write_text('data')
+        process = subprocess.Popen([str(DRIVER), 'trash-small', str(source)],
+                                   cwd=self.root, env=self.env)
+        self.addCleanup(shutil.rmtree, Path('/tmp') / f'cupidfm_trash_{process.pid}', True)
+        self.assertNotEqual(process.wait(), 0)
+        self.assertEqual(source.read_text(), 'data')
+
+    def test_trash_accepts_dangling_symlink(self):
+        source = self.root / 'broken'
+        source.symlink_to('missing-target')
+        [destination] = self.trash([source])
+        self.assertFalse(source.is_symlink())
+        self.assertTrue(destination.is_symlink())
+        self.assertEqual(os.readlink(destination), 'missing-target')
+
+    def test_trash_preserves_previous_dangling_symlink(self):
+        first = self.root / 'first'
+        second = self.root / 'second'
+        first.mkdir()
+        second.mkdir()
+        target = self.root / 'target'
+        target.write_text('target')
+        (first / 'item').symlink_to(target)
+        (second / 'item').write_text('second')
+        destinations = self.trash([first / 'item', target, second / 'item'])
+        self.assertEqual(len(set(destinations)), 3)
+        self.assertTrue(destinations[0].is_symlink())
+        self.assertEqual(destinations[1].read_text(), 'target')
+        self.assertEqual(destinations[2].read_text(), 'second')
+
+    def test_trash_preserves_more_than_1000_same_named_files(self):
+        sources = []
+        for i in range(1001):
+            parent = self.root / str(i)
+            parent.mkdir()
+            source = parent / 'item'
+            source.write_text(str(i))
+            sources.append(source)
+        destinations = self.trash(sources)
+        self.assertEqual(len(set(destinations)), len(sources))
+        for i, destination in enumerate(destinations):
+            self.assertEqual(destination.read_text(), str(i))
 
     def test_missing_move_is_reported(self):
         self.assertNotEqual(self.run_command('move', 'missing', 'dest').returncode, 0)

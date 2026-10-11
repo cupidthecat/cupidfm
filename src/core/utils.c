@@ -427,7 +427,7 @@ static bool ensure_trash_dir(char *out_dir, size_t out_len) {
 
 bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
     struct stat path_stat;
-    if (stat(path, &path_stat) != 0) {
+    if (!path || !*path || lstat(path, &path_stat) != 0) {
         fprintf(stderr, "Error: Unable to get file/directory stats.\n");
         return false;
     }
@@ -446,12 +446,18 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
     if (n < 0 || (size_t)n >= sizeof(dst_path)) {
         return false;
     }
-    for (int attempt = 1; access(dst_path, F_OK) == 0 && attempt < 1000; attempt++) {
-        n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", trash_dir, base, attempt);
-        if (n < 0 || (size_t)n >= sizeof(dst_path)) {
-            return false;
+    for (unsigned attempt = 0; ; ++attempt) {
+        struct stat existing;
+        if (lstat(dst_path, &existing) != 0) {
+            if (errno != ENOENT) return false;
+            break;
         }
+        if (attempt == UINT_MAX) return false;
+        n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%u", trash_dir, base, attempt + 1);
+        if (n < 0 || (size_t)n >= sizeof(dst_path)) return false;
     }
+    // Never move an item if its undo path cannot be returned intact.
+    if (out_trashed_path && (out_len == 0 || strlen(dst_path) >= out_len)) return false;
 
     // Soft delete: move into per-session trash so we can undo.
     if (!file_command_move(path, dst_path)) {
