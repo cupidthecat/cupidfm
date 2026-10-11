@@ -1469,12 +1469,15 @@ bool editor_save_as(struct PluginManager *pm, const char *path) {
     return false;
 
   char full_path[MAX_PATH_LENGTH];
-  const char *save_path = path;
+  if (strlen(path) >= sizeof(full_path))
+    return false;
+  memcpy(full_path, path, strlen(path) + 1);
+  const char *save_path = full_path;
   if (path[0] != '/' && g_editor_path[0]) {
     // Treat relative Save As paths as relative to the current editor file's
     // directory (matches typical editor behavior and the file manager cwd).
     const char *slash = strrchr(g_editor_path, '/');
-    if (slash && slash != g_editor_path) {
+    if (slash) {
       size_t dir_len = (size_t)(slash - g_editor_path);
       if (dir_len + 1 + strlen(path) + 1 > sizeof(full_path))
         return false;
