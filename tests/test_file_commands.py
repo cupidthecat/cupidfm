@@ -56,6 +56,56 @@ class FileCommands(unittest.TestCase):
         source.write_text('data')
         self.assertNotEqual(self.run_command('copy', source, self.root/'dest').returncode, 0)
 
+    def test_move_preserves_dangling_destination_symlink(self):
+        source = self.root / 'source'
+        source.write_text('data')
+        dest = self.root / 'destination'
+        dest.symlink_to('missing-target')
+        result = self.run_command('move', source, dest)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(dest.is_symlink())
+        self.assertEqual(os.readlink(dest), 'missing-target')
+        self.assertEqual(source.read_text(), 'data')
+
+    def test_cut_paste_preserves_dangling_destination_symlink(self):
+        self.fake('xclip', 'if [ "$3" = "-i" ]; then cat > clipboard; else cat clipboard; fi')
+        source = self.root / 'source'
+        source.write_text('data')
+        dest = self.root / 'destination'
+        dest.mkdir()
+        (dest / 'source').symlink_to('missing-target')
+        self.assertEqual(self.run_command('cut-clipboard', source).returncode, 0)
+        result = self.run_command('paste', dest)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((dest / 'source').is_symlink())
+        self.assertEqual((dest / 'source (1)').read_text(), 'data')
+        self.assertFalse(source.exists())
+
+    def test_copy_symlink_preserves_dangling_destination(self):
+        source = self.root / 'source'
+        source.symlink_to('source-target')
+        dest = self.root / 'destination'
+        dest.symlink_to('destination-target')
+        result = self.run_command('copy', source, dest)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(os.readlink(dest), 'destination-target')
+        self.assertEqual(os.readlink(source), 'source-target')
+
+    def test_paste_respects_existing_numbered_symlinks(self):
+        self.fake('xclip', 'if [ "$3" = "-i" ]; then cat > clipboard; else cat clipboard; fi')
+        source = self.root / 'source.txt'
+        source.write_text('data')
+        dest = self.root / 'destination'
+        dest.mkdir()
+        for name in ['source.txt', 'source (1).txt']:
+            (dest / name).symlink_to('missing-target')
+        self.assertEqual(self.run_command('copy-clipboard', source).returncode, 0)
+        result = self.run_command('paste', dest)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((dest / 'source (2).txt').read_text(), 'data')
+        self.assertTrue((dest / 'source.txt').is_symlink())
+        self.assertTrue((dest / 'source (1).txt').is_symlink())
+
     def test_missing_move_is_reported(self):
         self.assertNotEqual(self.run_command('move', 'missing', 'dest').returncode, 0)
 

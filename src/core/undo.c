@@ -66,7 +66,8 @@ static bool move_path(const char *src, const char *dst, char *err, size_t err_le
         return false;
     }
     if (strcmp(src, dst) == 0) return true;
-    if (access(dst, F_OK) == 0) {
+    struct stat destination_stat;
+    if (lstat(dst, &destination_stat) == 0 || errno != ENOENT) {
         if (err && err_len) snprintf(err, err_len, "Destination already exists");
         return false;
     }
@@ -111,7 +112,8 @@ static bool copy_path(const char *src, const char *dst, char *err, size_t err_le
         if (err && err_len) snprintf(err, err_len, "Invalid copy paths");
         return false;
     }
-    if (access(dst, F_OK) == 0) {
+    struct stat destination_stat;
+    if (lstat(dst, &destination_stat) == 0 || errno != ENOENT) {
         if (err && err_len) snprintf(err, err_len, "Destination already exists");
         return false;
     }
