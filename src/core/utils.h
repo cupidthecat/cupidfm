@@ -24,7 +24,7 @@ void reload_directory_lazy(Vector *files, const char *current_directory, size_t 
 void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas, size_t *files_loaded, size_t total_files);
 
 // short cut utils
-void copy_to_clipboard(const char *path);
+bool copy_to_clipboard(const char *path);
 
 typedef enum {
     PASTE_KIND_NONE = 0,
@@ -45,9 +45,8 @@ void paste_log_free(PasteLog *log);
 // If log is non-NULL, it will be filled with per-item src/dst info (best effort).
 int paste_from_clipboard(const char *target_directory, const char *filename, PasteLog *log);
 
-// For cut operations: moves the item out of view into temporary storage and writes to clipboard.
-// On success, fills out_storage_path with the path in temp storage (if provided).
-void cut_and_paste(const char *path, char *out_storage_path, size_t out_len);
+// Record a cut without moving or deleting the source. Paste performs the move.
+bool cut_to_clipboard(const char *path);
 
 // Soft-delete to session trash (to support undo). On success, fills out_trashed_path.
 bool delete_item(const char *path, char *out_trashed_path, size_t out_len);
