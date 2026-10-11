@@ -1262,102 +1262,6 @@ bool editor_get_selection(int *start_line, int *start_col, int *end_line,
   return true;
 }
 
-bool editor_insert_text(const char *text) {
-  if (!is_editing || !g_editor_buffer || !text)
-    return false;
-
-  int line = g_editor_cursor_line;
-  int col = g_editor_cursor_col;
-
-  if (line < 0 || line >= g_editor_buffer->num_lines)
-    return false;
-
-  char *curr_line = g_editor_buffer->lines[line];
-  if (!curr_line)
-    curr_line = "";
-
-  // Handle newlines in the text
-  const char *p = text;
-  const char *line_start = text;
-
-  while (*p) {
-    if (*p == '\n') {
-      // Insert text up to newline
-      size_t insert_len = p - line_start;
-      if (insert_len > 0 || p == line_start) {
-        int curr_len = strlen(curr_line);
-        char *new_line = malloc(curr_len + insert_len + 1);
-        if (!new_line)
-          return false;
-
-        memcpy(new_line, curr_line, col);
-        memcpy(new_line + col, line_start, insert_len);
-        memcpy(new_line + col + insert_len, curr_line + col,
-               curr_len - col + 1);
-
-        free(g_editor_buffer->lines[line]);
-        g_editor_buffer->lines[line] = new_line;
-        curr_line = new_line;
-        col += insert_len;
-      }
-
-      // Split line at cursor
-      char *rest = strdup(curr_line + col);
-      if (!rest)
-        return false;
-      curr_line[col] = '\0';
-
-      // Insert new line
-      if (g_editor_buffer->num_lines >= g_editor_buffer->capacity) {
-        g_editor_buffer->capacity *= 2;
-        char **tmp = realloc(g_editor_buffer->lines,
-                             sizeof(char *) * g_editor_buffer->capacity);
-        if (!tmp) {
-          free(rest);
-          return false;
-        }
-        g_editor_buffer->lines = tmp;
-      }
-
-      memmove(&g_editor_buffer->lines[line + 2],
-              &g_editor_buffer->lines[line + 1],
-              (g_editor_buffer->num_lines - line - 1) * sizeof(char *));
-      g_editor_buffer->lines[line + 1] = rest;
-      g_editor_buffer->num_lines++;
-
-      line++;
-      col = 0;
-      curr_line = rest;
-      line_start = p + 1;
-    }
-    p++;
-  }
-
-  // Insert remaining text
-  size_t insert_len = p - line_start;
-  if (insert_len > 0) {
-    int curr_len = strlen(curr_line);
-    char *new_line = malloc(curr_len + insert_len + 1);
-    if (!new_line)
-      return false;
-
-    memcpy(new_line, curr_line, col);
-    memcpy(new_line + col, line_start, insert_len);
-    memcpy(new_line + col + insert_len, curr_line + col, curr_len - col + 1);
-
-    free(g_editor_buffer->lines[line]);
-    g_editor_buffer->lines[line] = new_line;
-    col += insert_len;
-  }
-
-  // Update cursor
-  g_editor_cursor_line = line;
-  g_editor_cursor_col = col;
-  g_editor_dirty = true;
-
-  return true;
-}
-
 static bool editor_valid_range(int start_line, int start_col,
                                int end_line, int end_col) {
   if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines ||
@@ -1372,74 +1276,87 @@ static bool editor_valid_range(int start_line, int start_col,
          (size_t)(end_col - 1) <= strlen(last);
 }
 
-bool editor_replace_text(int start_line, int start_col, int end_line,
-                         int end_col, const char *text) {
+/* Prepare replacement lines before changing the live editor buffer. */
+static bool editor_apply_text(int start_line, int start_col, int end_line,
+                              int end_col, const char *text) {
   if (!editor_valid_range(start_line, start_col, end_line, end_col))
     return false;
-
-  // Validate one-based coordinates before subtracting to avoid signed overflow.
-  start_line--;
-  start_col--;
-  end_line--;
-  end_col--;
-
-  // Delete the range
-  if (start_line == end_line) {
-    // Same line - delete portion
-    char *line = g_editor_buffer->lines[start_line];
+  if (!text)
+    text = "";
+  int first = start_line - 1, last = end_line - 1;
+  size_t prefix = (size_t)(start_col - 1);
+  const char *suffix = g_editor_buffer->lines[last] + end_col - 1;
+  size_t suffix_len = strlen(suffix);
+  size_t added = 1;
+  for (const char *p = text; *p; ++p) {
+    if (*p == '\n' && ++added > INT_MAX)
+      return false;
+  }
+  size_t kept = (size_t)g_editor_buffer->num_lines - (last - first + 1);
+  if (added > (size_t)INT_MAX - kept ||
+      added + kept > (size_t)-1 / sizeof(char *))
+    return false;
+  size_t count = kept + added;
+  char **lines = calloc(count, sizeof(*lines));
+  if (!lines)
+    return false;
+  const char *segment = text;
+  size_t built = 0, final_col = 0;
+  for (size_t i = 0; i < added; ++i) {
+    const char *newline = strchr(segment, '\n');
+    size_t len = newline ? (size_t)(newline - segment) : strlen(segment);
+    size_t before = i == 0 ? prefix : 0;
+    size_t after = i + 1 == added ? suffix_len : 0;
+    if (len > INT_MAX || before > (size_t)INT_MAX - len ||
+        after > (size_t)INT_MAX - before - len)
+      goto failed;
+    char *line = malloc(before + len + after + 1);
     if (!line)
-      return false;
-    int len = strlen(line);
-    if (start_col > len || end_col > len)
-      return false;
-
-    char *new_line = malloc(len - (end_col - start_col) + 1);
-    if (!new_line)
-      return false;
-
-    memcpy(new_line, line, start_col);
-    strcpy(new_line + start_col, line + end_col);
-
-    free(g_editor_buffer->lines[start_line]);
-    g_editor_buffer->lines[start_line] = new_line;
-  } else {
-    // Multiple lines - merge first and last, delete middle
-    char *first = g_editor_buffer->lines[start_line];
-    char *last = g_editor_buffer->lines[end_line];
-
-    char *merged = malloc(start_col + strlen(last + end_col) + 1);
-    if (!merged)
-      return false;
-
-    memcpy(merged, first, start_col);
-    strcpy(merged + start_col, last + end_col);
-
-    // Free deleted lines
-    for (int i = start_line; i <= end_line; i++) {
-      free(g_editor_buffer->lines[i]);
-    }
-
-    // Shift remaining lines
-    g_editor_buffer->lines[start_line] = merged;
-    int lines_deleted = end_line - start_line;
-    memmove(&g_editor_buffer->lines[start_line + 1],
-            &g_editor_buffer->lines[end_line + 1],
-            (g_editor_buffer->num_lines - end_line - 1) * sizeof(char *));
-    g_editor_buffer->num_lines -= lines_deleted;
+      goto failed;
+    if (before)
+      memcpy(line, g_editor_buffer->lines[first], before);
+    memcpy(line + before, segment, len);
+    if (after)
+      memcpy(line + before + len, suffix, after);
+    line[before + len + after] = '\0';
+    lines[first + i] = line;
+    ++built;
+    final_col = before + len;
+    if (newline)
+      segment = newline + 1;
   }
-
-  // Set cursor to start of deleted range
-  g_editor_cursor_line = start_line;
-  g_editor_cursor_col = start_col;
-
-  // Insert new text
-  if (text && *text) {
-    if (!editor_insert_text(text))
-      return false;
-  }
-
+  memcpy(lines, g_editor_buffer->lines, (size_t)first * sizeof(*lines));
+  size_t tail = (size_t)g_editor_buffer->num_lines - last - 1;
+  memcpy(lines + first + added, g_editor_buffer->lines + last + 1,
+         tail * sizeof(*lines));
+  for (int i = first; i <= last; ++i)
+    free(g_editor_buffer->lines[i]);
+  free(g_editor_buffer->lines);
+  g_editor_buffer->lines = lines;
+  g_editor_buffer->num_lines = (int)count;
+  g_editor_buffer->capacity = (int)count;
+  g_editor_cursor_line = first + (int)added - 1;
+  g_editor_cursor_col = (int)final_col;
   g_editor_dirty = true;
   return true;
+failed:
+  for (size_t i = 0; i < built; ++i)
+    free(lines[first + i]);
+  free(lines);
+  return false;
+}
+
+bool editor_insert_text(const char *text) {
+  if (!text || g_editor_cursor_line < 0 || g_editor_cursor_line == INT_MAX ||
+      g_editor_cursor_col < 0 || g_editor_cursor_col == INT_MAX)
+    return false;
+  return editor_apply_text(g_editor_cursor_line + 1, g_editor_cursor_col + 1,
+                           g_editor_cursor_line + 1, g_editor_cursor_col + 1, text);
+}
+
+bool editor_replace_text(int start_line, int start_col, int end_line,
+                         int end_col, const char *text) {
+  return editor_apply_text(start_line, start_col, end_line, end_col, text);
 }
 
 bool editor_delete_range(int start_line, int start_col, int end_line,

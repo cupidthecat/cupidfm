@@ -16,3 +16,5 @@ log.txt
 /tests/test_history_allocations
 
 /tests/test_editor_ranges
+
+/tests/test_editor_allocations
