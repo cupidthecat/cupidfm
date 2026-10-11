@@ -299,45 +299,22 @@ bool copy_to_clipboard(const char *path) {
 // Helper function to generate a unique filename in target_directory.
 // If target_directory/filename exists, the function returns a new filename
 // such as "filename (1).ext", "filename (2).ext", etc.
-static void generate_unique_filename(const char *target_directory, const char *filename, char *unique_name, size_t unique_size) {
-    char target_path[PATH_MAX];
-    // Create the initial target path.
-    snprintf(target_path, sizeof(target_path), "%s/%s", target_directory, filename);
-    
-    // If no file exists with this name, use it.
-    if (access(target_path, F_OK) != 0) {
-        strncpy(unique_name, filename, unique_size);
-        unique_name[unique_size - 1] = '\0';
-        return;
-    }
-    
-    // Otherwise, split the filename into base and extension.
-    char base[PATH_MAX];
-    char ext[PATH_MAX];
+static bool generate_unique_filename(const char *target_directory, const char *filename, char *unique_name, size_t unique_size) {
+    if (!target_directory || !filename || !unique_name || unique_size == 0) return false;
     const char *dot = strrchr(filename, '.');
-    if (dot != NULL) {
-        size_t base_len = dot - filename;
-        if (base_len >= sizeof(base))
-            base_len = sizeof(base) - 1;
-        strncpy(base, filename, base_len);
-        base[base_len] = '\0';
-        strncpy(ext, dot, sizeof(ext));
-        ext[sizeof(ext) - 1] = '\0';
-    } else {
-        strncpy(base, filename, sizeof(base));
-        base[sizeof(base) - 1] = '\0';
-        ext[0] = '\0';
-    }
-    
-    // Append a counter until we get a name that does not exist.
-    int counter = 1;
-    while (1) {
-        snprintf(unique_name, unique_size, "%s (%d)%s", base, counter, ext);
-        snprintf(target_path, sizeof(target_path), "%s/%s", target_directory, unique_name);
-        if (access(target_path, F_OK) != 0) {
-            break;
-        }
-        counter++;
+    size_t base_len = dot ? (size_t)(dot - filename) : strlen(filename);
+    if (base_len > INT_MAX) return false;
+    const char *ext = dot ? dot : "";
+    for (unsigned counter = 0; ; ++counter) {
+        int n = counter == 0 ? snprintf(unique_name, unique_size, "%s", filename) :
+            snprintf(unique_name, unique_size, "%.*s (%u)%s", (int)base_len, filename, counter, ext);
+        if (n < 0 || (size_t)n >= unique_size) return false;
+        char target_path[PATH_MAX];
+        n = snprintf(target_path, sizeof(target_path), "%s/%s", target_directory, unique_name);
+        if (n < 0 || (size_t)n >= sizeof(target_path)) return false;
+        struct stat st;
+        if (lstat(target_path, &st) != 0) return errno == ENOENT;
+        if (counter == UINT_MAX) return false;
     }
 }
 
@@ -419,7 +396,7 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         struct stat st;
         if (lstat(source, &st) != 0) continue;
         char unique[512], destination[PATH_MAX];
-        generate_unique_filename(target_directory, name, unique, sizeof(unique));
+        if (!generate_unique_filename(target_directory, name, unique, sizeof(unique))) continue;
         int n = snprintf(destination, sizeof(destination), "%s/%s", target_directory, unique);
         if (n < 0 || (size_t)n >= sizeof(destination)) continue;
         bool ok = paths.cut ? file_command_move(source, destination) :
