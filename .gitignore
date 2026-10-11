@@ -20,3 +20,5 @@ log.txt
 /tests/test_editor_allocations
 
 /tests/test_editor_loading
+
+/tests/test_editor_save

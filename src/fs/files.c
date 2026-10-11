@@ -3131,42 +3131,23 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
     else if (ch == kb->edit_save) {
       if (editor_block_if_readonly(notification_window, &last_notif_check))
         continue;
-      fclose(file);
-      file = fopen(g_editor_path, "w");
-      if (!file) {
-        mvwprintw(notification_window, 0, 0, "Error opening file for writing");
+      if (file) {
+        fclose(file);
+        file = NULL;
+      }
+      bool saved = editor_save_current(pm);
+      file = fopen(g_editor_path, "r+");
+      if (!file)
+        file = fopen(g_editor_path, "r");
+      werase(notification_window);
+      if (!saved) {
+        mvwprintw(notification_window, 0, 0, "Unable to save: %s", g_editor_path);
         wrefresh(notification_window);
         continue;
       }
-      // Write lines
-      for (int i = 0; i < text_buffer.num_lines; i++) {
-        if (fprintf(file, "%s\n", text_buffer.lines[i]) < 0) {
-          mvwprintw(notification_window, 0, 0, "Error writing to file");
-          wrefresh(notification_window);
-          break;
-        }
-      }
-      fflush(file);
-      fclose(file);
-
-      // Reopen in read+write (optional, if you want to keep editing)
-      file = fopen(g_editor_path, "r+");
-      if (!file) {
-        mvwprintw(notification_window, 0, 0,
-                  "Error reopening file for read+write");
-        wrefresh(notification_window);
-      }
-
-      werase(notification_window);
       mvwprintw(notification_window, 0, 0, "File saved: %s", g_editor_path);
       wrefresh(notification_window);
       editor_dirty = false;
-      g_editor_dirty = false;
-
-      // Notify plugins that the file was saved
-      if (pm) {
-        plugins_notify_editor_save(pm, g_editor_path);
-      }
     }
 
     // 3) Move up
@@ -3511,42 +3492,15 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
       editor_undo_record(&um, &text_buffer, cursor_line, cursor_col,
                          start_line);
       g_sel_active = false;
-      char *current_line = text_buffer.lines[cursor_line];
-      // int line_len = (int)strlen(current_line);
-
-      // Split the line at cursor_col
-      char *new_line = strdup(current_line + cursor_col);
-      if (!new_line) {
+      g_editor_cursor_line = cursor_line;
+      g_editor_cursor_col = cursor_col;
+      if (!editor_insert_text("\n")) {
         mvwprintw(notification_window, 1, 2, "Memory allocation error");
         wrefresh(notification_window);
         continue;
       }
-      current_line[cursor_col] = '\0';
-
-      // Realloc if needed
-      if (text_buffer.num_lines >= text_buffer.capacity) {
-        text_buffer.capacity *= 2;
-        char **tmp =
-            realloc(text_buffer.lines, sizeof(char *) * text_buffer.capacity);
-        if (!tmp) {
-          mvwprintw(notification_window, 1, 2, "Memory allocation error");
-          wrefresh(notification_window);
-          fclose(file);
-          return;
-        }
-        text_buffer.lines = tmp;
-      }
-
-      // Shift lines down
-      for (int i = text_buffer.num_lines; i > cursor_line + 1; i--) {
-        text_buffer.lines[i] = text_buffer.lines[i - 1];
-      }
-      text_buffer.lines[cursor_line + 1] = new_line;
-      text_buffer.num_lines++;
-
-      // Move cursor to new line
-      cursor_line++;
-      cursor_col = 0;
+      cursor_line = g_editor_cursor_line;
+      cursor_col = g_editor_cursor_col;
       editor_dirty = true;
 
       // Notify plugins of the newline insertion
@@ -3666,7 +3620,8 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
   g_editor_path[0] = '\0';
   g_editor_buffer = NULL;
   g_editor_dirty = false;
-  fclose(file);
+  if (file)
+    fclose(file);
   curs_set(0);
 
   // Restore terminal mode after entering editor.
