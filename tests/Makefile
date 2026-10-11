@@ -75,7 +75,7 @@ test_editor_allocations: test_editor_allocations.c ../src/fs/files.c
 
 test_editor_save: test_editor_save.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -o $@ test_editor_save.c $(LIBS)
+		-Wl,--gc-sections -Wl,--wrap=fopen -o $@ test_editor_save.c $(LIBS)
 
 test_editor_ranges: test_editor_ranges.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
