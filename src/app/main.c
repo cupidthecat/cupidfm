@@ -101,6 +101,29 @@ static void banner_help_key_to_string(const KeyBindings *kb, char *out, size_t o
     snprintf(out, out_sz, "%s", keycode_to_string(hk));
 }
 
+static bool selection_to_clipboard(AppState *state, bool cut, size_t *copied) {
+    Vector *files = active_files(state);
+    size_t count = state->select_all_active ? Vector_len(*files) : 1;
+    if (!count) return false;
+    char **paths = calloc(count, sizeof(char *));
+    if (!paths) return false;
+    bool ok = true;
+    for (size_t i = 0; i < count; ++i) {
+        const char *name = state->select_all_active ?
+            FileAttr_get_name((FileAttr)files->el[i]) : state->selected_entry;
+        if (!name || !*name) { ok = false; break; }
+        paths[i] = malloc(MAX_PATH_LENGTH);
+        if (!paths[i]) { ok = false; break; }
+        int n = snprintf(paths[i], MAX_PATH_LENGTH, "%s/%s", state->current_directory, name);
+        if (n < 0 || n >= MAX_PATH_LENGTH) { ok = false; break; }
+    }
+    if (ok) ok = clipboard_set_paths((const char *const *)paths, count, cut);
+    for (size_t i = 0; i < count; ++i) free(paths[i]);
+    free(paths);
+    if (ok && copied) *copied = count;
+    return ok;
+}
+
 int main() {
     // Initialize ncurses
     setlocale(LC_ALL, "");
@@ -1066,63 +1089,19 @@ int main() {
 	                }
 	            }
 
-            // 7) COPY
-            else if (ch == kb.key_copy) {
+            // Copy and cut only publish paths. Paste performs the file operation.
+            else if (ch == kb.key_copy || ch == kb.key_cut) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        Vector *files = active_files(&state);
-                        size_t total = Vector_len(*files);
-                        if (total == 0) {
-                            show_notification(notifwin, "Nothing to copy");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-
-                        char tmp_path[256];
-                        snprintf(tmp_path, sizeof(tmp_path), "/tmp/cupidfm_clip_%d", getpid());
-                        FILE *fp = fopen(tmp_path, "w");
-                        if (!fp) {
-                            show_notification(notifwin, "Unable to write clipboard temp file");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-
-                        fprintf(fp, "CUPIDFM_CLIP_V2\n");
-                        fprintf(fp, "OP=COPY\n");
-                        fprintf(fp, "N=%zu\n", total);
-                        for (size_t i = 0; i < total; i++) {
-                            FileAttr fa = (FileAttr)files->el[i];
-                            const char *name = FileAttr_get_name(fa);
-                            if (!name || !*name) continue;
-                            char full_path[MAX_PATH_LENGTH];
-                            path_join(full_path, state.current_directory, name);
-                            fprintf(fp, "%d\t%s\t%s\n", FileAttr_is_dir(fa) ? 1 : 0, full_path, name);
-                        }
-                        fclose(fp);
-
-                        if (!clipboard_set_from_file(tmp_path)) {
-                            unlink(tmp_path);
-                            show_notification(notifwin, "Unable to copy to clipboard");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-                        unlink(tmp_path);
-
-                        // Enable paste even though legacy paste uses copied_filename.
-                        strncpy(copied_filename, "MULTI", MAX_PATH_LENGTH);
-                        show_notification(notifwin, "Copied %zu items", total);
-                        should_clear_notif = false;
+                    size_t count = 0;
+                    bool cut = ch == kb.key_cut;
+                    if (!selection_to_clipboard(&state, cut, &count)) {
+                        show_notification(notifwin, "Unable to %s to clipboard", cut ? "cut" : "copy");
+                    } else {
+                        snprintf(copied_filename, MAX_PATH_LENGTH, "%s", count == 1 ? state.selected_entry : "MULTI");
+                        show_notification(notifwin, "%s %zu item(s) to clipboard", cut ? "Cut" : "Copied", count);
                         state.select_all_active = false;
                         g_select_all_highlight = false;
-                        goto input_done;
                     }
-                    char full_path[MAX_PATH_LENGTH];
-                    path_join(full_path, state.current_directory, state.selected_entry);
-                    copy_to_clipboard(full_path);
-                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
-                    werase(notifwin);
-                    show_notification(notifwin, "Copied to clipboard: %s", state.selected_entry);
-                    wrefresh(notifwin);
                     should_clear_notif = false;
                 }
             }
@@ -1174,148 +1153,6 @@ int main() {
                     } else {
                         show_notification(notifwin, "Pasted %d items", pasted);
                     }
-                    wrefresh(notifwin);
-                    should_clear_notif = false;
-                }
-            }
-
-            // 9) CUT 
-            else if (ch == kb.key_cut) {
-                if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        Vector *files = active_files(&state);
-                        size_t total = Vector_len(*files);
-                        if (total == 0) {
-                            show_notification(notifwin, "Nothing to cut");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-
-                        char storage_dir[MAX_PATH_LENGTH];
-                        if (!ensure_cut_storage_dir(storage_dir, sizeof(storage_dir))) {
-                            show_notification(notifwin, "Unable to create cut storage");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-
-                        char tmp_path[256];
-                        snprintf(tmp_path, sizeof(tmp_path), "/tmp/cupidfm_clip_%d", getpid());
-                        FILE *fp = fopen(tmp_path, "w");
-                        if (!fp) {
-                            show_notification(notifwin, "Unable to write clipboard temp file");
-                            should_clear_notif = false;
-                            goto input_done;
-                        }
-
-                        fprintf(fp, "CUPIDFM_CLIP_V2\n");
-                        fprintf(fp, "OP=CUT\n");
-                        fprintf(fp, "N=%zu\n", total);
-
-                        int moved = 0;
-                        UndoItem *undo_items = (UndoItem *)calloc(total > 0 ? total : 1, sizeof(UndoItem));
-                        for (size_t i = 0; i < total; i++) {
-                            FileAttr fa = (FileAttr)files->el[i];
-                            const char *name = FileAttr_get_name(fa);
-                            if (!name || !*name) continue;
-
-                            char src_path[MAX_PATH_LENGTH];
-                            path_join(src_path, state.current_directory, name);
-
-                            // Choose a unique destination inside the cut storage dir.
-                            char dst_path[MAX_PATH_LENGTH];
-                            int n = snprintf(dst_path, sizeof(dst_path), "%s/%s", storage_dir, name);
-                            if (n < 0 || (size_t)n >= sizeof(dst_path)) {
-                                continue;
-                            }
-                            for (int attempt = 1; access(dst_path, F_OK) == 0 && attempt < 1000; attempt++) {
-                                n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%d", storage_dir, name, attempt);
-                                if (n < 0 || (size_t)n >= sizeof(dst_path)) {
-                                    dst_path[0] = '\0';
-                                    break;
-                                }
-                            }
-                            if (!dst_path[0]) {
-                                continue;
-                            }
-
-                            if (!file_command_move(src_path, dst_path)) {
-                                continue;
-                            }
-
-                            fprintf(fp, "%d\t%s\t%s\n", FileAttr_is_dir(fa) ? 1 : 0, dst_path, name);
-                            if (undo_items) {
-                                undo_items[moved].src = strdup(src_path);
-                                undo_items[moved].dst = strdup(dst_path);
-                            }
-                            moved++;
-                        }
-                        fclose(fp);
-
-                        if (moved == 0 || !clipboard_set_from_file(tmp_path)) {
-                            unlink(tmp_path);
-                            show_notification(notifwin, "Unable to cut to clipboard");
-                            should_clear_notif = false;
-                            if (undo_items) {
-                                for (int i = 0; i < moved; i++) {
-                                    free(undo_items[i].src);
-                                    free(undo_items[i].dst);
-                                }
-                                free(undo_items);
-                            }
-                            goto input_done;
-                        }
-                        unlink(tmp_path);
-
-                        strncpy(copied_filename, "MULTI", MAX_PATH_LENGTH);
-
-                        if (undo_items && moved > 0) {
-                            if (!undo_state_set_owned(&state.undo_state, UNDO_OP_MOVE, undo_items, (size_t)moved)) {
-                                for (int i = 0; i < moved; i++) {
-                                    free(undo_items[i].src);
-                                    free(undo_items[i].dst);
-                                }
-                                free(undo_items);
-                            }
-                        } else if (undo_items) {
-                            free(undo_items);
-                        }
-
-                        // Reload directory to reflect the cut items
-                        char saved_query[MAX_PATH_LENGTH];
-                        search_before_reload(&state, saved_query);
-                        reload_directory(&state.files, state.current_directory);
-                        state.dir_window_cas.num_files = Vector_len(state.files);
-                        state.lazy_load.files_loaded = Vector_len(state.files);
-                        state.lazy_load.total_files = state.lazy_load.files_loaded;
-                        search_after_reload(&state, &state.dir_window_cas, saved_query);
-
-                        show_notification(notifwin, "Cut %d items", moved);
-                        should_clear_notif = false;
-                        state.select_all_active = false;
-                        g_select_all_highlight = false;
-                        goto input_done;
-                    }
-                    char full_path[MAX_PATH_LENGTH];
-                    path_join(full_path, state.current_directory, state.selected_entry);
-                    char storage_path[MAX_PATH_LENGTH] = {0};
-                    cut_and_paste(full_path, storage_path, sizeof(storage_path));
-                    strncpy(copied_filename, state.selected_entry, MAX_PATH_LENGTH);
-
-                    if (storage_path[0] && access(storage_path, F_OK) == 0) {
-                        (void)undo_state_set_single(&state.undo_state, UNDO_OP_MOVE, full_path, storage_path);
-                    }
-
-                    // Reload directory to reflect the cut file
-                    char saved_query[MAX_PATH_LENGTH];
-                    search_before_reload(&state, saved_query);
-                    reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
-                    state.lazy_load.files_loaded = Vector_len(state.files);
-                    state.lazy_load.total_files = state.lazy_load.files_loaded;
-                    search_after_reload(&state, &state.dir_window_cas, saved_query);
-
-                    werase(notifwin);
-                    show_notification(notifwin, "Cut to clipboard: %s", state.selected_entry);
                     wrefresh(notifwin);
                     should_clear_notif = false;
                 }

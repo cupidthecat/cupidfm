@@ -292,36 +292,8 @@ void path_join(char *result, const char *base, const char *extra) {
 }
 
 // copy file to users clipboard
-void copy_to_clipboard(const char *path) {
-    struct stat path_stat;
-    if (stat(path, &path_stat) != 0) {
-        fprintf(stderr, "Error: Unable to get file/directory stats.\n");
-        return;
-    }
-
-    // Create a temporary file to store path
-    char temp_path[512];
-    snprintf(temp_path, sizeof(temp_path), "/tmp/cupidfm_copy_%d", getpid());
-    
-    FILE *temp = fopen(temp_path, "w");
-    if (!temp) {
-        fprintf(stderr, "Error: Unable to create temporary file.\n");
-        return;
-    }
-
-    // Write the path and whether it's a directory
-    fprintf(temp, "%s\n%d", path, S_ISDIR(path_stat.st_mode));
-    fclose(temp);
-
-    // Copy the temp file content to clipboard
-    if (!clipboard_set_from_file(temp_path)) {
-        fprintf(stderr, "Error: Unable to copy to clipboard.\n");
-        unlink(temp_path);
-        return;
-    }
-
-    // Clean up
-    unlink(temp_path);
+bool copy_to_clipboard(const char *path) {
+    return clipboard_set_paths(&path, 1, false);
 }
 
 // Helper function to generate a unique filename in target_directory.
@@ -421,183 +393,41 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
     }
     rewind(temp);
 
-    // Try new multi-item clipboard format first.
-    char first_line[512] = {0};
-    if (!fgets(first_line, sizeof(first_line), temp)) {
-        fclose(temp);
-        return -1;
-    }
-    first_line[strcspn(first_line, "\n")] = '\0';
-
-    if (strcmp(first_line, "CUPIDFM_CLIP_V2") == 0) {
-        char op_line[64] = {0};
-        char n_line[64] = {0};
-        if (!fgets(op_line, sizeof(op_line), temp) || !fgets(n_line, sizeof(n_line), temp)) {
-            fclose(temp);
-            return -1;
-        }
-        op_line[strcspn(op_line, "\n")] = '\0';
-        n_line[strcspn(n_line, "\n")] = '\0';
-
-        const char *op = NULL;
-        if (strncmp(op_line, "OP=", 3) == 0) op = op_line + 3;
-        long n = -1;
-        if (strncmp(n_line, "N=", 2) == 0) n = strtol(n_line + 2, NULL, 10);
-        if (!op || n <= 0) {
-            fclose(temp);
-            return -1;
-        }
-
-        bool is_cut = (strcmp(op, "CUT") == 0);
-        PasteKind kind = is_cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
-        int pasted = 0;
-        for (long i = 0; i < n; i++) {
-            char line[1024] = {0};
-            if (!fgets(line, sizeof(line), temp)) break;
-            line[strcspn(line, "\n")] = '\0';
-
-            // Line format: <is_dir>\t<path>\t<name>
-            char *p1 = strchr(line, '\t');
-            if (!p1) continue;
-            *p1++ = '\0';
-            char *p2 = strchr(p1, '\t');
-            if (!p2) continue;
-            *p2++ = '\0';
-
-            int is_directory = atoi(line);
-            const char *source_path = p1;
-            const char *name = p2;
-            if (!source_path || !*source_path || !name || !*name) continue;
-
-            char unique_filename[512];
-            generate_unique_filename(target_directory, name, unique_filename, sizeof(unique_filename));
-
-            char dst_full[PATH_MAX];
-            snprintf(dst_full, sizeof(dst_full), "%s/%s", target_directory, unique_filename);
-
-            if (is_cut) {
-                if (!file_command_move(source_path, dst_full)) {
-                    fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
-                    continue;
-                }
-                if (!paste_log_append(log, kind, source_path, dst_full)) {
-                    paste_log_free(log);
-                    log = NULL;
-                }
-            } else {
-                if (!file_command_copy(source_path, dst_full, is_directory != 0)) {
-                    fprintf(stderr, "Error: Unable to copy file.\n");
-                    continue;
-                }
-                if (!paste_log_append(log, kind, source_path, dst_full)) {
-                    paste_log_free(log);
-                    log = NULL;
-                }
-            }
-            pasted++;
-        }
-
-        fclose(temp);
-        return pasted;
-    }
-
-    // Legacy single-item clipboard format (rewind and parse the old way).
-    rewind(temp);
-    char source_path[512];
-    int is_directory;
-    char operation[10] = {0};
-
-    if (fscanf(temp, "%511[^\n]\n%d\n%9s", source_path, &is_directory, operation) < 2) {
+    ClipboardPaths paths;
+    if (!clipboard_read_paths(temp, &paths)) {
         fclose(temp);
         return -1;
     }
     fclose(temp);
-
-    // Check if this is a cut operation.
-    bool is_cut = (operation[0] == 'C' && operation[1] == 'U' && operation[2] == 'T');
-    PasteKind kind = is_cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
-
-    // Generate a unique file name if one already exists in target_directory.
-    char unique_filename[512];
-    const char *use_name = filename;
-    if (!use_name || !*use_name) {
-        const char *slash = strrchr(source_path, '/');
-        use_name = slash ? slash + 1 : source_path;
-    }
-    generate_unique_filename(target_directory, use_name, unique_filename, sizeof(unique_filename));
-
-    char dst_full[PATH_MAX];
-    snprintf(dst_full, sizeof(dst_full), "%s/%s", target_directory, unique_filename);
-
-    if (is_cut) {
-        // Get the temporary storage path (for cut operations).
-        char temp_storage[MAX_PATH_LENGTH];
-        snprintf(temp_storage, sizeof(temp_storage), "/tmp/cupidfm_cut_storage_%d", getpid());
-
-        // Move from temporary storage to target directory with the unique name.
-        if (!file_command_move(temp_storage, dst_full)) {
-            fprintf(stderr, "Error: Unable to move file from temporary storage.\n");
-            return -1;
+    (void)filename; /* Names come from validated source paths, not local clipboard state. */
+    PasteKind kind = paths.cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
+    int pasted = 0;
+    for (size_t i = 0; i < paths.count; ++i) {
+        const char *source = paths.paths[i];
+        const char *name = strrchr(source, '/');
+        name = name ? name + 1 : source;
+        struct stat st;
+        if (lstat(source, &st) != 0) continue;
+        char unique[512], destination[PATH_MAX];
+        generate_unique_filename(target_directory, name, unique, sizeof(unique));
+        int n = snprintf(destination, sizeof(destination), "%s/%s", target_directory, unique);
+        if (n < 0 || (size_t)n >= sizeof(destination)) continue;
+        bool ok = paths.cut ? file_command_move(source, destination) :
+                              file_command_copy(source, destination, S_ISDIR(st.st_mode));
+        if (!ok) continue;
+        if (!paste_log_append(log, kind, source, destination)) {
+            paste_log_free(log);
+            log = NULL;
         }
-        (void)paste_log_append(log, kind, temp_storage, dst_full);
-    } else {
-        // Handle regular copy operation.
-        if (!file_command_copy(source_path, dst_full, is_directory != 0)) {
-            fprintf(stderr, "Error: Unable to copy file.\n");
-            return -1;
-        }
-        (void)paste_log_append(log, kind, source_path, dst_full);
+        ++pasted;
     }
-
-    return 1;
+    clipboard_paths_free(&paths);
+    return pasted;
 }
 
-// cut and put into memory 
-void cut_and_paste(const char *path, char *out_storage_path, size_t out_len) {
-    struct stat path_stat;
-    if (stat(path, &path_stat) != 0) {
-        fprintf(stderr, "Error: Unable to get file/directory stats.\n");
-        return;
-    }
-
-    // Create a temporary file to store path with CUT flag
-    char temp_path[512];
-    snprintf(temp_path, sizeof(temp_path), "/tmp/cupidfm_cut_%d", getpid());
-    
-    FILE *temp = fopen(temp_path, "w");
-    if (!temp) {
-        fprintf(stderr, "Error: Unable to create temporary file.\n");
-        return;
-    }
-
-    // Write the path, whether it's a directory, and mark it as CUT operation
-    fprintf(temp, "%s\n%d\nCUT", path, S_ISDIR(path_stat.st_mode));
-    fclose(temp);
-
-    // Copy the temp file content to clipboard
-    if (!clipboard_set_from_file(temp_path)) {
-        fprintf(stderr, "Error: Unable to copy to clipboard.\n");
-        unlink(temp_path);
-        return;
-    }
-
-    // Clean up
-    unlink(temp_path);
-
-    // Hide the file from the current view by moving it to a temporary location
-    char temp_storage[MAX_PATH_LENGTH];
-    snprintf(temp_storage, sizeof(temp_storage), "/tmp/cupidfm_cut_storage_%d", getpid());
-    
-    // Move the file to temporary storage
-    if (!file_command_move(path, temp_storage)) {
-        fprintf(stderr, "Error: Unable to move file to temporary storage.\n");
-        return;
-    }
-
-    if (out_storage_path && out_len > 0) {
-        strncpy(out_storage_path, temp_storage, out_len - 1);
-        out_storage_path[out_len - 1] = '\0';
-    }
+bool cut_to_clipboard(const char *path) {
+    /* Cutting only records intent. Files move when paste succeeds. */
+    return clipboard_set_paths(&path, 1, true);
 }
 
 static bool ensure_trash_dir(char *out_dir, size_t out_len) {

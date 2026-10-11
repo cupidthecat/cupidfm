@@ -44,9 +44,9 @@ test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c
 		-Wl,--gc-sections -o $@ test_plugins_api.c ../lib/libcupidscript.a \
 		$(LIBS) -fsanitize=address -fsanitize=undefined -lpthread -lssl -lcrypto -lm -lz
 
-file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/fs/clipboard.c
+file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/core/utils.h ../src/fs/clipboard.c ../src/fs/clipboard.h ../src/fs/tempfiles.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -o $@ file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/utils.c ../src/fs/clipboard.c $(LIBS)
+		-Wl,--gc-sections -o $@ file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/utils.c ../src/fs/clipboard.c ../src/fs/tempfiles.c $(LIBS)
 
 test-file-commands: file_command_driver
 	python3 test_file_commands.py
