@@ -18,3 +18,5 @@ log.txt
 /tests/test_editor_ranges
 
 /tests/test_editor_allocations
+
+/tests/test_editor_loading
