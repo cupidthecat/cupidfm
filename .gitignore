@@ -22,3 +22,6 @@ log.txt
 /tests/test_editor_loading
 
 /tests/test_editor_save
+
+/tests/test_editor_roundtrip
+/tests/test_editor_atomic_save

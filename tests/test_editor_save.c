@@ -1,3 +1,6 @@
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include "../src/fs/files.c"
 #include <assert.h>
@@ -20,20 +23,13 @@ static void setup(void) {
 static void teardown(void) {
     for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
     free(buffer.lines);
+    free(buffer.eols);
     g_editor_buffer = NULL;
 }
 
 char g_editor_path[MAX_PATH_LENGTH];
 static int save_notifications;
-static int capture_open;
 static char opened_path[MAX_PATH_LENGTH * 2];
-FILE *__real_fopen(const char *, const char *);
-FILE *__wrap_fopen(const char *path, const char *mode) {
-    if (!capture_open) return __real_fopen(path, mode);
-    snprintf(opened_path, sizeof(opened_path), "%s", path);
-    errno = EACCES;
-    return NULL;
-}
 void plugins_request_reload(PluginManager *pm) { (void)pm; }
 void plugins_request_select(PluginManager *pm, const char *name) { (void)pm; (void)name; }
 
@@ -42,19 +38,16 @@ void plugins_notify_editor_save(PluginManager *pm, const char *path) {
 }
 int main(void) {
     setup();
-    capture_open = 1;
     strcpy(g_editor_path, "/original.txt");
-    assert(!editor_save_as(NULL, "sibling.txt"));
+    assert(editor_resolve_save_as("sibling.txt", opened_path));
     assert(strcmp(opened_path, "/sibling.txt") == 0);
     strcpy(g_editor_path, "/some/dir/original.txt");
-    assert(!editor_save_as(NULL, "sibling.txt"));
+    assert(editor_resolve_save_as("sibling.txt", opened_path));
     assert(strcmp(opened_path, "/some/dir/sibling.txt") == 0);
     char oversized[MAX_PATH_LENGTH + 1];
     memset(oversized, 'x', sizeof(oversized) - 1);
     oversized[sizeof(oversized) - 1] = 0;
-    opened_path[0] = 0;
-    assert(!editor_save_as(NULL, oversized) && !opened_path[0]);
-    capture_open = 0;
+    assert(!editor_resolve_save_as(oversized, opened_path));
     strcpy(g_editor_path, "/dev/full");
     g_editor_dirty = true; g_editor_dirty_clear_requested = false;
     assert(!editor_save_current((PluginManager *)&buffer));
