@@ -419,10 +419,14 @@ bool cut_to_clipboard(const char *path) {
 
 static bool ensure_trash_dir(char *out_dir, size_t out_len) {
     if (!out_dir || out_len == 0) return false;
-    snprintf(out_dir, out_len, "/tmp/cupidfm_trash_%d", getpid());
-    out_dir[out_len - 1] = '\0';
+    int n = snprintf(out_dir, out_len, "/tmp/cupidfm_trash_%d", getpid());
+    if (n < 0 || (size_t)n >= out_len) return false;
     if (mkdir(out_dir, 0700) == 0) return true;
-    return (errno == EEXIST);
+    if (errno != EEXIST) return false;
+    struct stat existing;
+    // A predictable session path must never redirect private deleted files.
+    return lstat(out_dir, &existing) == 0 && S_ISDIR(existing.st_mode) &&
+           existing.st_uid == geteuid() && (existing.st_mode & 0077) == 0;
 }
 
 bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {

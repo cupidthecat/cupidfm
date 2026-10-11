@@ -117,6 +117,25 @@ class FileCommands(unittest.TestCase):
         self.assertEqual(process.returncode, 0, stderr)
         return [Path(line) for line in stdout.splitlines()]
 
+    def test_trash_rejects_preexisting_directory_symlink(self):
+        source = self.root / 'source'
+        source.write_text('private data')
+        external = self.root / 'external'
+        external.mkdir()
+        result = self.run_command('trash-preexisting-link', source, external)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(source.read_text(), 'private data')
+        self.assertEqual(list(external.iterdir()), [])
+
+    def test_trash_rejects_world_accessible_directory(self):
+        source = self.root / 'source'
+        source.write_text('private data')
+        process = subprocess.Popen([str(DRIVER), 'trash-insecure-dir', str(source)],
+                                   cwd=self.root, env=self.env)
+        self.addCleanup(shutil.rmtree, Path('/tmp') / f'cupidfm_trash_{process.pid}', True)
+        self.assertEqual(process.wait(), 1)
+        self.assertEqual(source.read_text(), 'private data')
+
     def test_trash_rejects_truncated_undo_path(self):
         source = self.root / 'source'
         source.write_text('data')

@@ -1,9 +1,12 @@
+#define _POSIX_C_SOURCE 200809L
 #include "clipboard.h"
 #include "undo.h"
 #include "utils.h"
 #include "tempfiles.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 int main(int argc, char **argv) {
     if (argc < 3) return 2;
@@ -36,6 +39,21 @@ int main(int argc, char **argv) {
         return clipboard_set_paths((const char *const *)&argv[2], (size_t)argc - 2, false) ? 0 : 1;
     if (strcmp(argv[1], "cut-clipboard") == 0)
         return clipboard_set_paths((const char *const *)&argv[2], (size_t)argc - 2, true) ? 0 : 1;
+    if (strcmp(argv[1], "trash-preexisting-link") == 0 && argc == 4) {
+        char directory[4096], trashed[4096];
+        snprintf(directory, sizeof(directory), "/tmp/cupidfm_trash_%d", getpid());
+        if (symlink(argv[3], directory) != 0) return 2;
+        bool ok = delete_item(argv[2], trashed, sizeof(trashed));
+        unlink(directory);
+        return ok ? 0 : 1;
+    }
+    if (strcmp(argv[1], "trash-insecure-dir") == 0) {
+        char directory[4096], trashed[4096];
+        snprintf(directory, sizeof(directory), "/tmp/cupidfm_trash_%d", getpid());
+        if (mkdir(directory, 0700) != 0 || chmod(directory, 0777) != 0) return 2;
+        bool ok = delete_item(argv[2], trashed, sizeof(trashed));
+        return ok ? 0 : 1;
+    }
     if (strcmp(argv[1], "trash-small") == 0) {
         char trashed[1];
         return delete_item(argv[2], trashed, sizeof(trashed)) ? 0 : 1;
