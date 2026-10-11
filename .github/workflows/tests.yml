@@ -20,3 +20,8 @@ jobs:
         run: |
           rm tests/file_command_driver
           make -C tests test-file-commands CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+      - name: Run history allocation failures with sanitizers
+        run: |
+          rm tests/test_history_allocations
+          make -C tests test_history_allocations CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_history_allocations

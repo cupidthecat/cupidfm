@@ -6,7 +6,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -48,6 +48,11 @@ file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/proces
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/utils.c ../src/fs/clipboard.c ../src/fs/tempfiles.c $(LIBS)
 
+test_history_allocations: test_history_allocations.c ../src/core/utils.c ../src/core/undo.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
+		-o $@ test_history_allocations.c $(LIBS)
+
 test-file-commands: file_command_driver
 	python3 test_file_commands.py
 
@@ -80,6 +85,7 @@ test: all
 	@echo "Running plugin API tests..."
 	@./test_plugins_api
 	@python3 test_file_commands.py
+	@./test_history_allocations
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -128,6 +134,7 @@ test-asan: clean
 	@echo "Running plugin API tests with AddressSanitizer..."
 	@./test_plugins_api
 	@python3 test_file_commands.py
+	@./test_history_allocations
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 

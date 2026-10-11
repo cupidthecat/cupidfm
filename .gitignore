@@ -13,3 +13,4 @@ log.txt
 /tests/test_vector
 
 /tests/file_command_driver
+/tests/test_history_allocations

@@ -27,31 +27,24 @@ static void undo_op_clear(UndoOp *op) {
 
 static bool undo_op_clone(const UndoOp *src, UndoOp *dst) {
     if (!dst) return false;
+    UndoOp next = {0};
+    if (src && src->kind != UNDO_OP_NONE && src->count != 0) {
+        next.items = calloc(src->count, sizeof(UndoItem));
+        if (!next.items) return false;
+        next.count = src->count;
+        next.kind = src->kind;
+        for (size_t i = 0; i < src->count; i++) {
+            next.items[i].src = src->items[i].src ? strdup(src->items[i].src) : NULL;
+            next.items[i].dst = src->items[i].dst ? strdup(src->items[i].dst) : NULL;
+            if ((src->items[i].src && !next.items[i].src) ||
+                (src->items[i].dst && !next.items[i].dst)) {
+                undo_op_clear(&next);
+                return false;
+            }
+        }
+    }
     undo_op_clear(dst);
-    if (!src || src->kind == UNDO_OP_NONE || src->count == 0) {
-        dst->kind = UNDO_OP_NONE;
-        return true;
-    }
-    dst->items = (UndoItem *)calloc(src->count, sizeof(UndoItem));
-    if (!dst->items) return false;
-    dst->count = src->count;
-    dst->kind = src->kind;
-    for (size_t i = 0; i < src->count; i++) {
-        if (src->items[i].src) {
-            dst->items[i].src = strdup(src->items[i].src);
-            if (!dst->items[i].src) {
-                undo_op_clear(dst);
-                return false;
-            }
-        }
-        if (src->items[i].dst) {
-            dst->items[i].dst = strdup(src->items[i].dst);
-            if (!dst->items[i].dst) {
-                undo_op_clear(dst);
-                return false;
-            }
-        }
-    }
+    *dst = next;
     return true;
 }
 
@@ -241,10 +234,12 @@ void undo_state_clear(UndoState *st) {
 
 static bool undo_state_set_from_op(UndoState *st, const UndoOp *op) {
     if (!st) return false;
-    // Any new operation clears redo history.
+    UndoOp next = {0};
+    if (!undo_op_clone(op, &next)) return false;
     undo_op_clear(&st->redo);
     undo_op_clear(&st->undo);
-    return undo_op_clone(op, &st->undo);
+    st->undo = next;
+    return true;
 }
 
 bool undo_state_set_owned(UndoState *st, UndoOpKind kind, UndoItem *items, size_t n) {
@@ -266,6 +261,10 @@ bool undo_state_set_single(UndoState *st, UndoOpKind kind, const char *src, cons
     if (!op.items) return false;
     op.items[0].src = src ? strdup(src) : NULL;
     op.items[0].dst = dst ? strdup(dst) : NULL;
+    if ((src && !op.items[0].src) || (dst && !op.items[0].dst)) {
+        undo_op_clear(&op);
+        return false;
+    }
     bool ok = undo_state_set_from_op(st, &op);
     undo_op_clear(&op);
     return ok;
@@ -281,6 +280,11 @@ bool undo_state_set_multi(UndoState *st, UndoOpKind kind, const char *const *src
     for (size_t i = 0; i < n; i++) {
         op.items[i].src = src && src[i] ? strdup(src[i]) : NULL;
         op.items[i].dst = dst && dst[i] ? strdup(dst[i]) : NULL;
+        if ((src && src[i] && !op.items[i].src) ||
+            (dst && dst[i] && !op.items[i].dst)) {
+            undo_op_clear(&op);
+            return false;
+        }
     }
     bool ok = undo_state_set_from_op(st, &op);
     undo_op_clear(&op);
