@@ -1196,12 +1196,12 @@ bool editor_get_cursor(int *line, int *col) {
 }
 
 bool editor_set_cursor(int line, int col) {
-  if (!is_editing)
+  if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines || line < 1)
     return false;
 
-  // Convert from 1-indexed to 0-indexed
+  // Columns below one retain the documented clamping behavior.
   int target_line = line - 1;
-  int target_col = col - 1;
+  int target_col = col <= 1 ? 0 : col - 1;
 
   // Validate line number
   if (target_line < 0 || target_line >= g_editor_buffer->num_lines) {
@@ -1358,23 +1358,30 @@ bool editor_insert_text(const char *text) {
   return true;
 }
 
+static bool editor_valid_range(int start_line, int start_col,
+                               int end_line, int end_col) {
+  if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines ||
+      start_line < 1 || end_line < 1 || start_col < 1 || end_col < 1 ||
+      start_line > g_editor_buffer->num_lines ||
+      end_line > g_editor_buffer->num_lines || start_line > end_line ||
+      (start_line == end_line && start_col > end_col))
+    return false;
+  const char *first = g_editor_buffer->lines[start_line - 1];
+  const char *last = g_editor_buffer->lines[end_line - 1];
+  return first && last && (size_t)(start_col - 1) <= strlen(first) &&
+         (size_t)(end_col - 1) <= strlen(last);
+}
+
 bool editor_replace_text(int start_line, int start_col, int end_line,
                          int end_col, const char *text) {
-  if (!is_editing || !g_editor_buffer)
+  if (!editor_valid_range(start_line, start_col, end_line, end_col))
     return false;
 
-  // Convert to 0-indexed
+  // Validate one-based coordinates before subtracting to avoid signed overflow.
   start_line--;
   start_col--;
   end_line--;
   end_col--;
-
-  if (start_line < 0 || start_line >= g_editor_buffer->num_lines)
-    return false;
-  if (end_line < 0 || end_line >= g_editor_buffer->num_lines)
-    return false;
-  if (start_line > end_line || (start_line == end_line && start_col > end_col))
-    return false;
 
   // Delete the range
   if (start_line == end_line) {
@@ -1437,21 +1444,14 @@ bool editor_replace_text(int start_line, int start_col, int end_line,
 
 bool editor_delete_range(int start_line, int start_col, int end_line,
                          int end_col) {
-  if (!is_editing || !g_editor_buffer)
+  if (!editor_valid_range(start_line, start_col, end_line, end_col))
     return false;
 
-  // Convert to 0-indexed
+  // Validate one-based coordinates before subtracting to avoid signed overflow.
   start_line--;
   start_col--;
   end_line--;
   end_col--;
-
-  if (start_line < 0 || start_line >= g_editor_buffer->num_lines)
-    return false;
-  if (end_line < 0 || end_line >= g_editor_buffer->num_lines)
-    return false;
-  if (start_line > end_line || (start_line == end_line && start_col > end_col))
-    return false;
 
   // Delete the range
   if (start_line == end_line) {
