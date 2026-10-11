@@ -6,7 +6,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -73,9 +73,17 @@ test_editor_allocations: test_editor_allocations.c ../src/fs/files.c
 		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
 		-o $@ test_editor_allocations.c $(LIBS)
 
+test_editor_roundtrip: test_editor_roundtrip.c ../src/fs/files.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -o $@ test_editor_roundtrip.c $(LIBS)
+
+test_editor_atomic_save: test_editor_atomic_save.c ../src/fs/files.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -Wl,--wrap=fputs,--wrap=fflush,--wrap=fsync,--wrap=fclose,--wrap=rename,--wrap=fchown,--wrap=fchmod,--wrap=fsetxattr,--wrap=link,--wrap=mkstemp,--wrap=malloc -o $@ test_editor_atomic_save.c $(LIBS)
+
 test_editor_save: test_editor_save.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -Wl,--wrap=fopen -o $@ test_editor_save.c $(LIBS)
+		-Wl,--gc-sections -o $@ test_editor_save.c $(LIBS)
 
 test_editor_ranges: test_editor_ranges.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
@@ -108,6 +116,8 @@ test: all
 	@./test_editor_allocations
 	@./test_editor_loading
 	@./test_editor_save
+	@./test_editor_roundtrip
+	@./test_editor_atomic_save
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -161,6 +171,8 @@ test-asan: clean
 	@./test_editor_allocations
 	@./test_editor_loading
 	@./test_editor_save
+	@./test_editor_roundtrip
+	@./test_editor_atomic_save
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 

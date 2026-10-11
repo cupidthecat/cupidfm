@@ -1,3 +1,6 @@
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -33,6 +36,11 @@ static void setup(void) {
     buffer.lines[0] = strdup("abc");
     buffer.lines[1] = strdup("def");
     assert(buffer.lines[0] && buffer.lines[1]);
+    buffer.eols = malloc(2 * sizeof(*buffer.eols));
+    assert(buffer.eols);
+    buffer.eols[0] = EDITOR_CRLF;
+    buffer.eols[1] = EDITOR_NO_EOL;
+    buffer.default_eol = EDITOR_CRLF;
     g_editor_buffer = &buffer;
     g_editor_cursor_line = 0;
     g_editor_cursor_col = 0;
@@ -41,6 +49,7 @@ static void setup(void) {
 static void teardown(void) {
     for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
     free(buffer.lines);
+    free(buffer.eols);
     g_editor_buffer = NULL;
 }
 int main(void) {
@@ -52,6 +61,7 @@ int main(void) {
                 setup();
                 g_editor_cursor_col = 1;
                 char **original = buffer.lines;
+                EditorEol *original_eols = buffer.eols;
                 fail_after = point;
                 allocation_failed = 0;
                 bool ok = replace ? editor_replace_text(1, 2, 2, 3, texts[t]) : editor_insert_text(texts[t]);
@@ -59,6 +69,7 @@ int main(void) {
                 if (allocation_failed) {
                     saw_failure = 1;
                     assert(!ok && buffer.lines == original);
+                    assert(buffer.eols == original_eols && buffer.eols[0] == EDITOR_CRLF && buffer.eols[1] == EDITOR_NO_EOL);
                     assert(buffer.capacity == 2 && buffer.num_lines == 2);
                     assert(strcmp(buffer.lines[0], "abc") == 0);
                     assert(strcmp(buffer.lines[1], "def") == 0);
@@ -105,5 +116,17 @@ int main(void) {
     assert(editor_replace_text(1, 1, 1, 4, buffer.lines[1]));
     assert(strcmp(buffer.lines[0], "def") == 0 && strcmp(buffer.lines[1], "def") == 0);
     teardown();
+    for (int point = 0; point < 6; ++point) {
+        setup();
+        fail_after = point;
+        allocation_failed = 0;
+        EditorSnapshot snapshot = editor_snapshot_make(&buffer, 0, 0, 0);
+        fail_after = -1;
+        assert((snapshot.lines != NULL) == !allocation_failed);
+        assert(buffer.eols[0] == EDITOR_CRLF && buffer.eols[1] == EDITOR_NO_EOL);
+        if (snapshot.lines) assert(snapshot.eols[0] == EDITOR_CRLF && snapshot.eols[1] == EDITOR_NO_EOL);
+        editor_snapshot_free(&snapshot);
+        teardown();
+    }
     puts("Editor allocation failure checks passed");
 }

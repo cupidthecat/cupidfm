@@ -1,3 +1,6 @@
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -41,6 +44,7 @@ static void setup(void) {
 static void teardown(void) {
     for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
     free(buffer.lines);
+    free(buffer.eols);
     g_editor_buffer = NULL;
 }
 

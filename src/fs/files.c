@@ -1,5 +1,8 @@
 // File: files.c
 // -----------------------
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -28,6 +31,7 @@
 
 #ifdef __linux__
 #include <sys/vfs.h> // statfs
+#include <sys/xattr.h>
 // Prefer linux/magic.h if available; otherwise define what we use.
 #if defined(__has_include)
 #if __has_include(<linux/magic.h>)
@@ -351,12 +355,23 @@ struct FileAttributes {
   bool is_dir;
   GitStatus git_status;  // Git status for this file
 };
+// Each line owns its original separator; zero preserves legacy LF fixtures.
+typedef enum { EDITOR_LF, EDITOR_CRLF, EDITOR_NO_EOL } EditorEol;
 // TextBuffer structure
 typedef struct {
   char **lines;  // Dynamic array of strings
   int num_lines; // Current number of lines
   int capacity;  // Total capacity of the array
+  EditorEol *eols;
+  EditorEol default_eol;
 } TextBuffer;
+
+static EditorEol editor_line_eol(const TextBuffer *buf, int line) {
+  return buf->eols ? buf->eols[line] : EDITOR_LF;
+}
+static bool editor_apply_buffer_text(TextBuffer *buffer, int start_line,
+    int start_col, int end_line, int end_col, const char *text,
+    int *cursor_line, int *cursor_col);
 
 // Active editor buffer (only valid while editor is open)
 static TextBuffer *g_editor_buffer = NULL;
@@ -399,10 +414,17 @@ static bool editor_load_stream(FILE *stream, TextBuffer *buf) {
   while ((len = getline(&line, &allocated, stream)) >= 0) {
     if (memchr(line, '\0', (size_t)len) || len > INT_MAX)
       goto failed;
-    if (len && line[len - 1] == '\n')
+    EditorEol eol = EDITOR_NO_EOL;
+    if (len && line[len - 1] == '\n') {
       line[--len] = '\0';
-    if (len && line[len - 1] == '\r')
-      line[--len] = '\0';
+      eol = EDITOR_LF;
+      if (len && line[len - 1] == '\r') {
+        line[--len] = '\0';
+        eol = EDITOR_CRLF;
+      }
+    }
+    if (!next.num_lines && eol != EDITOR_NO_EOL)
+      next.default_eol = eol;
     if (next.num_lines == next.capacity) {
       if (next.capacity > INT_MAX / 2)
         goto failed;
@@ -413,11 +435,16 @@ static bool editor_load_stream(FILE *stream, TextBuffer *buf) {
       if (!lines)
         goto failed;
       next.lines = lines;
+      EditorEol *eols = realloc(next.eols, (size_t)capacity * sizeof(*eols));
+      if (!eols)
+        goto failed;
+      next.eols = eols;
       next.capacity = capacity;
     }
     char *copy = strdup(line);
     if (!copy)
       goto failed;
+    next.eols[next.num_lines] = eol;
     next.lines[next.num_lines++] = copy;
   }
   if (ferror(stream) || !feof(stream))
@@ -427,6 +454,10 @@ static bool editor_load_stream(FILE *stream, TextBuffer *buf) {
     if (!next.lines)
       goto failed;
     next.capacity = 1;
+    next.eols = malloc(sizeof(*next.eols));
+    if (!next.eols)
+      goto failed;
+    next.eols[0] = EDITOR_NO_EOL;
     next.lines[0] = strdup("");
     if (!next.lines[0])
       goto failed;
@@ -436,6 +467,7 @@ static bool editor_load_stream(FILE *stream, TextBuffer *buf) {
   for (int i = 0; i < buf->num_lines; ++i)
     free(buf->lines[i]);
   free(buf->lines);
+  free(buf->eols);
   *buf = next;
   return true;
 failed:
@@ -443,6 +475,7 @@ failed:
   for (int i = 0; i < next.num_lines; ++i)
     free(next.lines[i]);
   free(next.lines);
+  free(next.eols);
   return false;
 }
 
@@ -464,6 +497,8 @@ static bool editor_load_file_into_buffer(const char *path, TextBuffer *buf) {
 
 typedef struct EditorSnapshot {
   char **lines;
+  EditorEol *eols;
+  EditorEol default_eol;
   int num_lines;
   int capacity;
 
@@ -492,6 +527,7 @@ static void editor_snapshot_free(EditorSnapshot *s) {
   for (int i = 0; i < s->num_lines; i++)
     free(s->lines[i]);
   free(s->lines);
+  free(s->eols);
   *s = (EditorSnapshot){0};
 }
 
@@ -517,13 +553,21 @@ static EditorSnapshot editor_snapshot_make(const TextBuffer *buf,
   if (!s.lines)
     return (EditorSnapshot){0};
 
+  s.eols = malloc(sizeof(*s.eols) * (size_t)s.capacity);
+  if (!s.eols) {
+    free(s.lines);
+    return (EditorSnapshot){0};
+  }
+  s.default_eol = buf->default_eol;
   for (int i = 0; i < s.num_lines; i++) {
+    s.eols[i] = editor_line_eol(buf, i);
     const char *src = buf->lines[i] ? buf->lines[i] : "";
     s.lines[i] = strdup(src);
     if (!s.lines[i]) {
       for (int j = 0; j < i; j++)
         free(s.lines[j]);
       free(s.lines);
+      free(s.eols);
       return (EditorSnapshot){0};
     }
   }
@@ -572,7 +616,7 @@ static bool editor_stack_pop(EditorSnapshot *stk, int *len,
 static void editor_apply_snapshot(TextBuffer *buf, EditorSnapshot *snap,
                                   int *cursor_line, int *cursor_col,
                                   int *start_line) {
-  if (!buf || !snap || !snap->lines)
+  if (!buf || !snap || !snap->lines || snap->num_lines <= 0)
     return;
 
   if (buf->lines) {
@@ -581,6 +625,9 @@ static void editor_apply_snapshot(TextBuffer *buf, EditorSnapshot *snap,
     free(buf->lines);
   }
 
+  free(buf->eols);
+  buf->eols = snap->eols;
+  buf->default_eol = snap->default_eol;
   buf->lines = snap->lines;
   buf->num_lines = snap->num_lines;
   buf->capacity = (snap->capacity > 0)
@@ -696,21 +743,6 @@ static bool editor_do_redo(UndoManager *um, TextBuffer *buf, int *cursor_line,
 
   editor_apply_snapshot(buf, &next, cursor_line, cursor_col, start_line);
   return true;
-}
-
-static void ensure_text_buffer_capacity(TextBuffer *buffer, int needed) {
-  if (!buffer)
-    return;
-  if (needed <= buffer->capacity)
-    return;
-  int new_cap = buffer->capacity;
-  while (new_cap < needed)
-    new_cap *= 2;
-  char **tmp = realloc(buffer->lines, sizeof(char *) * new_cap);
-  if (!tmp)
-    return;
-  buffer->lines = tmp;
-  buffer->capacity = new_cap;
 }
 
 static void normalize_selection(int *s_line, int *s_col, int *e_line,
@@ -916,6 +948,11 @@ static void delete_selection(TextBuffer *buffer) {
   for (int i = s_line + 1; i + remove_count < buffer->num_lines; i++) {
     buffer->lines[i] = buffer->lines[i + remove_count];
   }
+  if (buffer->eols) {
+    buffer->eols[s_line] = buffer->eols[e_line];
+    memmove(buffer->eols + s_line + 1, buffer->eols + e_line + 1,
+            (size_t)(buffer->num_lines - e_line - 1) * sizeof(*buffer->eols));
+  }
   buffer->num_lines -= remove_count;
 }
 
@@ -977,112 +1014,11 @@ void editor_apply_uppercase_to_selection(void) {
 
 static void insert_text_at_cursor(TextBuffer *buffer, int *cursor_line,
                                   int *cursor_col, const char *text) {
-  if (!buffer || !buffer->lines || !text || !cursor_line || !cursor_col)
+  if (!cursor_line || !cursor_col || *cursor_line < 0 || *cursor_col < 0 ||
+      *cursor_line == INT_MAX || *cursor_col == INT_MAX || !text)
     return;
-
-  const char *line =
-      buffer->lines[*cursor_line] ? buffer->lines[*cursor_line] : "";
-  int line_len = (int)strlen(line);
-  int col = MIN(*cursor_col, line_len);
-
-  // Count lines in text
-  int parts = 1;
-  for (const char *p = text; *p; p++)
-    if (*p == '\n')
-      parts++;
-
-  if (parts == 1) {
-    int insert_len = (int)strlen(text);
-    char *new_line =
-        realloc(buffer->lines[*cursor_line], (size_t)line_len + insert_len + 1);
-    if (!new_line)
-      return;
-    memmove(new_line + col + insert_len, new_line + col,
-            (size_t)(line_len - col + 1));
-    memcpy(new_line + col, text, (size_t)insert_len);
-    buffer->lines[*cursor_line] = new_line;
-    *cursor_col = col + insert_len;
-    return;
-  }
-
-  ensure_text_buffer_capacity(buffer, buffer->num_lines + parts);
-
-  // Split text into lines
-  const char *p = text;
-  int part_index = 0;
-
-  char *prefix = strdup(line);
-  if (!prefix)
-    return;
-  prefix[col] = '\0';
-  char *suffix = strdup(line + col);
-  if (!suffix) {
-    free(prefix);
-    return;
-  }
-
-  // Insert new lines (make room)
-  for (int i = buffer->num_lines - 1; i > *cursor_line; i--) {
-    buffer->lines[i + parts - 1] = buffer->lines[i];
-  }
-
-  // First line
-  const char *start = p;
-  while (*p && *p != '\n')
-    p++;
-  size_t first_len = (size_t)(p - start);
-  char *first = (char *)malloc(strlen(prefix) + first_len + 1);
-  if (!first) {
-    free(prefix);
-    free(suffix);
-    return;
-  }
-  memcpy(first, prefix, strlen(prefix));
-  memcpy(first + strlen(prefix), start, first_len);
-  first[strlen(prefix) + first_len] = '\0';
-  buffer->lines[*cursor_line] = first;
-
-  if (*p == '\n')
-    p++;
-  part_index = 1;
-
-  // Middle lines
-  while (part_index < parts - 1) {
-    start = p;
-    while (*p && *p != '\n')
-      p++;
-    size_t len = (size_t)(p - start);
-    char *mid = (char *)malloc(len + 1);
-    if (!mid)
-      break;
-    memcpy(mid, start, len);
-    mid[len] = '\0';
-    buffer->lines[*cursor_line + part_index] = mid;
-    if (*p == '\n')
-      p++;
-    part_index++;
-  }
-
-  // Last line
-  const char *last_start = p;
-  size_t last_len = strlen(last_start);
-  char *last = (char *)malloc(last_len + strlen(suffix) + 1);
-  if (!last) {
-    free(prefix);
-    free(suffix);
-    return;
-  }
-  memcpy(last, last_start, last_len);
-  memcpy(last + last_len, suffix, strlen(suffix));
-  last[last_len + strlen(suffix)] = '\0';
-  buffer->lines[*cursor_line + parts - 1] = last;
-
-  buffer->num_lines += (parts - 1);
-  *cursor_line = *cursor_line + parts - 1;
-  *cursor_col = (int)last_len;
-
-  free(prefix);
-  free(suffix);
+  editor_apply_buffer_text(buffer, *cursor_line + 1, *cursor_col + 1,
+      *cursor_line + 1, *cursor_col + 1, text, cursor_line, cursor_col);
 }
 
 static bool confirm_discard_unsaved(WINDOW *parent_win) {
@@ -1260,37 +1196,38 @@ bool editor_get_selection(int *start_line, int *start_col, int *end_line,
   return true;
 }
 
-static bool editor_valid_range(int start_line, int start_col,
+static bool editor_valid_range(TextBuffer *buffer, int start_line, int start_col,
                                int end_line, int end_col) {
-  if (!is_editing || !g_editor_buffer || !g_editor_buffer->lines ||
+  if (!buffer || !buffer->lines ||
       start_line < 1 || end_line < 1 || start_col < 1 || end_col < 1 ||
-      start_line > g_editor_buffer->num_lines ||
-      end_line > g_editor_buffer->num_lines || start_line > end_line ||
+      start_line > buffer->num_lines ||
+      end_line > buffer->num_lines || start_line > end_line ||
       (start_line == end_line && start_col > end_col))
     return false;
-  const char *first = g_editor_buffer->lines[start_line - 1];
-  const char *last = g_editor_buffer->lines[end_line - 1];
+  const char *first = buffer->lines[start_line - 1];
+  const char *last = buffer->lines[end_line - 1];
   return first && last && (size_t)(start_col - 1) <= strlen(first) &&
          (size_t)(end_col - 1) <= strlen(last);
 }
 
 /* Prepare replacement lines before changing the live editor buffer. */
-static bool editor_apply_text(int start_line, int start_col, int end_line,
-                              int end_col, const char *text) {
-  if (!editor_valid_range(start_line, start_col, end_line, end_col))
+static bool editor_apply_buffer_text(TextBuffer *buffer, int start_line,
+    int start_col, int end_line, int end_col, const char *text,
+    int *cursor_line, int *cursor_col) {
+  if (!editor_valid_range(buffer, start_line, start_col, end_line, end_col))
     return false;
   if (!text)
     text = "";
   int first = start_line - 1, last = end_line - 1;
   size_t prefix = (size_t)(start_col - 1);
-  const char *suffix = g_editor_buffer->lines[last] + end_col - 1;
+  const char *suffix = buffer->lines[last] + end_col - 1;
   size_t suffix_len = strlen(suffix);
   size_t added = 1;
   for (const char *p = text; *p; ++p) {
     if (*p == '\n' && ++added > INT_MAX)
       return false;
   }
-  size_t kept = (size_t)g_editor_buffer->num_lines - (last - first + 1);
+  size_t kept = (size_t)buffer->num_lines - (last - first + 1);
   if (added > (size_t)INT_MAX - kept ||
       added + kept > (size_t)-1 / sizeof(char *))
     return false;
@@ -1298,11 +1235,18 @@ static bool editor_apply_text(int start_line, int start_col, int end_line,
   char **lines = calloc(count, sizeof(*lines));
   if (!lines)
     return false;
+  EditorEol *eols = malloc(count * sizeof(*eols));
+  if (!eols) {
+    free(lines);
+    return false;
+  }
   const char *segment = text;
   size_t built = 0, final_col = 0;
   for (size_t i = 0; i < added; ++i) {
     const char *newline = strchr(segment, '\n');
     size_t len = newline ? (size_t)(newline - segment) : strlen(segment);
+    bool explicit_crlf = newline && len && segment[len - 1] == '\r';
+    if (explicit_crlf) --len;
     size_t before = i == 0 ? prefix : 0;
     size_t after = i + 1 == added ? suffix_len : 0;
     if (len > INT_MAX || before > (size_t)INT_MAX - len ||
@@ -1312,113 +1256,220 @@ static bool editor_apply_text(int start_line, int start_col, int end_line,
     if (!line)
       goto failed;
     if (before)
-      memcpy(line, g_editor_buffer->lines[first], before);
+      memcpy(line, buffer->lines[first], before);
     memcpy(line + before, segment, len);
     if (after)
       memcpy(line + before + len, suffix, after);
     line[before + len + after] = '\0';
     lines[first + i] = line;
+    eols[first + i] = newline ? (explicit_crlf ? EDITOR_CRLF : buffer->default_eol)
+                              : editor_line_eol(buffer, last);
     ++built;
     final_col = before + len;
     if (newline)
       segment = newline + 1;
   }
-  memcpy(lines, g_editor_buffer->lines, (size_t)first * sizeof(*lines));
-  size_t tail = (size_t)g_editor_buffer->num_lines - last - 1;
-  memcpy(lines + first + added, g_editor_buffer->lines + last + 1,
+  memcpy(lines, buffer->lines, (size_t)first * sizeof(*lines));
+  size_t tail = (size_t)buffer->num_lines - last - 1;
+  memcpy(lines + first + added, buffer->lines + last + 1,
          tail * sizeof(*lines));
+  for (int i = 0; i < first; ++i)
+    eols[i] = editor_line_eol(buffer, i);
+  for (size_t i = 0; i < tail; ++i)
+    eols[first + added + i] = editor_line_eol(buffer, last + 1 + (int)i);
   for (int i = first; i <= last; ++i)
-    free(g_editor_buffer->lines[i]);
-  free(g_editor_buffer->lines);
-  g_editor_buffer->lines = lines;
-  g_editor_buffer->num_lines = (int)count;
-  g_editor_buffer->capacity = (int)count;
-  g_editor_cursor_line = first + (int)added - 1;
-  g_editor_cursor_col = (int)final_col;
-  g_editor_dirty = true;
+    free(buffer->lines[i]);
+  free(buffer->lines);
+  free(buffer->eols);
+  buffer->eols = eols;
+  buffer->lines = lines;
+  buffer->num_lines = (int)count;
+  buffer->capacity = (int)count;
+  if (cursor_line) *cursor_line = first + (int)added - 1;
+  if (cursor_col) *cursor_col = (int)final_col;
   return true;
 failed:
   for (size_t i = 0; i < built; ++i)
     free(lines[first + i]);
   free(lines);
+  free(eols);
   return false;
 }
 
 bool editor_insert_text(const char *text) {
-  if (!text || g_editor_cursor_line < 0 || g_editor_cursor_line == INT_MAX ||
+  if (!is_editing || !text || g_editor_cursor_line < 0 || g_editor_cursor_line == INT_MAX ||
       g_editor_cursor_col < 0 || g_editor_cursor_col == INT_MAX)
     return false;
-  return editor_apply_text(g_editor_cursor_line + 1, g_editor_cursor_col + 1,
-                           g_editor_cursor_line + 1, g_editor_cursor_col + 1, text);
+  bool ok = editor_apply_buffer_text(g_editor_buffer,
+      g_editor_cursor_line + 1, g_editor_cursor_col + 1,
+      g_editor_cursor_line + 1, g_editor_cursor_col + 1, text,
+      &g_editor_cursor_line, &g_editor_cursor_col);
+  if (ok) g_editor_dirty = true;
+  return ok;
 }
 
 bool editor_replace_text(int start_line, int start_col, int end_line,
                          int end_col, const char *text) {
-  return editor_apply_text(start_line, start_col, end_line, end_col, text);
+  if (!is_editing) return false;
+  bool ok = editor_apply_buffer_text(g_editor_buffer, start_line, start_col,
+      end_line, end_col, text, &g_editor_cursor_line, &g_editor_cursor_col);
+  if (ok) g_editor_dirty = true;
+  return ok;
 }
 
-bool editor_delete_range(int start_line, int start_col, int end_line,
-                         int end_col) {
-  if (!editor_valid_range(start_line, start_col, end_line, end_col))
-    return false;
+bool editor_delete_range(int start_line, int start_col, int end_line, int end_col) {
+  return editor_replace_text(start_line, start_col, end_line, end_col, "");
+}
 
-  // Validate one-based coordinates before subtracting to avoid signed overflow.
-  start_line--;
-  start_col--;
-  end_line--;
-  end_col--;
-
-  // Delete the range
-  if (start_line == end_line) {
-    // Same line - delete portion
-    char *line = g_editor_buffer->lines[start_line];
-    if (!line)
-      return false;
-    int len = strlen(line);
-    if (start_col > len || end_col > len)
-      return false;
-
-    char *new_line = malloc(len - (end_col - start_col) + 1);
-    if (!new_line)
-      return false;
-
-    memcpy(new_line, line, start_col);
-    strcpy(new_line + start_col, line + end_col);
-
-    free(g_editor_buffer->lines[start_line]);
-    g_editor_buffer->lines[start_line] = new_line;
-  } else {
-    // Multiple lines - merge first and last, delete middle
-    char *first = g_editor_buffer->lines[start_line];
-    char *last = g_editor_buffer->lines[end_line];
-
-    char *merged = malloc(start_col + strlen(last + end_col) + 1);
-    if (!merged)
-      return false;
-
-    memcpy(merged, first, start_col);
-    strcpy(merged + start_col, last + end_col);
-
-    // Free deleted lines
-    for (int i = start_line; i <= end_line; i++) {
-      free(g_editor_buffer->lines[i]);
-    }
-
-    // Shift remaining lines
-    g_editor_buffer->lines[start_line] = merged;
-    int lines_deleted = end_line - start_line;
-    memmove(&g_editor_buffer->lines[start_line + 1],
-            &g_editor_buffer->lines[end_line + 1],
-            (g_editor_buffer->num_lines - end_line - 1) * sizeof(char *));
-    g_editor_buffer->num_lines -= lines_deleted;
+static bool editor_write_buffer(FILE *file, const TextBuffer *buffer) {
+  for (int i = 0; i < buffer->num_lines; ++i) {
+    const char *line = buffer->lines[i] ? buffer->lines[i] : "";
+    if (fputs(line, file) == EOF) return false;
+    EditorEol eol = editor_line_eol(buffer, i);
+    if (eol == EDITOR_CRLF && fputc('\r', file) == EOF) return false;
+    if (eol != EDITOR_NO_EOL && fputc('\n', file) == EOF) return false;
   }
-
-  // Set cursor to start of deleted range
-  g_editor_cursor_line = start_line;
-  g_editor_cursor_col = start_col;
-  g_editor_dirty = true;
-
   return true;
+}
+
+#ifdef __linux__
+static bool editor_copy_xattrs(int source, int destination) {
+  ssize_t count = flistxattr(source, NULL, 0);
+  if (count < 0) return errno == ENOTSUP;
+  /* A temporary file can inherit an ACL from its parent directory. Remove
+     attributes absent from the original before copying its exact set. */
+  ssize_t inherited_count = flistxattr(destination, NULL, 0);
+  if (inherited_count < 0) return false;
+  if (inherited_count) {
+    char *inherited = malloc((size_t)inherited_count);
+    if (!inherited) return false;
+    if (flistxattr(destination, inherited, (size_t)inherited_count) != inherited_count) {
+      free(inherited); return false;
+    }
+    for (char *name = inherited; name < inherited + inherited_count; name += strlen(name) + 1) {
+      if (fgetxattr(source, name, NULL, 0) < 0) {
+        if (errno != ENODATA || fremovexattr(destination, name) != 0) {
+          free(inherited); return false;
+        }
+      }
+    }
+    free(inherited);
+  }
+  if (!count) return true;
+  char *names = malloc((size_t)count);
+  if (!names) return false;
+  if (flistxattr(source, names, (size_t)count) != count) {
+    free(names); return false;
+  }
+  bool ok = true;
+  for (char *name = names; name < names + count; name += strlen(name) + 1) {
+    ssize_t size = fgetxattr(source, name, NULL, 0);
+    if (size < 0) { ok = false; break; }
+    void *value = malloc(size ? (size_t)size : 1);
+    if (!value) { ok = false; break; }
+    ok = fgetxattr(source, name, value, (size_t)size) == size &&
+         fsetxattr(destination, name, value, (size_t)size, 0) == 0;
+    free(value);
+    if (!ok) break;
+  }
+  free(names);
+  return ok;
+}
+#endif
+
+static bool editor_same_file(const struct stat *a, const struct stat *b) {
+  return a->st_dev == b->st_dev && a->st_ino == b->st_ino &&
+         a->st_size == b->st_size && a->st_nlink == b->st_nlink &&
+         a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
+         a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
+         a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
+         a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
+}
+
+/* Stage in the destination directory; never truncate the original. */
+static bool editor_save_buffer_to_path(const char *path, const TextBuffer *buffer) {
+  struct stat before, current;
+  char target[MAX_PATH_LENGTH], temporary[MAX_PATH_LENGTH];
+  char *resolved = realpath(path, NULL);
+  bool exists = resolved != NULL;
+  int source = -1, descriptor = -1;
+  FILE *stream = NULL;
+  bool staged = false, ok = false;
+  if (exists) {
+    if (strlen(resolved) >= sizeof(target)) { free(resolved); return false; }
+    strcpy(target, resolved);
+    free(resolved);
+    if (lstat(target, &before) != 0 || !S_ISREG(before.st_mode) || before.st_nlink != 1)
+      return false;
+    source = open(target, O_WRONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (source < 0) return false;
+    if (fstat(source, &current) != 0 || !editor_same_file(&before, &current))
+      goto cleanup;
+  } else {
+    /* A dangling symlink is occupied, not a new-file destination. */
+    if (lstat(path, &current) == 0 || errno != ENOENT || strlen(path) >= sizeof(target))
+      return false;
+    strcpy(target, path);
+    char *slash = strrchr(target, '/');
+    const char *base = slash ? slash + 1 : target;
+    char name[MAX_PATH_LENGTH];
+    if (!*base || !strcmp(base, ".") || !strcmp(base, "..")) return false;
+    strcpy(name, base);
+    if (slash) {
+      if (slash == target) slash[1] = '\0';
+      else *slash = '\0';
+    } else strcpy(target, ".");
+    resolved = realpath(target, NULL);
+    if (!resolved) return false;
+    int n = snprintf(target, sizeof(target), "%s/%s", resolved, name);
+    free(resolved);
+    if (n < 0 || (size_t)n >= sizeof(target)) return false;
+  }
+  char *slash = strrchr(target, '/');
+  if (!slash) goto cleanup;
+  size_t directory_length = (size_t)(slash - target + 1);
+  if (directory_length + sizeof(".cupidfm-save-XXXXXX") > sizeof(temporary))
+    goto cleanup;
+  memcpy(temporary, target, directory_length);
+  strcpy(temporary + directory_length, ".cupidfm-save-XXXXXX");
+  descriptor = mkstemp(temporary);
+  if (descriptor < 0) goto cleanup;
+  staged = true;
+  stream = fdopen(descriptor, "w");
+  if (!stream) goto cleanup;
+  descriptor = -1; /* owned by stream */
+  if (!editor_write_buffer(stream, buffer) || fflush(stream) != 0)
+    goto cleanup;
+  if (exists) {
+    if (fchown(fileno(stream), before.st_uid, before.st_gid) != 0 ||
+        fchmod(fileno(stream), before.st_mode & 07777) != 0)
+      goto cleanup;
+#ifdef __linux__
+    if (!editor_copy_xattrs(source, fileno(stream))) goto cleanup;
+#endif
+  }
+  /* New files retain mkstemp's private mode, further restricted by the umask. */
+  if (fsync(fileno(stream)) != 0) goto cleanup;
+  int close_result = fclose(stream);
+  stream = NULL;
+  if (close_result != 0) goto cleanup;
+  if (exists) {
+    if (lstat(target, &current) != 0 || !editor_same_file(&before, &current))
+      goto cleanup;
+    if (rename(temporary, target) != 0) goto cleanup;
+  } else {
+    /* Publish without overwriting a name created while the data was staged. */
+    if (link(temporary, target) != 0) goto cleanup;
+    unlink(temporary);
+  }
+  staged = false;
+  ok = true;
+cleanup:
+  if (stream) fclose(stream);
+  if (descriptor >= 0) close(descriptor);
+  if (source >= 0) close(source);
+  if (staged) unlink(temporary);
+  return ok;
 }
 
 bool editor_save_current(struct PluginManager *pm) {
@@ -1429,25 +1480,7 @@ bool editor_save_current(struct PluginManager *pm) {
   if (!g_editor_path[0])
     return false;
 
-  FILE *file = fopen(g_editor_path, "w");
-  if (!file)
-    return false;
-
-  bool ok = true;
-  for (int i = 0; i < g_editor_buffer->num_lines; i++) {
-    const char *line = g_editor_buffer->lines[i] ? g_editor_buffer->lines[i] : "";
-    if (fprintf(file, "%s\n", line) < 0) {
-      ok = false;
-      break;
-    }
-  }
-
-  if (fflush(file) != 0)
-    ok = false;
-  if (fclose(file) != 0)
-    ok = false;
-
-  if (!ok)
+  if (!editor_save_buffer_to_path(g_editor_path, g_editor_buffer))
     return false;
 
   g_editor_dirty = false;
@@ -1455,6 +1488,31 @@ bool editor_save_current(struct PluginManager *pm) {
 
   if (pm) {
     plugins_notify_editor_save(pm, g_editor_path);
+  }
+
+  return true;
+}
+
+static bool editor_resolve_save_as(const char *path, char full_path[MAX_PATH_LENGTH]) {
+  if (!path || !*path) return false;
+  if (strlen(path) >= MAX_PATH_LENGTH)
+    return false;
+  memcpy(full_path, path, strlen(path) + 1);
+  if (path[0] != '/' && g_editor_path[0]) {
+    // Treat relative Save As paths as relative to the current editor file's
+    // directory (matches typical editor behavior and the file manager cwd).
+    const char *slash = strrchr(g_editor_path, '/');
+    if (slash) {
+      size_t dir_len = (size_t)(slash - g_editor_path);
+      if (dir_len + 1 + strlen(path) + 1 > MAX_PATH_LENGTH)
+        return false;
+      memcpy(full_path, g_editor_path, dir_len);
+      full_path[dir_len] = '\0';
+      if (snprintf(full_path + dir_len, MAX_PATH_LENGTH - dir_len, "/%s",
+                   path) >= (int)(MAX_PATH_LENGTH - dir_len)) {
+        return false;
+      }
+    }
   }
 
   return true;
@@ -1469,47 +1527,10 @@ bool editor_save_as(struct PluginManager *pm, const char *path) {
     return false;
 
   char full_path[MAX_PATH_LENGTH];
-  if (strlen(path) >= sizeof(full_path))
-    return false;
-  memcpy(full_path, path, strlen(path) + 1);
+  if (!editor_resolve_save_as(path, full_path)) return false;
   const char *save_path = full_path;
-  if (path[0] != '/' && g_editor_path[0]) {
-    // Treat relative Save As paths as relative to the current editor file's
-    // directory (matches typical editor behavior and the file manager cwd).
-    const char *slash = strrchr(g_editor_path, '/');
-    if (slash) {
-      size_t dir_len = (size_t)(slash - g_editor_path);
-      if (dir_len + 1 + strlen(path) + 1 > sizeof(full_path))
-        return false;
-      memcpy(full_path, g_editor_path, dir_len);
-      full_path[dir_len] = '\0';
-      if (snprintf(full_path + dir_len, sizeof(full_path) - dir_len, "/%s",
-                   path) >= (int)(sizeof(full_path) - dir_len)) {
-        return false;
-      }
-      save_path = full_path;
-    }
-  }
 
-  FILE *file = fopen(save_path, "w");
-  if (!file)
-    return false;
-
-  bool ok = true;
-  for (int i = 0; i < g_editor_buffer->num_lines; i++) {
-    const char *line = g_editor_buffer->lines[i] ? g_editor_buffer->lines[i] : "";
-    if (fprintf(file, "%s\n", line) < 0) {
-      ok = false;
-      break;
-    }
-  }
-
-  if (fflush(file) != 0)
-    ok = false;
-  if (fclose(file) != 0)
-    ok = false;
-
-  if (!ok)
+  if (!editor_save_buffer_to_path(save_path, g_editor_buffer))
     return false;
 
   // Adopt the new path (so future saves go to the new location).
@@ -1564,6 +1585,7 @@ bool editor_set_readonly(bool readonly) {
  * @param buffer the TextBuffer to initialize
  */
 void init_text_buffer(TextBuffer *buffer) {
+  *buffer = (TextBuffer){0};
   buffer->capacity = 100; // Initial capacity
   buffer->num_lines = 0;
   buffer->lines = malloc(sizeof(char *) * buffer->capacity);
@@ -3398,11 +3420,13 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
           free(text_buffer.lines[cursor_line]);
           for (int i = cursor_line; i < text_buffer.num_lines - 1; i++) {
             text_buffer.lines[i] = text_buffer.lines[i + 1];
+            if (text_buffer.eols) text_buffer.eols[i] = text_buffer.eols[i + 1];
           }
           text_buffer.num_lines--;
           if (text_buffer.num_lines <= 0) {
             text_buffer.num_lines = 1;
             text_buffer.lines[0] = strdup("");
+            if (text_buffer.eols) text_buffer.eols[0] = EDITOR_NO_EOL;
             cursor_line = 0;
             cursor_col = 0;
           } else if (cursor_line >= text_buffer.num_lines) {
@@ -3547,9 +3571,12 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
                text_buffer.lines[cursor_line]);
         free(text_buffer.lines[cursor_line]);
 
+        if (text_buffer.eols)
+          text_buffer.eols[cursor_line - 1] = text_buffer.eols[cursor_line];
         // Shift lines up
         for (int i = cursor_line; i < text_buffer.num_lines - 1; i++) {
           text_buffer.lines[i] = text_buffer.lines[i + 1];
+          if (text_buffer.eols) text_buffer.eols[i] = text_buffer.eols[i + 1];
         }
         text_buffer.num_lines--;
 
@@ -3665,6 +3692,7 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
     free(text_buffer.lines[i]);
   }
   free(text_buffer.lines);
+  free(text_buffer.eols);
 
   editor_stack_clear(um.undo, &um.undo_len);
   editor_stack_clear(um.redo, &um.redo_len);

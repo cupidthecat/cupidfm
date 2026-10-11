@@ -45,3 +45,9 @@ jobs:
           rm tests/test_editor_save
           make -C tests test_editor_save CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_editor_save
+      - name: Run editor format and atomic save checks with sanitizers
+        run: |
+          rm tests/test_editor_roundtrip tests/test_editor_atomic_save
+          make -C tests test_editor_roundtrip test_editor_atomic_save CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_editor_roundtrip
+          ./tests/test_editor_atomic_save

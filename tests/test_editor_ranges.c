@@ -1,3 +1,6 @@
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include "../src/fs/files.c"
 #include <assert.h>
@@ -20,6 +23,7 @@ static void setup(void) {
 static void teardown(void) {
     for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
     free(buffer.lines);
+    free(buffer.eols);
     g_editor_buffer = NULL;
 }
 static void invalid_ranges(void) {
