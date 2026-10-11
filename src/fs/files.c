@@ -389,74 +389,72 @@ static bool editor_block_if_readonly(WINDOW *notification_window,
   return true;
 }
 
+static bool editor_load_stream(FILE *stream, TextBuffer *buf) {
+  if (!stream || !buf)
+    return false;
+  TextBuffer next = {0};
+  char *line = NULL;
+  size_t allocated = 0;
+  ssize_t len;
+  while ((len = getline(&line, &allocated, stream)) >= 0) {
+    if (memchr(line, '\0', (size_t)len) || len > INT_MAX)
+      goto failed;
+    if (len && line[len - 1] == '\n')
+      line[--len] = '\0';
+    if (len && line[len - 1] == '\r')
+      line[--len] = '\0';
+    if (next.num_lines == next.capacity) {
+      if (next.capacity > INT_MAX / 2)
+        goto failed;
+      int capacity = next.capacity ? next.capacity * 2 : 16;
+      if ((size_t)capacity > (size_t)-1 / sizeof(char *))
+        goto failed;
+      char **lines = realloc(next.lines, (size_t)capacity * sizeof(*lines));
+      if (!lines)
+        goto failed;
+      next.lines = lines;
+      next.capacity = capacity;
+    }
+    char *copy = strdup(line);
+    if (!copy)
+      goto failed;
+    next.lines[next.num_lines++] = copy;
+  }
+  if (ferror(stream) || !feof(stream))
+    goto failed;
+  if (!next.num_lines) {
+    next.lines = malloc(sizeof(*next.lines));
+    if (!next.lines)
+      goto failed;
+    next.capacity = 1;
+    next.lines[0] = strdup("");
+    if (!next.lines[0])
+      goto failed;
+    next.num_lines = 1;
+  }
+  free(line);
+  for (int i = 0; i < buf->num_lines; ++i)
+    free(buf->lines[i]);
+  free(buf->lines);
+  *buf = next;
+  return true;
+failed:
+  free(line);
+  for (int i = 0; i < next.num_lines; ++i)
+    free(next.lines[i]);
+  free(next.lines);
+  return false;
+}
+
 static bool editor_load_file_into_buffer(const char *path, TextBuffer *buf) {
   if (!path || !*path || !buf)
     return false;
-
-  FILE *rf = fopen(path, "r");
-  if (!rf)
+  FILE *stream = fopen(path, "r");
+  if (!stream)
     return false;
-
-  // Free existing contents.
-  if (buf->lines) {
-    for (int i = 0; i < buf->num_lines; i++) {
-      free(buf->lines[i]);
-    }
-  }
-  buf->num_lines = 0;
-
-  if (!buf->lines) {
-    buf->capacity = 100;
-    buf->lines = malloc(sizeof(char *) * (size_t)buf->capacity);
-    if (!buf->lines) {
-      fclose(rf);
-      return false;
-    }
-  }
-
-  bool is_empty = true;
-  char line[256];
-  while (fgets(line, sizeof(line), rf)) {
-    is_empty = false;
-    line[strcspn(line, "\n")] = '\0';
-    size_t line_len = strlen(line);
-    if (line_len > 0 && line[line_len - 1] == '\r') {
-      line[line_len - 1] = '\0';
-    }
-    // Replace tabs with spaces
-    for (char *p = line; *p; p++) {
-      if (*p == '\t') {
-        *p = ' ';
-      }
-    }
-
-    if (buf->num_lines >= buf->capacity) {
-      buf->capacity *= 2;
-      char **tmp = realloc(buf->lines, sizeof(char *) * (size_t)buf->capacity);
-      if (!tmp) {
-        fclose(rf);
-        return false;
-      }
-      buf->lines = tmp;
-    }
-
-    buf->lines[buf->num_lines++] = strdup(line);
-  }
-
-  fclose(rf);
-
-  if (is_empty) {
-    if (buf->num_lines >= buf->capacity) {
-      buf->capacity = (buf->capacity > 0) ? (buf->capacity * 2) : 2;
-      char **tmp = realloc(buf->lines, sizeof(char *) * (size_t)buf->capacity);
-      if (!tmp)
-        return false;
-      buf->lines = tmp;
-    }
-    buf->lines[buf->num_lines++] = strdup("");
-  }
-
-  return true;
+  bool ok = editor_load_stream(stream, buf);
+  fclose(stream);
+  return ok;
 }
 
 // -----------------------
@@ -2701,55 +2699,21 @@ void edit_file_in_terminal(WINDOW *window, const char *file_path,
   box(editor_window, 0, 0);
   pthread_mutex_unlock(&banner_mutex);
 
-  TextBuffer text_buffer;
-  text_buffer.capacity = 100;
-  text_buffer.num_lines = 0;
-  text_buffer.lines = malloc(sizeof(char *) * text_buffer.capacity);
-  g_editor_buffer = &text_buffer;
-  if (!text_buffer.lines) {
+  TextBuffer text_buffer = {0};
+  if (!editor_load_stream(file, &text_buffer)) {
     pthread_mutex_lock(&banner_mutex);
-    mvwprintw(notification_window, 1, 2, "Memory allocation error");
+    mvwprintw(notification_window, 1, 2, "Unable to read file into editor");
     wrefresh(notification_window);
     pthread_mutex_unlock(&banner_mutex);
     fclose(file);
-    close(fd);
+    delwin(editor_window);
+    noraw();
+    cbreak();
+    is_editing = 0;
+    g_editor_path[0] = '\0';
     return;
   }
-
-  // Read the file into our text buffer
-  bool is_empty = true;
-  char line[256];
-  while (fgets(line, sizeof(line), file)) {
-    is_empty = false;
-    line[strcspn(line, "\n")] = '\0';
-    size_t line_len = strlen(line);
-    if (line_len > 0 && line[line_len - 1] == '\r') {
-      line[line_len - 1] = '\0';
-    }
-    // Replace tabs with spaces
-    for (char *p = line; *p; p++) {
-      if (*p == '\t') {
-        *p = ' ';
-      }
-    }
-    if (text_buffer.num_lines >= text_buffer.capacity) {
-      text_buffer.capacity *= 2;
-      char **tmp =
-          realloc(text_buffer.lines, sizeof(char *) * text_buffer.capacity);
-      if (!tmp) {
-        mvwprintw(notification_window, 1, 2, "Memory allocation error");
-        wrefresh(notification_window);
-        fclose(file);
-        return;
-      }
-      text_buffer.lines = tmp;
-    }
-    text_buffer.lines[text_buffer.num_lines++] = strdup(line);
-  }
-  if (is_empty) {
-    // If file is empty, start with one blank line
-    text_buffer.lines[text_buffer.num_lines++] = strdup("");
-  }
+  g_editor_buffer = &text_buffer;
 
   // Cursor and scrolling state
   int cursor_line = 0;

@@ -6,7 +6,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -63,6 +63,11 @@ test_all: test_all.c test_runner.h
 	@echo "Note: test_all requires full application dependencies"
 	@echo "Run individual test suites instead: make test"
 
+test_editor_loading: test_editor_loading.c ../src/fs/files.c
+	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
+		-o $@ test_editor_loading.c $(LIBS)
+
 test_editor_allocations: test_editor_allocations.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
@@ -97,6 +102,7 @@ test: all
 	@./test_history_allocations
 	@./test_editor_ranges
 	@./test_editor_allocations
+	@./test_editor_loading
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -148,6 +154,7 @@ test-asan: clean
 	@./test_history_allocations
 	@./test_editor_ranges
 	@./test_editor_allocations
+	@./test_editor_loading
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 
