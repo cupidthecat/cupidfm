@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "vector.h"
 #include "files.h"
+#include "mime.h"
 #include "git.h"
 #include "vecstack.h"
 #include "main.h"
@@ -175,6 +176,9 @@ int main(int argc, char **argv) {
     noecho();
     raw();   // or cbreak() if you prefer
     keypad(stdscr, TRUE);
+#ifdef NCURSES_VERSION
+    if (!getenv("ESCDELAY")) set_escdelay(25);
+#endif
     curs_set(0);
     timeout(100);
     
@@ -421,10 +425,10 @@ int main(int argc, char **argv) {
     int total_scroll_length = (COLS - 2) + (int)strlen(BANNER_TEXT) + (int)strlen(BUILD_INFO) +
                               BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
 
+    struct timespec last_frame_time;
+    clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
     int ch;
-    while ((ch = getch()) != kb.key_exit) {
-        struct timespec loop_start_time;
-        clock_gettime(CLOCK_MONOTONIC, &loop_start_time);
+    while ((ch = app_input_next_key()) != kb.key_exit) {
 
         if (state.plugins) {
             plugins_update_context(&state, active_window);
@@ -947,8 +951,8 @@ int main(int argc, char **argv) {
         if (resized) {
             resized = 0;
             redraw_all_windows(&state);
-            maybe_flush_input(loop_start_time);
-            continue;
+            clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
+            if (ch == ERR || ch == KEY_RESIZE) continue;
         }
         // Check if enough time has passed to update the banner
         struct timespec current_time;
@@ -1037,14 +1041,11 @@ int main(int argc, char **argv) {
                     int max_x, max_y;
                     getmaxyx(previewwin, max_y, max_x);
                     (void) max_x;
-                    int content_height = max_y - 7;
+                    int content_height = max_y - 8;
                     int content_width = max_x - 4;
 
-                    int total_lines = get_preview_total_lines(file_path, content_width, content_height);
-                    int max_start_line = total_lines - content_height;
-                    if (max_start_line < 0) max_start_line = 0;
-
-                    if (state.preview_start_line < max_start_line) {
+                    if (preview_can_scroll_down(file_path, state.preview_start_line,
+                                                content_width, content_height)) {
                         state.preview_start_line++;
                         werase(notifwin);
                         show_notification(notifwin, "Scrolled down");
@@ -1495,7 +1496,8 @@ int main(int argc, char **argv) {
                     char mime_buf[128] = "unknown";
                     magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
                     if (mc && magic_load(mc, NULL) == 0) {
-                        const char *m = magic_file(mc, file_path);
+                        char mime_buffer[512];
+                        const char *m = mime_file_cached(mc, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
                         if (m && *m) {
                             strncpy(mime_buf, m, sizeof(mime_buf) - 1);
                             mime_buf[sizeof(mime_buf) - 1] = '\0';
@@ -1604,6 +1606,8 @@ input_done:
             plugins_update_context(&state, active_window);
         }
 
+        if (app_input_defer_scroll_frame(ch, kb.key_up, kb.key_down, &last_frame_time)) continue;
+
         // Redraw windows
         draw_directory_window(
                 dirwin,
@@ -1654,7 +1658,7 @@ input_done:
         wrefresh(mainwin);
         wrefresh(notifwin);
 
-        maybe_flush_input(loop_start_time);
+        clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
     }
 
     // Clean up

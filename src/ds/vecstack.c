@@ -23,13 +23,15 @@ VecStack VecStack_empty() {
  * @param v the VecStack to push onto
  * @param el the element to push
  */
-void VecStack_push(VecStack *v, void *el) {
+bool VecStack_push(VecStack *v, void *el) {
+    if (!v) return false;
     // Cache length to avoid multiple function calls
     size_t len = Vector_len(v->v);
-    Vector_add(&v->v, 1);
+    if (!Vector_add(&v->v, 1)) return false;
     v->v.el[len] = el;
     // Use set_len_no_free since we're growing (no elements to free)
     Vector_set_len_no_free(&v->v, len + 1);
+    return true;
 }
 
 /**

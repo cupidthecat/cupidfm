@@ -1,5 +1,5 @@
 
-# CupidFM Cupidscript API (with New Features)
+# CupidFM plugin API
 
 ---
 
@@ -60,7 +60,7 @@
 - [CupidScript Standard Library & New Features](#cupidscript-standard-library--new-features)
 
 
-CupidFM supports plugin scripting via [CupidScript](#cupidscript), a lightweight, embeddable scripting language and VM written in C99. This document details plugin loading, the plugin architecture, the `fm.*` API exposed to scripts in CupidFM, and a comprehensive overview of the latest CupidScript language features.
+CupidFM loads plugins written in CupidScript and exposes the `fm.*` API described here. The bundled runtime is in `lib/cupidscript/`; [lib/sources.json](lib/sources.json) records its upstream revision. For language and embedding details, use the [CupidScript wiki](https://github.com/cupidthecat/cupidscript/wiki) and the [tested embedding examples](lib/cupidscript/wiki/Embedding-API.md).
 
 ---
 
@@ -607,58 +607,33 @@ let dt = datetime_from_unix_ms(ms);
 
 ---
 
-## Directory Overview
+## Directory overview
 
-- `src/cs_value.c`, `src/cs_lexer.c`, `src/cs_parser.c`, `src/cs_vm.c`, `src/cs_stdlib.c` – core runtime, VM, and stdlib
-- `src/main.c` – CLI/embedding demo and entry point
-- `src/cupidscript.h` (embedding API header)
-- Build system: `Makefile`
----
+CupidFM keeps the runtime, public header, CLI, examples, and tests in `lib/cupidscript/`. Runtime source files are under that folder's `src/`; they are separate from CupidFM's application sources.
 
-## Build Instructions
+## Build instructions
 
-**Requires:** C99 compiler (gcc/clang), POSIX tools.
-
-### With `make`:
+Build CupidFM and its pinned libraries from the repository root:
 
 ```sh
-make all
+make -j
+make test
+make test-libs
 ```
-Outputs:  
-- `bin/libcupidscript.a` (static library)  
-- `bin/cupidscript` (CLI interpreter)
 
-### Manual:
+To build the bundled standalone interpreter and static library:
 
-See README for explicit build commands if not using make.
+```sh
+make -C lib/cupidscript -j all
+```
 
----
+This creates `lib/cupidscript/bin/cupidscript` and `lib/cupidscript/bin/libcupidscript.a`. The library build needs a C99 compiler, Make, and the OpenSSL/zlib development libraries. See the [installation wiki](https://github.com/cupidthecat/cupidfm/wiki/Installation) for package commands.
 
-## Using CupidScript in C Hosts
+## Using CupidScript in C hosts
 
-Typical embedding workflow:
+Create a VM with `cs_vm_new`, register host functions with `cs_register_native`, and execute code with `cs_vm_run_file` or `cs_vm_run_string`. `cs_call` invokes a script function; check its return code and read `cs_vm_last_error` on failure. Release owned values, then destroy the VM with `cs_vm_free`.
 
-1. Create and configure VM:
-   ```c
-   cs_vm* vm = cs_vm_new();
-   cs_register_stdlib(vm);
-   cs_register_native(vm, "fm.notify", my_cb, NULL);
-   ```
-2. Execute scripts:
-   ```c
-   cs_vm_run_file(vm, "script.cs");
-   ```
-3. Invoke function from C:
-   ```c
-   cs_call(vm, "myfunc", argc, argv, &out);
-   ```
-4. Query last error (as string):
-   ```c
-   const char* err = cs_vm_last_error(vm);
-   ```
-Refer to the header for refcounted string/lists API, type checking, etc.
-
----
+Constructors and retained getters return owned references. Setters retain stored values, so callers still release their original references. `cs_to_cstr` returns a borrowed string pointer. The [embedding reference](lib/cupidscript/wiki/Embedding-API.md) includes a complete C example with balanced releases.
 
 ## CupidFM Plugins
 
@@ -689,7 +664,7 @@ Plugins = Any CupidScript `.cs` file with optional hooks:
 - `fn on_selection_change(new_name, old_name)` — selection changed
 - `fn on_editor_open(path)` — when a file is opened in the built-in editor
 - `fn on_editor_change(line, col, text)` — when editor content changes (insertions/deletions)
-- n on_editor_save(path)  when a file is saved in the editor
+- `fn on_editor_save(path)` - after the editor saves a file
 
 **New:**
 - **Plugin API can export additional custom entry points.**
@@ -1433,3 +1408,12 @@ CupidFM and CupidScript are licensed under the GNU General Public License v3.
 See [`LICENSE`](LICENSE) or https://www.gnu.org/licenses/gpl-3.0.html for details.
 
 ---
+
+
+## Scrolling and plugin work
+
+`on_key` receives each key, including queued repeats. Movement repaints can be combined within a 16 ms budget; hooks still run in order. A slow callback adds its own execution time, but it does not discard queued keys. Keep selection-change hooks short and put expensive conversions behind an explicit command.
+
+`fm.exec(command, arguments, options)` returns captured `stdout`, `stderr`, `code`, `signal`, `timed_out`, and `truncated`. It uses an argument vector, defaults to a 5,000 ms timeout and 256 KiB output limit, and returns code 126 when its requested working directory cannot be entered.
+
+Compatibility names `fm.get_cwd`, `fm.set_cwd`, `fm.refresh`, `fm.get_selected`, `fm.get_selected_path`, `fm.get_files`, `fm.editor_is_open`, and `fm.editor_insert` map to the current APIs. See the [plugin wiki](https://github.com/cupidthecat/cupidfm/wiki/Plugin-System) for the mapping.

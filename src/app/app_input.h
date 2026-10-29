@@ -2,11 +2,14 @@
 #define APP_INPUT_H
 
 #include <time.h>
+#include <stdbool.h>
 
 // Returns a human-readable name for a key code.
 const char *keycode_to_string(int keycode);
 
-// Flushes any buffered input if the loop is taking too long.
-void maybe_flush_input(struct timespec loop_start_time);
+// Preserve queued keys while combining movement bursts into one repaint.
+int app_input_next_key(void);
+bool app_input_defer_scroll_frame(int key, int up, int down,
+                                  const struct timespec *last_frame);
 
 #endif // APP_INPUT_H

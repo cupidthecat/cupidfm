@@ -16,6 +16,8 @@ jobs:
         run: make
       - name: Run terminal startup and shutdown
         run: python3 tests/test_terminal_smoke.py
+      - name: Preserve queued scrolling through slow plugin work
+        run: python3 tests/test_scroll_smoke.py
       - name: Run bundled library tests
         run: make -j2 test-libs
       - name: Run tests
@@ -66,6 +68,22 @@ jobs:
           rm tests/test_archive_preview
           make -C tests test_archive_preview CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           python3 tests/test_archive_preview.py
+      - name: Check queued scrolling input with sanitizers
+        run: |
+          make -B -C tests test_input_queue CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_input_queue
+      - name: Check directory loading and allocation failures with sanitizers
+        run: |
+          make -B -C tests test_directory_listing CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_directory_listing
+      - name: Check MIME cache invalidation and concurrency with sanitizers
+        run: |
+          make -B -C tests test_mime_cache CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_mime_cache
+      - name: Check search capacity and allocation failures with sanitizers
+        run: |
+          make -B -C tests test_search_capacity CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_search_capacity
       - name: Check bounded text previews with sanitizers
         run: |
           make -B -C tests test_text_preview CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
@@ -74,3 +92,4 @@ jobs:
         run: |
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
           python3 tests/test_terminal_smoke.py
+          python3 tests/test_scroll_smoke.py

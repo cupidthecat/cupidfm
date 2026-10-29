@@ -107,6 +107,8 @@ Run `make -j` to build CupidFM and its bundled libraries from source. The execut
 
 Text previews read only through the visible range. See [PERFORMANCE.md](PERFORMANCE.md) for the measured read budget and benchmark commands.
 
+Contributor notes cover [vector ownership, tests, and preview caches](docs/development.md).
+
 `./dev.sh` builds with sanitizers and launches the application after a prompt.
 
 ### Compilation Flags

@@ -1,3 +1,91 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#include <errno.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <string.h>
+#include "mime.h"
+
+typedef struct {
+    bool valid;
+    int flags;
+    struct stat identity;
+    uint64_t used;
+    char path[4096];
+    char type[512];
+} MimeCacheEntry;
+static MimeCacheEntry mime_cache[128];
+static uint64_t mime_cache_clock;
+static pthread_mutex_t mime_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static bool same_identity(const struct stat *a, const struct stat *b) {
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino &&
+           a->st_size == b->st_size && a->st_mode == b->st_mode &&
+           a->st_mtim.tv_sec == b->st_mtim.tv_sec && a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
+           a->st_ctim.tv_sec == b->st_ctim.tv_sec && a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
+}
+/* Some filesystems update timestamps at coarse clock ticks. Do not trust a
+ * matching snapshot for a regular file changed in the current/recent second. */
+static bool settled_identity(const struct stat *identity) {
+    struct timespec now;
+    if (!S_ISREG(identity->st_mode)) return true;
+    if (clock_gettime(CLOCK_REALTIME, &now)) return false;
+    return identity->st_mtim.tv_sec < now.tv_sec - 1 &&
+           identity->st_ctim.tv_sec < now.tv_sec - 1;
+}
+static const char *copy_mime(const char *type, char *result, size_t capacity) {
+    if (!type) return NULL;
+    size_t length = strlen(type);
+    if (length >= capacity) { errno = ENOBUFS; return NULL; }
+    memcpy(result, type, length + 1);
+    return result;
+}
+const char *mime_file_cached(magic_t cookie, const char *path, int flags,
+                             char *result, size_t capacity) {
+    if (!cookie || !path || !result || !capacity) { errno = EINVAL; return NULL; }
+    struct stat identity;
+    if ((flags & MAGIC_SYMLINK ? stat(path, &identity) : lstat(path, &identity))) return NULL;
+    pthread_mutex_lock(&mime_cache_mutex);
+    MimeCacheEntry *target = NULL, *oldest = &mime_cache[0];
+    for (size_t i = 0; i < sizeof(mime_cache) / sizeof(*mime_cache); i++) {
+        MimeCacheEntry *entry = &mime_cache[i];
+        if (entry->valid && entry->flags == flags && !strcmp(entry->path, path)) {
+            if (same_identity(&entry->identity, &identity) && settled_identity(&identity)) {
+                entry->used = ++mime_cache_clock;
+                const char *answer = copy_mime(entry->type, result, capacity);
+                pthread_mutex_unlock(&mime_cache_mutex);
+                return answer;
+            }
+            target = entry;
+            break;
+        }
+        if (!entry->valid) target = entry;
+        if (entry->used < oldest->used) oldest = entry;
+    }
+    if (!target) target = oldest;
+    const char *type = magic_file(cookie, path);
+    const char *answer = copy_mime(type, result, capacity);
+    if (answer && strlen(path) < sizeof(target->path) && strlen(type) < sizeof(target->type)) {
+        target->identity = identity;
+        target->flags = flags;
+        strcpy(target->path, path);
+        strcpy(target->type, type);
+        target->used = ++mime_cache_clock;
+        target->valid = true;
+    }
+    pthread_mutex_unlock(&mime_cache_mutex);
+    return answer;
+}
+void mime_cache_clear(void) {
+    pthread_mutex_lock(&mime_cache_mutex);
+    memset(mime_cache, 0, sizeof(mime_cache));
+    mime_cache_clock = 0;
+    pthread_mutex_unlock(&mime_cache_mutex);
+}
+
 // File: mime.c
 // MIME type utilities and file emoji mapping
 #ifndef _POSIX_C_SOURCE

@@ -1,6 +1,6 @@
 # CupidArchive
 
-A lightweight, safe archive reading library for previewing and extracting archive contents without external dependencies (beyond compression libraries).
+CupidArchive is a C library for listing and extracting archive contents. It uses zlib, libbz2, and liblzma for decompression.
 
 ## Overview
 
@@ -12,35 +12,30 @@ CupidArchive provides a clean 3-layer architecture for reading archive files:
 
 The library is designed with safety as a primary concern:
 - **ArcLimits** are enforced across parsing, decompression, and extraction
-- Every stream has a **hard byte limit** to mitigate zip bombs
+- Streams support byte limits; decompression and extraction use the configured decoded limit
 - Extraction is **openat()-anchored** and rejects path traversal (Zip-Slip)
 - Decompression filters treat **truncated input as an error** (no silent partial output)
 
 ## Current Support
 
-- **Formats:** TAR (ustar, PAX, GNU long names, and GNU/PAX sparse files), ZIP (central directory + streaming mode, ZIP64 support), 7z (single-file, LZMA/LZMA2), compressed single files (.gz, .bz2, .xz as virtual archives)
+- **Formats:** TAR (ustar, PAX, GNU long names, and GNU/PAX sparse files), ZIP (central directory + streaming mode, ZIP64 support), 7z (Copy/LZMA1/LZMA2, multiple files and folders, solid substreams), compressed single files (.gz, .bz2, .xz as virtual archives)
 - **Compression:** gzip (zlib), bzip2 (libbz2), deflate (zlib, for ZIP), xz/lzma (liblzma)
 - **Entry Types:** Regular files, directories, symlinks, hardlinks (TAR only), files and directories (ZIP)
 - **Operations:** Reading, previewing, and **extraction**
 
 With XZ filter support you can treat `.tar.xz` as a native archive, and `.xz` / `.txz` single files appear as pseudo archives (one entry) through `arc_compressed.c`, just like `.gz` and `.bz2` files. All compressed single files are presented as virtual archives with a single entry.
 
-### Notable Features
+### Reader and extraction behavior
 
-- **Layered safety** – The `ArcStream` + filter + reader + extractor pipeline guarantees hard byte limits, Zip-Slip-safe extraction, and scoped ownership traps at every boundary.
-- **Compression-aware detection** – `arc_reader.c` rewinds compressed streams, reclones gzip/bzip2/xz filters, and reports TAR/ZIP/single-file formats so previews never read past the sniffed header.
-- **Single-file pseudo archives** – `.gz`, `.bz2`, and `.xz` files surface as one-entry archives through `arc_compressed.c`, making previews and extractions consistent with full archives.
-- **Openat-/O_NOFOLLOW-backed extraction** – `arc_extract.c` builds directories with `mkdir_p_at()`, copies data with 64 KB buffers, and respects `O_NOFOLLOW` to avoid symlink races.
-- **Resource limits everywhere** – `ArcLimits` guard entry counts, name lengths, extra/comment bytes, decompressed volume, and nesting depth so malformed archives hit a ceiling before wrecking anything.
+Format detection works through gzip, bzip2, and xz wrappers. Ordinary compressed files are presented as one-entry archives. Compressed ZIP and 7z inputs are spooled to an anonymous temporary file for random access. Decompression limits apply across concatenated compression members.
 
-### Known Limitations
+Extraction traverses destination parents through directory descriptors and rejects symlink ancestors. Regular files are staged beside the destination, then renamed after data and metadata updates succeed. TAR hardlinks, including forward references, preserve inode links. Directory metadata is applied after children.
 
-- **Read-only** – This library only reads/previews/extracts archives; there is no archive creation or modification API.
-- **Hardlinks are copied** – TAR hardlink entries fall back to regular file copies because inode tracking/relink passes are not implemented.
-- **Metadata is partial** – Extraction preserves permissions and timestamps, but ownership (`uid`/`gid`) is not restored and ZIP symlinks/hardlinks are unsupported.
-- **Encrypted ZIP entries are unsupported** – The ZIP parser recognizes the encryption flag but cannot decrypt password-protected entries.
-- **liblzma development files are required** – The source build includes both xz and 7z readers; link applications with `-llzma`.
-- **7z support is limited** – Only single-file, single-folder 7z archives with LZMA/LZMA2 (or copy) are supported. No encryption, multi-volume, or solid multi-file archives yet.
+### Limits of support
+
+The library reads and extracts archives; it has no creation or modification API. Extraction preserves permissions and timestamps but does not restore ownership. ZIP encryption and ZIP symlink/hardlink interpretation are unsupported.
+
+7z supports multiple files, separate folders, and solid substreams when each folder uses one Copy, LZMA1, or LZMA2 coder. Encoded file tables and UTF-16 names are supported. Encryption, multiple volumes, coder/filter chains, anti-items, and Unix special-file entries are unsupported. Defined folder and file CRCs are verified when their data is read. Listing alone does not validate file contents.
 
 ## Limits (ArcLimits)
 
@@ -367,67 +362,46 @@ The extraction layer provides full archive extraction capabilities.
 
 ## API
 
-### Basic Usage
+### List entries
 
 ```c
-#include "cupidarchive/arc_reader.h"
+#include "cupidarchive.h"
+#include <stdio.h>
 
-ArcReader *reader = arc_open_path("archive.tar.gz");
-if (!reader) {
-    // Handle error
-    return;
-}
-
-ArcEntry entry;
-while (arc_next(reader, &entry) == 0) {
-    printf("Entry: %s (size: %lu)\n", entry.path, entry.size);
-
-    // Optionally read entry data
-    ArcStream *data = arc_open_data(reader);
-    if (data) {
-        char buffer[4096];
-        ssize_t n = arc_stream_read(data, buffer, sizeof(buffer));
-        // ... process data ...
-        arc_stream_close(data);
+int main(int argc, char **argv) {
+    if (argc != 2) return 2;
+    ArcReader *reader = arc_open_path(argv[1]);
+    if (!reader) { perror("archive"); return 1; }
+    ArcEntry entry;
+    int result;
+    while ((result = arc_next(reader, &entry)) == 0) {
+        printf("%s: %llu bytes\n", entry.path, (unsigned long long)entry.size);
+        arc_entry_free(&entry);
     }
-
-    arc_entry_free(&entry);
+    arc_close(reader);
+    return result < 0 ? 1 : 0;
 }
-
-arc_close(reader);
 ```
 
-### Extraction Usage
+To read a regular file's contents, call `arc_open_data(reader)` after `arc_next`. Read until EOF, check for negative reads, and close the data stream before advancing or closing the reader. Data streams borrow their reader's resources. A standalone compressed entry has unknown length represented by zero, so its declared size must not be used as an EOF test.
+
+### Extract an archive
 
 ```c
-#include "cupidarchive/arc_reader.h"
+#include "cupidarchive.h"
+#include <stdio.h>
 
-// Extract entire archive
-ArcReader *reader = arc_open_path("archive.tar.gz");
-if (!reader) {
-    // Handle error
-    return;
+int main(int argc, char **argv) {
+    if (argc != 3) return 2;
+    ArcReader *reader = arc_open_path(argv[1]);
+    if (!reader) { perror("archive"); return 1; }
+    int result = arc_extract_to_path(reader, argv[2], true, true);
+    arc_close(reader);
+    return result ? 1 : 0;
 }
-
-int result = arc_extract_to_path(reader, "/tmp/extracted", true, true);
-if (result < 0) {
-    // Handle error
-}
-
-arc_close(reader);
-
-// Or extract entries one by one
-ArcReader *reader2 = arc_open_path("archive.tar");
-ArcEntry entry;
-while (arc_next(reader2, &entry) == 0) {
-    int result = arc_extract_entry(reader2, &entry, "/tmp/extracted", true, true);
-    if (result < 0) {
-        // Handle error for this entry
-    }
-    arc_entry_free(&entry);
-}
-arc_close(reader2);
 ```
+
+`arc_extract_entry` extracts an individual returned entry. Use whole-archive extraction when forward hardlinks or deferred directory metadata are needed. Failed member writes preserve existing destinations; successful earlier members remain when a later member fails.
 
 ### Entry Structure
 
@@ -614,7 +588,7 @@ Paths are normalized to:
 ## Future Plans
 
 - [ ] zstd compression support
-- [ ] Expand 7z support (solid/multi-file, more coders, encrypted headers)
+- [ ] More 7z coders/filter chains and encrypted headers
 - [ ] RAR format support (read-only)
 - [ ] Progress callbacks for extraction
 - [ ] Extraction filters (exclude patterns)
@@ -641,7 +615,7 @@ Extraction traverses destination directories through file descriptors and reject
 
 Close each data stream returned by `arc_open_data` before closing its reader. On successful `arc_open_stream`, the reader owns the supplied stream; on failure the caller still owns it. Seekable raw streams reset their read budget after a successful seek; decompression filters remain forward only and retain their decoded byte budget.
 
-The single-file 7z reader accepts Copy, LZMA1, and LZMA2 data and encoded file tables, decodes UTF-16 names to UTF-8, and validates header and available data checksums. Empty files, single directories, and empty archives are supported. Metadata is bounded before decoding; LZMA decoder memory is capped at 128 MiB. Multi-file, multi-folder, multi-volume, and encrypted 7z archives remain unsupported.
+The 7z reader maps file records to folder substreams, validates sizes and counts, and enforces the decoded limit across all folders. A solid folder is decoded once into an anonymous temporary file and reused for its consecutive files. Opening data for a solid entry validates the folder before returning a bounded file stream; defined per-file CRCs are checked as that stream is read. Empty files, directories, Unicode names, and encoded file tables are supported. LZMA decoder memory is capped at 128 MiB. The reader follows the [7z format description](https://github.com/ip7z/7zip/blob/main/DOC/7zFormat.txt).
 
 Compressed TAR readers finish the compression stream before reporting archive completion, so missing trailers and checksum failures are reported even after the TAR end marker. ZIP and 7z inside gzip, bzip2, or xz are decoded to an anonymous temporary file for random access, within the configured decoded byte limit. Ordinary compressed files and TAR archives remain streamed.
 

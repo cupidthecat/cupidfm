@@ -99,6 +99,8 @@ void arc_stream_close(ArcStream *stream);
 /**
  * Create a file-backed stream.
  * 
+ * The stream starts at the descriptor's current position and owns it on success.
+ *
  * @param fd File descriptor (must be open)
  * @param byte_limit Maximum bytes that can be read (0 = unlimited, not recommended)
  * @return New stream, or NULL on error

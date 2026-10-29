@@ -62,6 +62,23 @@ int main(int argc, char **argv) {
         }
         arc_close(reader);free(buffer);return next<0 ? 1 : 0;
     }
+    if (!strcmp(argv[1], "repeat")) {
+        ArcEntry entry; int status;
+        while ((status = arc_next(reader, &entry)) == 0) {
+            if (entry.type == ARC_ENTRY_FILE) {
+                for (int pass = 0; pass < 2; pass++) {
+                    ArcStream *data = arc_open_data(reader);
+                    if (!data) {arc_entry_free(&entry);arc_close(reader);free(buffer);return 1;}
+                    char chunk[7];ssize_t n;uint64_t total = 0;
+                    while ((n = arc_stream_read(data, chunk, sizeof(chunk))) > 0) total += (uint64_t)n;
+                    arc_stream_close(data);
+                    if (n < 0 || total != entry.size) {arc_entry_free(&entry);arc_close(reader);free(buffer);return 1;}
+                }
+            }
+            arc_entry_free(&entry);
+        }
+        arc_close(reader);free(buffer);return status < 0 ? 1 : 0;
+    }
     int rc = arc_extract_to_path(reader,argv[3],true,true);
     arc_close(reader);
     free(buffer);

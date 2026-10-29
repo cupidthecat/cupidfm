@@ -11,7 +11,8 @@ typedef struct {
 VecStack VecStack_empty();
 
 // Push an element
-void     VecStack_push(VecStack *stack, void *el);
+/* On failure, the caller keeps ownership of el. */
+bool     VecStack_push(VecStack *stack, void *el);
 
 // Pop (removes last element, returns it, or NULL if stack empty)
 void    *VecStack_pop(VecStack *stack);

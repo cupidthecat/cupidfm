@@ -335,7 +335,8 @@ ArcStream *arc_stream_from_fd(int fd, int64_t byte_limit) {
     }
     
     data->fd = fd;
-    data->pos = 0;
+    off_t initial = lseek(fd, 0, SEEK_CUR);
+    data->pos = initial >= 0 ? (int64_t)initial : 0;
     
     stream->vtable = &fd_vtable;
     stream->byte_limit = byte_limit;

@@ -1811,7 +1811,8 @@ static int nf_fm_info(cs_vm *vm, void *ud, int argc, const cs_value *argv,
   cs_value v_mime = cs_str(vm, "");
   magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
   if (mc && magic_load(mc, NULL) == 0) {
-    const char *mt = magic_file(mc, full);
+    char mime_buffer[512];
+    const char *mt = mime_file_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
     if (mt && *mt) {
       cs_value_release(v_mime);
       v_mime = cs_str(vm, mt);
@@ -2459,7 +2460,8 @@ static int nf_fm_entries(cs_vm *vm, void *ud, int argc, const cs_value *argv,
     if (is_dir) {
       mime = "inode/directory";
     } else if (mc && full[0]) {
-      const char *m = magic_file(mc, full);
+      char mime_buffer[512];
+      const char *m = mime_file_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
       if (m && *m)
         mime = m;
     }

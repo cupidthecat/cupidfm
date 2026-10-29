@@ -2,6 +2,7 @@
 #include "arc_7z.h"
 #include "arc_base.h"
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <lzma.h>
 #include <stdbool.h>
@@ -10,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
+#include <unistd.h>
 
 #define HEADER_LIMIT (64U * 1024U * 1024U)
 #define DECODER_MEMORY_LIMIT (128U * 1024U * 1024U)
@@ -27,16 +29,39 @@ typedef struct Cursor { const uint8_t *data; size_t size, pos; } Cursor;
 typedef struct Folder {
     uint64_t offset, packed, unpacked, method;
     uint8_t props[5];
-    size_t props_size;
+    size_t props_size, sub_count;
+    uint64_t *sizes;
+    uint32_t *crcs;
+    bool *defined;
     uint32_t packed_crc, unpacked_crc;
-    bool has_packed_crc, has_unpacked_crc, present;
+    bool has_packed_crc, has_unpacked_crc;
 } Folder;
+typedef struct Streams { Folder *folders; size_t count; } Streams;
+typedef struct FileRecord {
+    ArcEntry entry;
+    size_t folder;
+    uint64_t offset;
+    uint32_t crc;
+    bool defined, has_mode;
+} FileRecord;
 typedef struct SevenZReader {
     ArcReaderBase base;
-    ArcEntry entry;
-    Folder folder;
-    bool returned, valid;
+    Streams streams;
+    FileRecord *files;
+    size_t count, next, current, cached_folder;
+    ArcStream *cache;
+    uint64_t archive_size;
 } SevenZReader;
+static void streams_free(Streams *streams) {
+    for(size_t i=0;i<streams->count;i++) {
+        free(streams->folders[i].sizes);free(streams->folders[i].crcs);free(streams->folders[i].defined);
+    }
+    free(streams->folders);memset(streams,0,sizeof(*streams));
+}
+static void files_free(SevenZReader *reader) {
+    for(size_t i=0;i<reader->count;i++)arc_entry_free(&reader->files[i].entry);
+    free(reader->files);
+}
 
 static int invalid(void) { errno=EINVAL; return -1; }
 static int unsupported(void) { errno=ENOSYS; return -1; }
@@ -62,75 +87,146 @@ static int number(Cursor *c,uint64_t *value) {
     }
     return 0;
 }
-static int digest(Cursor *c,bool *defined,uint32_t *crc) {
-    int all=byte(c);
-    if(all<0 || all>1) return invalid();
-    int bits=all ? 128 : byte(c);
-    if(bits<0) return -1;
-    *defined=(bits&128)!=0;
-    if(*defined) { const uint8_t *p=take(c,4); if(!p) return -1; *crc=le32(p); }
+static int definitions(Cursor *c,size_t count,const uint8_t **bits,bool *all) {
+    int flag=byte(c);
+    if(flag<0 || flag>1)return invalid();
+    *all=flag!=0;*bits=NULL;
+    if(!*all && count) { *bits=take(c,(count+7)/8);if(!*bits)return -1; }
     return 0;
 }
-static int streams(Cursor *c,Folder *f) {
-    bool have_pack=false,have_unpack=false;
-    int id;
-    while((id=byte(c))>0) {
-        uint64_t count;
-        if(id==PACK) {
-            if(have_pack || number(c,&f->offset) || number(c,&count)) return invalid();
-            if(count!=1) return unsupported();
-            have_pack=true;
-            bool have_size=false;
-            while((id=byte(c))>0) {
-                if(id==SIZE) { if(have_size || number(c,&f->packed)) return invalid(); have_size=true; }
-                else if(id==CRC) { if(digest(c,&f->has_packed_crc,&f->packed_crc)) return -1; }
-                else return unsupported();
-            }
-            if(id<0 || !have_size) return invalid();
-        } else if(id==UNPACK) {
-            if(have_unpack || byte(c)!=FOLDER || number(c,&count)) return invalid();
-            if(count!=1 || byte(c)!=0 || number(c,&count) || count!=1) return unsupported();
-            have_unpack=true;
-            int flags=byte(c);
-            if(flags<0 || !(flags&15) || (flags&15)>8 || (flags&0xc0)) return invalid();
-            const uint8_t *method=take(c,(size_t)(flags&15));
-            if(!method) return -1;
-            for(int i=0;i<(flags&15);i++) f->method=(f->method<<8)|method[i];
-            if(flags&16) {
-                uint64_t inputs,outputs;
-                if(number(c,&inputs)||number(c,&outputs)) return -1;
-                if(inputs!=1 || outputs!=1) return unsupported();
-            }
-            if(flags&32) {
-                if(number(c,&count)) return -1;
-                if(count>sizeof(f->props)) return unsupported();
-                const uint8_t *p=take(c,(size_t)count);
-                if(!p) return -1;
-                memcpy(f->props,p,(size_t)count); f->props_size=(size_t)count;
-            }
-            if(byte(c)!=UNPACK_SIZE || number(c,&f->unpacked)) return invalid();
-            id=byte(c);
-            if(id==CRC) { if(digest(c,&f->has_unpacked_crc,&f->unpacked_crc)) return -1; id=byte(c); }
-            if(id!=END) return invalid();
-        } else if(id==SUBSTREAMS) {
-            if(!have_unpack) return invalid();
-            while((id=byte(c))>0) {
-                if(id==NUM_SUBSTREAMS) {
-                    if(number(c,&count)) return -1;
-                    if(count!=1) return unsupported();
-                } else if(id==CRC) {
-                    if(f->has_unpacked_crc) return invalid();
-                    if(digest(c,&f->has_unpacked_crc,&f->unpacked_crc)) return -1;
-                } else return unsupported();
-            }
-            if(id<0) return -1;
-        } else return unsupported();
+static bool bit(const uint8_t *bits,size_t index) { return (bits[index/8]&(128>>(index%8)))!=0; }
+static int digests(Cursor *c,size_t count,bool *defined,uint32_t *crcs) {
+    const uint8_t *bits;bool all;
+    if(definitions(c,count,&bits,&all))return -1;
+    for(size_t i=0;i<count;i++) {
+        defined[i]=all || bit(bits,i);
+        if(defined[i]) {const uint8_t *p=take(c,4);if(!p)return -1;crcs[i]=le32(p);}
     }
-    if(id<0 || !have_pack || !have_unpack) return invalid();
-    if((f->method==METHOD_COPY && f->props_size==0 && f->packed==f->unpacked) ||
+    return 0;
+}
+static bool count_ok(uint64_t count,const ArcLimits *limits,size_t item_size) {
+    return count<=limits->max_entries && count<=HEADER_LIMIT/item_size;
+}
+static int coder(Cursor *c,Folder *f) {
+    uint64_t count;
+    if(number(c,&count))return -1;
+    if(count!=1)return unsupported();
+    int flags=byte(c);
+    if(flags<0 || !(flags&15) || (flags&15)>8 || (flags&0xc0))return invalid();
+    const uint8_t *method=take(c,(size_t)(flags&15));if(!method)return -1;
+    for(int i=0;i<(flags&15);i++)f->method=(f->method<<8)|method[i];
+    if(flags&16) {
+        uint64_t inputs,outputs;
+        if(number(c,&inputs)||number(c,&outputs))return -1;
+        if(inputs!=1 || outputs!=1)return unsupported();
+    }
+    if(flags&32) {
+        if(number(c,&count))return -1;
+        if(count>sizeof(f->props))return unsupported();
+        const uint8_t *p=take(c,(size_t)count);if(!p)return -1;
+        memcpy(f->props,p,(size_t)count);f->props_size=(size_t)count;
+    }
+    if((f->method==METHOD_COPY && f->props_size==0) ||
        (f->method==METHOD_LZMA && f->props_size==5) ||
-       (f->method==METHOD_LZMA2 && f->props_size==1)) { f->present=true; return 0; }
+       (f->method==METHOD_LZMA2 && f->props_size==1))return 0;
     return unsupported();
+}
+static int sub_arrays(Folder *f) {
+    f->sizes=calloc(f->sub_count ? f->sub_count : 1,sizeof(*f->sizes));
+    f->crcs=calloc(f->sub_count ? f->sub_count : 1,sizeof(*f->crcs));
+    f->defined=calloc(f->sub_count ? f->sub_count : 1,sizeof(*f->defined));
+    return f->sizes && f->crcs && f->defined ? 0 : -1;
+}
+static int substreams(Cursor *c,Streams *out,const ArcLimits *limits) {
+    int id=byte(c);size_t total=0;
+    if(id==NUM_SUBSTREAMS) {
+        for(size_t i=0;i<out->count;i++) {
+            uint64_t count;if(number(c,&count)||!count_ok(count,limits,sizeof(uint64_t)))return invalid();
+            out->folders[i].sub_count=(size_t)count;
+        }
+        id=byte(c);
+    }
+    for(size_t i=0;i<out->count;i++) {
+        Folder *f=&out->folders[i];
+        if(f->sub_count>limits->max_entries-total || sub_arrays(f))return invalid();
+        total+=f->sub_count;
+        uint64_t sum=0;
+        for(size_t j=0;j+1<f->sub_count;j++) {
+            if(id!=SIZE || number(c,&f->sizes[j]) || f->sizes[j]>f->unpacked-sum)return invalid();
+            sum+=f->sizes[j];
+        }
+        if(f->sub_count)f->sizes[f->sub_count-1]=f->unpacked-sum;
+        else if(f->unpacked)return invalid();
+        if(f->sub_count==1 && f->has_unpacked_crc) {f->defined[0]=true;f->crcs[0]=f->unpacked_crc;}
+    }
+    if(id==SIZE)id=byte(c);
+    if(id==CRC) {
+        size_t count=0;
+        for(size_t i=0;i<out->count;i++) {
+            Folder *f=&out->folders[i];if(f->sub_count!=1 || !f->has_unpacked_crc)count+=f->sub_count;
+        }
+        bool *defined=calloc(count ? count : 1,sizeof(bool));uint32_t *crcs=calloc(count ? count : 1,sizeof(uint32_t));
+        if(!defined || !crcs) {free(defined);free(crcs);return -1;}
+        if(digests(c,count,defined,crcs)) {free(defined);free(crcs);return -1;}
+        size_t k=0;
+        for(size_t i=0;i<out->count;i++) {
+            Folder *f=&out->folders[i];
+            if(f->sub_count==1 && f->has_unpacked_crc)continue;
+            for(size_t j=0;j<f->sub_count;j++,k++) {f->defined[j]=defined[k];f->crcs[j]=crcs[k];}
+        }
+        free(defined);free(crcs);id=byte(c);
+    }
+    return id==END ? 0 : invalid();
+}
+static int streams(Cursor *c,Streams *out,const ArcLimits *limits) {
+    uint64_t offset,count;
+    uint64_t *packed=NULL;bool *defined=NULL;uint32_t *crcs=NULL;
+    size_t packs=0;int result=-1,id=byte(c);
+    if(id!=PACK || number(c,&offset)||number(c,&count)||!count || !count_ok(count,limits,sizeof(Folder)))goto fail;
+    packs=(size_t)count;
+    packed=calloc(packs,sizeof(*packed));defined=calloc(packs,sizeof(*defined));crcs=calloc(packs,sizeof(*crcs));
+    if(!packed||!defined||!crcs)goto fail;
+    if(byte(c)!=SIZE)goto fail;
+    for(size_t i=0;i<packs;i++)if(number(c,&packed[i]))goto fail;
+    id=byte(c);
+    if(id==CRC) {if(digests(c,packs,defined,crcs))goto fail;id=byte(c);}
+    if(id!=END || byte(c)!=UNPACK || byte(c)!=FOLDER || number(c,&count) || count!=packs || byte(c)!=0)goto fail;
+    out->folders=calloc(packs,sizeof(Folder));if(!out->folders)goto fail;out->count=packs;
+    for(size_t i=0;i<packs;i++) {
+        Folder *f=&out->folders[i];f->offset=offset;f->packed=packed[i];f->packed_crc=crcs[i];f->has_packed_crc=defined[i];f->sub_count=1;
+        if(packed[i]>UINT64_MAX-offset || coder(c,f))goto fail;
+        offset+=packed[i];
+    }
+    if(byte(c)!=UNPACK_SIZE)goto fail;
+    uint64_t total=0;
+    for(size_t i=0;i<packs;i++) {
+        Folder *f=&out->folders[i];
+        if(number(c,&f->unpacked) || f->unpacked>limits->max_uncompressed_bytes-total ||
+           (f->method==METHOD_COPY && f->packed!=f->unpacked))goto fail;
+        total+=f->unpacked;
+    }
+    id=byte(c);
+    if(id==CRC) {
+        memset(defined,0,packs*sizeof(*defined));memset(crcs,0,packs*sizeof(*crcs));
+        if(digests(c,packs,defined,crcs))goto fail;
+        for(size_t i=0;i<packs;i++) {out->folders[i].has_unpacked_crc=defined[i];out->folders[i].unpacked_crc=crcs[i];}
+        id=byte(c);
+    }
+    if(id!=END)goto fail;
+    id=byte(c);
+    if(id==SUBSTREAMS) {if(substreams(c,out,limits))goto fail;id=byte(c);}
+    else {
+        for(size_t i=0;i<packs;i++) {
+            Folder *f=&out->folders[i];if(sub_arrays(f))goto fail;
+            f->sizes[0]=f->unpacked;f->defined[0]=f->has_unpacked_crc;f->crcs[0]=f->unpacked_crc;
+        }
+    }
+    if(id!=END)goto fail;
+    result=0;
+fail:
+    free(packed);free(defined);free(crcs);
+    if(result && !errno)errno=EINVAL;
+    return result;
 }
 
 /* A checked stream owns its input. Validate as soon as the last byte is read,
@@ -261,72 +357,101 @@ static char *name_utf8(const uint8_t *data,size_t size,uint64_t max_name) {
     }
     free(out);invalid();return NULL;
 }
-static int files(Cursor *c,SevenZReader *reader,uint64_t *count) {
-    if(number(c,count)) return -1;
-    if(*count>1) return unsupported();
-    bool empty=false,regular_empty=false;
-    int id;
+static int files(Cursor *c,SevenZReader *reader) {
+    uint64_t count;
+    if(number(c,&count)||!count_ok(count,reader->base.limits,sizeof(FileRecord)))return invalid();
+    reader->files=calloc(count ? (size_t)count : 1,sizeof(*reader->files));
+    bool *empty=calloc(count ? (size_t)count : 1,sizeof(bool)),*regular=calloc(count ? (size_t)count : 1,sizeof(bool));
+    if(!reader->files || !empty || !regular) {free(empty);free(regular);return -1;}
+    reader->count=(size_t)count;
+    for(size_t i=0;i<reader->count;i++) {reader->files[i].entry.mode=0644;reader->files[i].folder=SIZE_MAX;}
+    bool have_names=false,have_empty=false,have_regular=false;size_t empty_count=0;
+    int id,result=-1;
     while((id=byte(c))>0) {
         uint64_t length;
-        if(number(c,&length) || length>c->size-c->pos) return invalid();
-        const uint8_t *p=take(c,(size_t)length);
-        if(!p) return -1;
+        if(number(c,&length) || length>c->size-c->pos || length>reader->base.limits->max_extra)goto fail;
+        const uint8_t *p=take(c,(size_t)length);if(!p)goto fail;
         if(id==NAME) {
-            if(!*count || length<3 || p[0] || reader->entry.path) return invalid();
-            reader->entry.path=name_utf8(p+1,(size_t)length-1,reader->base.limits->max_name);
-            if(!reader->entry.path) return -1;
-        } else if(id==EMPTY_STREAM || id==EMPTY_FILE) {
-            if(length!=1 || !*count) return invalid();
-            if(id==EMPTY_STREAM) empty=(p[0]&128)!=0;
-            else regular_empty=(p[0]&128)!=0;
-        } else if(id==16) {
-            return unsupported();
-        } else if(id==ATTRIBUTES || id==MTIME) {
-            Cursor property={p,(size_t)length,0};
-            int all=byte(&property);
-            if(all<0 || all>1) return invalid();
-            int defined=all ? 128 : byte(&property);
-            if(defined<0 || byte(&property)!=0) return unsupported();
-            if(defined&128) {
-                const uint8_t *value=take(&property,id==ATTRIBUTES ? 4 : 8);
-                if(!value) return -1;
-                if(id==ATTRIBUTES && (le32(value)>>16)) reader->entry.mode=(le32(value)>>16)&0777;
-                if(id==MTIME && le64(value)>=116444736000000000ULL)
-                    reader->entry.mtime=(le64(value)-116444736000000000ULL)/10000000;
+            if(have_names || !length || p[0])goto fail;
+            have_names=true;
+            size_t pos=1;
+            for(size_t i=0;i<reader->count;i++) {
+                size_t first=pos;
+                while(pos+1<length && (p[pos]||p[pos+1]))pos+=2;
+                if(pos+1>=length)goto fail;
+                pos+=2;reader->files[i].entry.path=name_utf8(p+first,pos-first,reader->base.limits->max_name);
+                if(!reader->files[i].entry.path)goto fail;
             }
-            if(property.pos!=property.size) return invalid();
+            if(pos!=length)goto fail;
+        } else if(id==EMPTY_STREAM) {
+            if(have_empty || length!=(count+7)/8)goto fail;
+            have_empty=true;
+            for(size_t i=0;i<reader->count;i++) {empty[i]=bit(p,i);if(empty[i])empty_count++;}
+        } else if(id==EMPTY_FILE) {
+            if(!have_empty || have_regular || length!=(empty_count+7)/8)goto fail;
+            have_regular=true;
+            size_t k=0;for(size_t i=0;i<reader->count;i++)if(empty[i])regular[i]=bit(p,k++);
+        } else if(id==16) {
+            if(!have_empty || length!=(empty_count+7)/8)goto fail;
+            for(size_t i=0;i<empty_count;i++)if(bit(p,i)) {unsupported();goto fail;}
+        }
+        else if(id==ATTRIBUTES || id==MTIME || id==18 || id==19) {
+            Cursor property={p,(size_t)length,0};const uint8_t *bits;bool all;
+            if(definitions(&property,reader->count,&bits,&all) || byte(&property)!=0)goto fail;
+            for(size_t i=0;i<reader->count;i++)if(all || bit(bits,i)) {
+                const uint8_t *value=take(&property,id==ATTRIBUTES ? 4 : 8);if(!value)goto fail;
+                if(id==ATTRIBUTES && (le32(value)>>16)) {
+                    unsigned mode=le32(value)>>16,kind=mode&0170000;
+                    if(kind && kind!=0100000 && kind!=0040000) {unsupported();goto fail;}
+                    reader->files[i].entry.mode=mode&0777;reader->files[i].has_mode=true;
+                }
+                if(id==MTIME && le64(value)>=116444736000000000ULL)
+                    reader->files[i].entry.mtime=(le64(value)-116444736000000000ULL)/10000000;
+            }
+            if(property.pos!=property.size)goto fail;
         }
     }
-    if(id<0 || (regular_empty && !empty)) return invalid();
-    reader->entry.type=empty && !regular_empty ? ARC_ENTRY_DIR : ARC_ENTRY_FILE;
-    if(empty && reader->folder.present) return invalid();
-    if(!empty && *count && !reader->folder.present) return invalid();
-    return 0;
+    if(id<0)goto fail;
+    for(size_t i=0;i<reader->count;i++) {
+        FileRecord *file=&reader->files[i];file->entry.type=empty[i]&&!regular[i] ? ARC_ENTRY_DIR : ARC_ENTRY_FILE;
+        if(file->entry.type==ARC_ENTRY_DIR && !file->has_mode)file->entry.mode=0755;
+        if(!file->entry.path) {
+            char fallback[64];snprintf(fallback,sizeof(fallback),reader->count==1 ? "file" : "file-%zu",i+1);
+            file->entry.path=strdup(fallback);if(!file->entry.path)goto fail;
+        }
+        /* A sentinel marks records that need a decoded substream. */
+        if(!empty[i])file->folder=0;
+    }
+    result=0;
+fail:
+    free(empty);free(regular);return result ? invalid() : 0;
 }
 static int parse_header(Cursor *c,SevenZReader *reader) {
-    if(byte(c)!=HEADER) return invalid();
-    bool have_files=false;
-    uint64_t count=0;
-    int id;
+    if(byte(c)!=HEADER)return invalid();
+    bool have_files=false;int id;
     while((id=byte(c))>0) {
         if(id==MAIN_STREAMS) {
-            if(reader->folder.present || streams(c,&reader->folder)) return -1;
+            if(reader->streams.count || have_files || streams(c,&reader->streams,reader->base.limits))return -1;
         } else if(id==FILES) {
-            if(have_files || files(c,reader,&count)) return -1;
+            if(have_files || files(c,reader))return -1;
             have_files=true;
         } else if(id==ARCHIVE_PROPERTIES) {
-            while((id=byte(c))>0) {
-                uint64_t size;
-                if(number(c,&size)||size>c->size-c->pos||!take(c,(size_t)size)) return invalid();
-            }
-            if(id<0) return -1;
+            while((id=byte(c))>0) {uint64_t size;if(number(c,&size)||size>c->size-c->pos||!take(c,(size_t)size))return invalid();}
+            if(id<0)return -1;
         } else return unsupported();
     }
-    if(id<0 || !have_files || c->pos!=c->size || (!count && reader->folder.present)) return invalid();
-    if(count && !reader->entry.path) {reader->entry.path=strdup("file");if(!reader->entry.path)return -1;}
-    reader->valid=count!=0;
-    reader->entry.size=reader->folder.unpacked;
-    return 0;
+    if(id<0 || !have_files || c->pos!=c->size)return invalid();
+    size_t folder=0,sub=0;uint64_t offset=0;
+    for(size_t i=0;i<reader->count;i++) {
+        FileRecord *file=&reader->files[i];if(file->folder==SIZE_MAX)continue;
+        while(folder<reader->streams.count && sub==reader->streams.folders[folder].sub_count) {folder++;sub=0;offset=0;}
+        if(folder==reader->streams.count)return invalid();
+        Folder *f=&reader->streams.folders[folder];
+        file->folder=folder;file->offset=offset;file->entry.size=f->sizes[sub];file->crc=f->crcs[sub];file->defined=f->defined[sub];
+        offset+=file->entry.size;sub++;
+    }
+    while(folder<reader->streams.count && sub==reader->streams.folders[folder].sub_count) {folder++;sub=0;}
+    return folder==reader->streams.count ? 0 : invalid();
 }
 
 ArcReader *arc_7z_open(ArcStream *stream) { return arc_7z_open_ex(stream,arc_default_limits()); }
@@ -345,7 +470,7 @@ ArcReader *arc_7z_open_ex(ArcStream *stream,const ArcLimits *limits) {
     if(!reader) return NULL;
     reader->base.format=3;reader->base.stream=stream;
     arc_base_set_limits(&reader->base,limits);
-    reader->entry.mode=0644;
+    reader->current=SIZE_MAX;reader->cached_folder=SIZE_MAX;reader->archive_size=(uint64_t)length;
     if(!size) return (ArcReader *)reader;
     uint8_t *buffer=malloc((size_t)size);
     if(!buffer) {free(reader);return NULL;}
@@ -354,58 +479,85 @@ ArcReader *arc_7z_open_ex(ArcStream *stream,const ArcLimits *limits) {
        crc32(0,buffer,(uInt)size)!=le32(signature+28)) goto fail;
     if(buffer[0]==ENCODED_HEADER) {
         Cursor encoded={buffer,(size_t)size,1};
-        Folder folder={0};
-        if(streams(&encoded,&folder) || encoded.pos!=encoded.size || folder.unpacked>HEADER_LIMIT) goto fail;
-        ArcStream *data=open_folder(stream,&folder,reader->base.limits,(uint64_t)length);
-        if(!data) goto fail;
-        uint8_t *decoded=malloc(folder.unpacked ? (size_t)folder.unpacked : 1);
-        if(!decoded) {arc_stream_close(data);goto fail;}
-        size_t total=0;
-        ssize_t n=0;
-        while(total<folder.unpacked && (n=arc_stream_read_fully(data,decoded+total,(size_t)folder.unpacked-total))>0) total+=(size_t)n;
-        uint8_t extra;
-        bool ok=total==folder.unpacked && n>=0 && arc_stream_read_fully(data,&extra,1)==0;
-        arc_stream_close(data);
+        Streams encoded_streams={0};
+        if(streams(&encoded,&encoded_streams,reader->base.limits) || encoded.pos!=encoded.size ||
+           encoded_streams.count!=1 || encoded_streams.folders[0].sub_count!=1 || encoded_streams.folders[0].unpacked>HEADER_LIMIT) {
+            streams_free(&encoded_streams);goto fail;
+        }
+        Folder *folder=&encoded_streams.folders[0];uint64_t unpacked=folder->unpacked;
+        ArcStream *data=open_folder(stream,folder,reader->base.limits,(uint64_t)length);
+        if(!data) {streams_free(&encoded_streams);goto fail;}
+        uint8_t *decoded=malloc(unpacked ? (size_t)unpacked : 1);
+        if(!decoded) {arc_stream_close(data);streams_free(&encoded_streams);goto fail;}
+        size_t total=0;ssize_t n=0;
+        while(total<unpacked && (n=arc_stream_read_fully(data,decoded+total,(size_t)unpacked-total))>0)total+=(size_t)n;
+        uint8_t extra;bool ok=total==unpacked && n>=0 && arc_stream_read_fully(data,&extra,1)==0;
+        arc_stream_close(data);streams_free(&encoded_streams);
         if(!ok) {free(decoded);goto fail;}
-        free(buffer);buffer=decoded;size=folder.unpacked;
+        free(buffer);buffer=decoded;size=unpacked;
     }
     Cursor header={buffer,(size_t)size,0};
     if(parse_header(&header,reader)) goto fail;
-    if(reader->folder.present && (reader->folder.offset>(uint64_t)length-32 ||
-       reader->folder.packed>(uint64_t)length-32-reader->folder.offset ||
-       reader->folder.unpacked>reader->base.limits->max_uncompressed_bytes)) goto fail;
+    for(size_t i=0;i<reader->streams.count;i++) {
+        Folder *f=&reader->streams.folders[i];
+        if(f->offset>(uint64_t)length-32 || f->packed>(uint64_t)length-32-f->offset)goto fail;
+    }
     free(buffer);return (ArcReader *)reader;
 fail:
-    free(buffer);arc_entry_free(&reader->entry);free(reader);
+    free(buffer);files_free(reader);streams_free(&reader->streams);free(reader);
     if(!errno) errno=EINVAL;
     return NULL;
 }
 int arc_7z_next(ArcReader *reader,ArcEntry *entry) {
     if(!reader||!entry)return invalid();
     SevenZReader *seven=(SevenZReader *)reader;
-    if(!seven->valid||seven->returned)return 1;
-    *entry=seven->entry;entry->path=strdup(seven->entry.path);entry->link_target=NULL;
+    if(seven->next==seven->count) {seven->current=SIZE_MAX;return 1;}
+    *entry=seven->files[seven->next].entry;entry->path=strdup(entry->path);entry->link_target=NULL;
     if(!entry->path)return -1;
-    seven->returned=true;return 0;
+    seven->current=seven->next++;return 0;
+}
+static int cache_folder(SevenZReader *seven,size_t index) {
+    if(seven->cache && seven->cached_folder==index)return 0;
+    arc_stream_close(seven->cache);seven->cache=NULL;seven->cached_folder=SIZE_MAX;
+    FILE *temporary=tmpfile();if(!temporary)return -1;
+    Folder *f=&seven->streams.folders[index];
+    ArcStream *data=open_folder(seven->base.stream,f,seven->base.limits,seven->archive_size);
+    if(!data) {fclose(temporary);return -1;}
+    uint8_t buffer[65536];ssize_t n;
+    while((n=arc_stream_read(data,buffer,sizeof(buffer)))>0)
+        if(fwrite(buffer,1,(size_t)n,temporary)!=(size_t)n) {n=-1;break;}
+    arc_stream_close(data);
+    if(n<0 || fflush(temporary) || fseek(temporary,0,SEEK_SET)) {fclose(temporary);return -1;}
+    int fd=fcntl(fileno(temporary),F_DUPFD_CLOEXEC,0);
+    int saved=errno;
+    if(fclose(temporary) && fd>=0) {saved=errno;close(fd);fd=-1;}
+    if(fd<0) {errno=saved;return -1;}
+    seven->cache=arc_stream_from_fd(fd,0);
+    if(!seven->cache) {close(fd);return -1;}
+    seven->cached_folder=index;return 0;
 }
 ArcStream *arc_7z_open_data(ArcReader *reader) {
     if(!reader)return NULL;
     SevenZReader *seven=(SevenZReader *)reader;
-    if(!seven->valid||seven->entry.type!=ARC_ENTRY_FILE)return NULL;
-    if(!seven->folder.present)return arc_stream_from_memory("",0,0);
-    if(arc_stream_seek(seven->base.stream,0,SEEK_END))return NULL;
-    int64_t size=arc_stream_tell(seven->base.stream);
-    if(size<0)return NULL;
-    return open_folder(seven->base.stream,&seven->folder,seven->base.limits,(uint64_t)size);
+    if(seven->current==SIZE_MAX)return NULL;
+    FileRecord *file=&seven->files[seven->current];
+    if(file->entry.type!=ARC_ENTRY_FILE)return NULL;
+    if(file->folder==SIZE_MAX)return arc_stream_from_memory("",0,0);
+    Folder *folder=&seven->streams.folders[file->folder];
+    ArcStream *data;
+    if(folder->sub_count==1)data=open_folder(seven->base.stream,folder,seven->base.limits,seven->archive_size);
+    else {
+        if(cache_folder(seven,file->folder))return NULL;
+        data=arc_stream_substream(seven->cache,(int64_t)file->offset,(int64_t)file->entry.size);
+    }
+    return data ? checked(data,file->entry.size,file->defined,file->crc) : NULL;
 }
-int arc_7z_skip_data(ArcReader *reader) {
-    if(!reader)return invalid();
-    ((SevenZReader *)reader)->returned=true;return 0;
-}
+int arc_7z_skip_data(ArcReader *reader) {return reader ? 0 : invalid();}
 void arc_7z_close(ArcReader *reader) {
     if(!reader)return;
     SevenZReader *seven=(SevenZReader *)reader;
-    arc_entry_free(&seven->entry);arc_stream_close(seven->base.stream);
+    files_free(seven);streams_free(&seven->streams);arc_stream_close(seven->cache);
+    arc_stream_close(seven->base.stream);
     if(seven->base.owned_stream && seven->base.owned_stream!=seven->base.stream)arc_stream_close(seven->base.owned_stream);
     free(seven);
 }

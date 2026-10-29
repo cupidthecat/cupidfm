@@ -21,6 +21,8 @@
 
 // Local includes
 #include "utils.h"
+#include "mime.h"
+#include "text_preview.h"
 #include "process.h"
 #include "clipboard.h"
 #include "files.h"  // Include the header for FileAttr and related functions
@@ -871,6 +873,8 @@ bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, 
  * @param current_directory the current directory
  */
 void reload_directory(Vector *files, const char *current_directory) {
+    mime_cache_clear();
+    text_preview_clear_index();
     // Free all FileAttr objects before clearing the vector
     for (size_t i = 0; i < Vector_len(*files); i++) {
         free_attr((FileAttr)files->el[i]);
@@ -885,6 +889,8 @@ void reload_directory(Vector *files, const char *current_directory) {
 
 // Lazy loading version - loads initial batch
 void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files) {
+    mime_cache_clear();
+    text_preview_clear_index();
     // Free all FileAttr objects before clearing the vector
     for (size_t i = 0; i < Vector_len(*files); i++) {
         free_attr((FileAttr)files->el[i]);
