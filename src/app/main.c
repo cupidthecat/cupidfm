@@ -124,7 +124,35 @@ static bool selection_to_clipboard(AppState *state, bool cut, size_t *copied) {
     return ok;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    const char *program = argc > 0 && argv[0] && *argv[0] ? argv[0] : "cupidfm";
+    const char *start_directory = NULL;
+    if (argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
+        printf("Usage: %s [--] [DIRECTORY]\nOpen DIRECTORY, or the current directory when omitted.\n", program);
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--")) {
+        if (argv[1][0] == '-') {
+            fprintf(stderr, "Usage: %s [--] [DIRECTORY]\n", program);
+            return 2;
+        }
+        start_directory = argv[1];
+    } else if (argc == 3 && !strcmp(argv[1], "--")) {
+        start_directory = argv[2];
+    } else if (argc > 2) {
+        fprintf(stderr, "Usage: %s [--] [DIRECTORY]\n", program);
+        return 2;
+    }
+    if (start_directory && chdir(start_directory)) {
+        fprintf(stderr, "%s: cannot open directory '%s': %s\n", program, start_directory, strerror(errno));
+        return 1;
+    }
+    char initial_directory[MAX_PATH_LENGTH];
+    if (!getcwd(initial_directory, sizeof(initial_directory))) {
+        fprintf(stderr, "%s: cannot resolve the starting directory: %s\n", program, strerror(errno));
+        return 1;
+    }
+
     // Initialize ncurses
     setlocale(LC_ALL, "");
     
@@ -271,7 +299,7 @@ int main() {
     banner_offset = banner_initial_offset_for_center(BANNER_TEXT, BUILD_INFO);
 
     // Initialize application state
-    AppState state;
+    AppState state = {0};
     undo_state_init(&state.undo_state);
     state.current_directory = malloc(MAX_PATH_LENGTH);
     if (state.current_directory == NULL) {

@@ -23,6 +23,7 @@ typedef struct {
     char *current_directory;
     Vector files;
     CursorAndSlice dir_window_cas;
+    char selected_name[MAX_PATH_LENGTH];
     const char *selected_entry;
     bool select_all_active;
     int preview_start_line;

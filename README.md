@@ -122,6 +122,9 @@ After building, start cupidfm with:
 
 ```bash
 ./cupidfm
+./cupidfm ~/Documents
+./cupidfm -- ./-directory
+./cupidfm --help
 ```
 
 Error logs (if any) will be saved to `log.txt`.

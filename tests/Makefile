@@ -1,3 +1,4 @@
+.DEFAULT_GOAL := all
 CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c2x
 INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
@@ -10,6 +11,10 @@ ASAN_LIBS = -fsanitize=address
 
 # Test executables
 TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview
+
+# Test sources include application code directly; header changes must rebuild them.
+TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
+$(TEST_TARGETS): $(TEST_HEADERS) Makefile
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark

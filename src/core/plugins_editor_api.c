@@ -355,6 +355,8 @@ static int nf_fm_editor_uppercase_selection(cs_vm *vm, void *ud, int argc,
 }
 
 void plugins_register_editor_api(cs_vm *vm, PluginManager *pm) {
+  cs_register_native(vm, "fm.editor_is_open", nf_fm_editor_active, pm);
+  cs_register_native(vm, "fm.editor_insert", nf_fm_editor_insert_text, pm);
   cs_register_native(vm, "fm.editor_active", nf_fm_editor_active, pm);
   cs_register_native(vm, "fm.editor_get_path", nf_fm_editor_get_path, pm);
   cs_register_native(vm, "fm.editor_save", nf_fm_editor_save, pm);
