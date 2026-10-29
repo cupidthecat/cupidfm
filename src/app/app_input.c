@@ -8,16 +8,32 @@
 #include <ncurses.h>
 #include <stdio.h>
 
-#define INPUT_FLUSH_THRESHOLD_NS 150000000L // 150ms
+static int pending_key = ERR;
 
-void maybe_flush_input(struct timespec loop_start_time) {
-    struct timespec loop_end_time;
-    clock_gettime(CLOCK_MONOTONIC, &loop_end_time);
-    long loop_duration_ns = (loop_end_time.tv_sec - loop_start_time.tv_sec) * 1000000000L +
-                            (loop_end_time.tv_nsec - loop_start_time.tv_nsec);
-    if (loop_duration_ns > INPUT_FLUSH_THRESHOLD_NS) {
-        flushinp();
+int app_input_next_key(void) {
+    if (pending_key != ERR) {
+        int key = pending_key;
+        pending_key = ERR;
+        return key;
     }
+    return getch();
+}
+
+bool app_input_defer_scroll_frame(int key, int up, int down,
+                                  const struct timespec *last_frame) {
+    if (!last_frame || (key != up && key != down)) return false;
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) return false;
+    long long elapsed = (long long)(now.tv_sec - last_frame->tv_sec) * 1000000000LL +
+                        now.tv_nsec - last_frame->tv_nsec;
+    if (elapsed < 0 || elapsed >= 16000000LL) return false;
+    if (pending_key == ERR) {
+        int delay = wgetdelay(stdscr);
+        wtimeout(stdscr, 0);
+        pending_key = getch();
+        wtimeout(stdscr, delay);
+    }
+    return pending_key != ERR && (pending_key == up || pending_key == down);
 }
 
 const char *keycode_to_string(int keycode) {

@@ -6,6 +6,7 @@ Cupid Common Library
 .SH SYNOPSIS
 .EX
 #include <stddef.h>
+#include <stdbool.h>
 #include <cupid/vector.h>
 
 struct VectorImpl {
@@ -20,7 +21,7 @@ typedef struct {
 
 Vector Vector_new(size_t cap);
 void Vector_bye(Vector *v);
-void Vector_add(Vector *v, size_t add);
+bool Vector_add(Vector *v, size_t add);
 void Vector_set_len_no_free(Vector *v, size_t len);
 void Vector_set_len(Vector *v, size_t len);
 size_t Vector_len(Vector v);
@@ -32,9 +33,12 @@ This header includes an implementation of a dynamic array.
 .SS "Vector Vector_new(size_t cap);"
 Creates a
 .I Vector
-with zero capacity and length.
+with the requested capacity and zero length.
 .SS "void Vector_bye(Vector *v);"
-.SS "void Vector_add(Vector *v, size_t add);"
+.SS "bool Vector_add(Vector *v, size_t add);"
+Reserves capacity for the current length plus add elements. Returns true on success.
+On allocation failure or size overflow it returns false and preserves the vector.
+The caller must check the result before writing new elements.
 .SS "void Vector_set_len_no_free(Vector *v, size_t len);"
 .SS "void Vector_set_len(Vector *v, size_t len);"
 .SS "size_t Vector_len(Vector v);"

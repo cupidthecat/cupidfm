@@ -135,6 +135,42 @@ class Extraction(unittest.TestCase):
         self.assertTrue((self.dest/"folder").is_dir())
         self.assertEqual(self.extract(fixtures/"empty-archive.7z"),0)
 
+    def test_7z_multifile_methods_solid_and_separate_folders(self):
+        fixtures=Path(__file__).resolve().parent/"fixtures"
+        expected={"first.txt":b"first contents\n"*100,"folder/second.txt":b"second contents\n"*100,
+                  "caf\u00e9-\U0001f600.txt":b"Unicode name\n","empty":b""}
+        for method in ("copy","lzma","lzma2"):
+            for solid in ("on","off"):
+                path=fixtures/("multi-"+method+"-"+solid+".7z")
+                for mode in ("path","stream","chunked","repeat"):
+                    result=subprocess.run([str(DRIVER),mode,str(path),str(self.dest)],timeout=10)
+                    self.assertEqual(result.returncode,0,(method,solid,mode))
+                    for name,body in expected.items():
+                        self.assertEqual((self.dest/name).read_bytes(),body,(method,solid,name))
+                        self.assertEqual((self.dest/name).stat().st_mode&0o777,0o640)
+                        self.assertEqual(int((self.dest/name).stat().st_mtime),1700000000)
+        self.assertEqual(self.extract(fixtures/"multi-libarchive.7z"),0)
+
+    def test_7z_substream_crcs_sizes_counts_and_total_limits(self):
+        from sevenz_fixture import archive
+        path=self.base/"substreams.7z"
+        path.write_bytes(archive())
+        for mode in ("path","stream","chunked","repeat"):
+            self.assertEqual(subprocess.run([str(DRIVER),mode,str(path),str(self.dest)],timeout=10).returncode,0,mode)
+            for name,body in (("alpha",b"alpha"),("beta",b"beta"),("gamma",b"gamma"),("empty",b"")):
+                self.assertEqual((self.dest/name).read_bytes(),body)
+            self.assertTrue((self.dest/"dir").is_dir())
+        for limit,success in ((14,True),(13,False)):
+            result=subprocess.run([str(DRIVER),"byte-limit",str(path),str(self.dest),str(limit)],timeout=10)
+            self.assertEqual(result.returncode==0,success)
+        (self.dest/"beta").write_bytes(b"existing")
+        path.write_bytes(archive(crc_delta=1))
+        self.assertNotEqual(self.extract(path),0)
+        self.assertEqual((self.dest/"beta").read_bytes(),b"existing")
+        for kwargs in ({"lengths":(10,)},{"stream_counts":(3,1)},
+                       {"stream_counts":(0,1)},{"names":("alpha","dir","empty","beta")}):
+            path.write_bytes(archive(**kwargs));self.assertNotEqual(self.extract(path),0,kwargs)
+
     def test_7z_checksums_and_filename_bounds(self):
         import struct,zlib
         original=(Path(__file__).resolve().parent/"fixtures/copy.7z").read_bytes()

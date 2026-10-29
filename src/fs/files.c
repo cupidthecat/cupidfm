@@ -1727,8 +1727,8 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,
 #ifdef DT_DIR
         if (entry->d_type == DT_DIR) {
           is_dir = true;
-        } else if (entry->d_type == DT_UNKNOWN) {
-          // d_type unavailable, fall back to stat
+        } else if (entry->d_type == DT_UNKNOWN || entry->d_type == DT_LNK) {
+          // Follow directory symlinks; stat also handles unavailable d_type.
           is_dir = is_directory(name, entry->d_name);
         }
 // else: d_type indicates regular file or other non-directory
@@ -1745,7 +1745,10 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,
           snprintf(full_path, sizeof(full_path), "%s/%s", name, entry->d_name);
           file_attr->git_status = git_query_file_status(full_path);
 
-          Vector_add(v, 1);
+          if (!Vector_add(v, 1)) {
+            free_attr(file_attr);
+            break;
+          }
           v->el[Vector_len(*v)] = file_attr;
           Vector_set_len(v, Vector_len(*v) + 1);
           loaded_this_batch++;
@@ -1774,8 +1777,8 @@ void append_files_to_vec(Vector *v, const char *name) {
 #ifdef DT_DIR
         if (entry->d_type == DT_DIR) {
           is_dir = true;
-        } else if (entry->d_type == DT_UNKNOWN) {
-          // d_type unavailable, fall back to stat
+        } else if (entry->d_type == DT_UNKNOWN || entry->d_type == DT_LNK) {
+          // Follow directory symlinks; stat also handles unavailable d_type.
           is_dir = is_directory(name, entry->d_name);
         }
 // else: d_type indicates regular file or other non-directory
@@ -1792,7 +1795,10 @@ void append_files_to_vec(Vector *v, const char *name) {
           snprintf(full_path, sizeof(full_path), "%s/%s", name, entry->d_name);
           file_attr->git_status = git_query_file_status(full_path);
 
-          Vector_add(v, 1);
+          if (!Vector_add(v, 1)) {
+            free_attr(file_attr);
+            break;
+          }
           v->el[Vector_len(*v)] = file_attr;
           Vector_set_len(v, Vector_len(*v) + 1);
         }
@@ -2159,7 +2165,8 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
     magic_close(magic_cookie);
     return;
   }
-  const char *mime_type = magic_file(magic_cookie, file_path);
+  char mime_buffer[512];
+  const char *mime_type = mime_file_cached(magic_cookie, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
   const char *emoji = get_file_emoji(mime_type, file_path);
   if (mime_type == NULL) {
     mvwprintw(window, 5, 2, "%-*s %s", label_width,
@@ -3724,7 +3731,8 @@ bool is_supported_file_type(const char *filename) {
   }
 
   // Get the MIME type of the file
-  const char *mime_type = magic_file(magic_cookie, filename);
+  char mime_buffer[512];
+  const char *mime_type = mime_file_cached(magic_cookie, filename, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
   if (mime_type == NULL) {
     fprintf(stderr, "Could not determine file type: %s\n",
             magic_error(magic_cookie));
@@ -3790,10 +3798,8 @@ void display_archive_preview(WINDOW *window, const char *file_path,
   int entry_count = 0;
   const int max_entries = 1000; // Limit entries to prevent UI overload
 
-  // Skip entries until start_line (accounting for header lines)
-  int header_lines = 2; // "Archive Contents:" and separator line
-  int adjusted_start_line =
-      start_line > header_lines ? start_line - header_lines : 0;
+  // Headers stay fixed; start_line indexes only archive entries.
+  int adjusted_start_line = start_line > 0 ? start_line : 0;
 
   while (current_line < adjusted_start_line && entry_count < max_entries) {
     int ret = arc_next(reader, &entry);

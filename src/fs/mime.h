@@ -3,6 +3,13 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <magic.h>
+
+/* Results are copied into caller-owned storage. Cache entries include flags and
+ * file identity/size/mode/mtime/ctime; explicit reloads can clear the cache. */
+const char *mime_file_cached(magic_t cookie, const char *path, int flags,
+                             char *result, size_t capacity);
+void mime_cache_clear(void);
 
 // MIME type support
 extern const char *supported_mime_types[];

@@ -205,12 +205,16 @@ void navigate_right(AppState *state,
             wrefresh(notifwin);
             return;
         }
-        VecStack_push(dir_stack, new_entry);
+        if (!VecStack_push(dir_stack, new_entry)) {
+            free(new_entry);
+            show_notification(notifwin, "Memory allocation error");
+            wrefresh(notifwin);
+            return;
+        }
     }
 
-    free(*current_directory);
-    *current_directory = strdup(new_path);
-    if (*current_directory == NULL) {
+    char *replacement = strdup(new_path);
+    if (replacement == NULL) {
         mvwprintw(notifwin, LINES - 1, 1, "Memory allocation error");
         wrefresh(notifwin);
         if (dir_stack) {
@@ -219,6 +223,8 @@ void navigate_right(AppState *state,
         return;
     }
 
+    free(*current_directory);
+    *current_directory = replacement;
     search_clear(state);
 
     if (state->lazy_load.directory_path) {

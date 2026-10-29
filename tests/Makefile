@@ -10,7 +10,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue
 
 # Test sources include application code directly; header changes must rebuild them.
 TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
@@ -77,8 +77,20 @@ test_all: test_all.c test_runner.h
 $(CUPIDARCHIVE_LIB):
 	$(MAKE) -C .. archive-library
 
+test_input_queue: test_input_queue.c ../src/app/app_input.c ../src/app/app_input.h
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_input_queue.c ../src/app/app_input.c $(LIBS) -lncursesw
+
+test_directory_listing: test_directory_listing.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=malloc,--wrap=realloc,--wrap=strdup -o $@ test_directory_listing.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(LIBS)
+
+test_mime_cache: test_mime_cache.c ../src/fs/mime.c ../src/fs/mime.h
+	$(CC) $(CFLAGS) $(INCLUDES) -Wl,--wrap=magic_file -o $@ test_mime_cache.c ../src/fs/mime.c $(LIBS) -lmagic -pthread
+
+test_search_capacity: test_search_capacity.c ../src/core/search.c ../src/ds/vector.c ../src/ds/vecstack.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=malloc,--wrap=realloc -o $@ test_search_capacity.c ../src/core/search.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS)
+
 test_text_preview: test_text_preview.c ../src/ui/text_preview.c ../src/ui/text_preview.h ../src/ui/syntax.c
-	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ test_text_preview.c ../src/ui/text_preview.c ../src/ui/syntax.c $(LIBS) -lncursesw
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=getline -o $@ test_text_preview.c ../src/ui/text_preview.c ../src/ui/syntax.c $(LIBS) -lncursesw
 
 test_archive_preview: test_archive_preview.c ../src/fs/files.c $(CUPIDARCHIVE_LIB)
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(CUPIDARCHIVE_LIB) $(LIBS) -lncursesw -lz -lbz2 -llzma
@@ -142,6 +154,10 @@ test: all
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@./test_input_queue
+	@./test_directory_listing
+	@./test_mime_cache
+	@./test_search_capacity
 	@./test_text_preview
 	@python3 test_archive_preview.py
 
@@ -200,6 +216,10 @@ test-asan: clean
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@./test_input_queue
+	@./test_directory_listing
+	@./test_mime_cache
+	@./test_search_capacity
 	@./test_text_preview
 	@python3 test_archive_preview.py
 	@echo ""

@@ -8,6 +8,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <magic.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -26,6 +27,7 @@
 #include "text_preview.h"
 #include "mime.h"
 #include "cupidimage.h"
+#include "cupidarchive.h"
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
@@ -245,7 +247,8 @@ static bool is_image_file(const char *path) {
     if (!path || !*path) return false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
-        const char *mime_type = magic_file(magic_cookie, path);
+        char mime_buffer[512];
+        const char *mime_type = mime_file_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
         bool is_image = (mime_type != NULL && strncmp(mime_type, "image/", 6) == 0);
         magic_close(magic_cookie);
         if (is_image) return true;
@@ -1058,7 +1061,8 @@ static void show_directory_tree(WINDOW *window,
             emoji = "📁";
         } else if (magic_cookie) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                const char *mime_type = magic_file(magic_cookie, full_path);
+                char mime_buffer[512];
+                const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
                 emoji = get_file_emoji(mime_type, entries[i].name);
             } else {
                 emoji = "📄";
@@ -1131,11 +1135,7 @@ int get_total_lines(const char *file_path) {
     FILE *file = fopen(file_path, "r");
     if (!file) return 0;
 
-    int total_lines = 0;
-    char line[256];
-    while (fgets(line, sizeof(line), file)) {
-        total_lines++;
-    }
+    int total_lines = text_preview_count_lines(file, INT_MAX);
 
     fclose(file);
     return total_lines;
@@ -1169,6 +1169,34 @@ int get_preview_total_lines(const char *file_path, int content_width, int conten
     }
 
     return get_total_lines(file_path);
+}
+
+bool preview_can_scroll_down(const char *path, int start, int width, int rows) {
+    struct stat st;
+    if (!path || start < 0 || rows <= 0 || stat(path, &st)) return false;
+    if (S_ISDIR(st.st_mode))
+        return start < INT_MAX - rows && get_directory_tree_total_lines(path) > start + rows;
+    if (!S_ISREG(st.st_mode)) return false;
+    if (is_archive_file(path)) {
+        int visible = rows - 1; /* Archive entries start one row below text. */
+        if (visible <= 0 || start >= 1000 || visible > 1000 - start) return false;
+        ArcReader *reader = arc_open_path(path);
+        if (!reader) return false;
+        ArcEntry entry; int count = 0;
+        while (count <= start + visible && count < 1000 && arc_next(reader, &entry) == 0) {
+            count++; arc_entry_free(&entry);
+        }
+        arc_close(reader);
+        return count > start + visible;
+    }
+    if (is_image_file(path))
+        return start < INT_MAX - rows && get_preview_total_lines(path, width, rows) > start + rows;
+    if (start >= INT_MAX - rows) return false;
+    FILE *stream = fopen(path, "r");
+    if (!stream) return false;
+    int count = text_preview_count_lines(stream, start + rows + 1);
+    fclose(stream);
+    return count > start + rows;
 }
 
 void draw_directory_window(WINDOW *window,
@@ -1288,7 +1316,8 @@ void draw_directory_window(WINDOW *window,
         if (FileAttr_is_dir(fa)) {
             emoji = "📁";
         } else {
-            const char *mime_type = magic_file(magic_cookie, full_path);
+            char mime_buffer[512];
+            const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
             emoji = get_file_emoji(mime_type, name);
         }
         const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
@@ -1429,7 +1458,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     bool used_truecolor = false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
-        const char *mime_type = magic_file(magic_cookie, full_path);
+        char mime_buffer[512];
+        const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
         if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
             is_image = true;
         }

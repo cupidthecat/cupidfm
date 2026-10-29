@@ -70,8 +70,29 @@ bool test_stream_from_fd() {
     ASSERT_STR_EQ(buf, test_data, "Read data should match");
     
     arc_stream_close(stream);
-    close(fd);
     unlink("/tmp/cupidarchive_test.txt");
+    return true;
+}
+
+// Constructing a stream must retain the descriptor's existing position.
+bool test_fd_initial_offset() {
+    FILE *file = tmpfile();
+    ASSERT_NOT_NULL(file, "Temporary file should be created");
+    ASSERT_EQ(fwrite("prefix-body", 1, 11, file), 11, "Write fixture");
+    ASSERT_EQ(fflush(file), 0, "Flush fixture");
+    ASSERT_EQ(fseek(file, 6, SEEK_SET), 0, "Position descriptor");
+    int fd = dup(fileno(file));
+    ASSERT_NE(fd, -1, "Duplicate descriptor");
+    fclose(file);
+    ArcStream *parent = arc_stream_from_fd(fd, 0);
+    ASSERT_NOT_NULL(parent, "FD stream should be created");
+    ASSERT_EQ(arc_stream_tell(parent), 6, "Initial position must agree with descriptor");
+    ArcStream *view = arc_stream_substream(parent, 0, 6);
+    ASSERT_NOT_NULL(view, "Subview should be created");
+    char buffer[7] = {0};
+    ASSERT_EQ(arc_stream_read(view, buffer, 6), 6, "Read prefix through view");
+    ASSERT_STR_EQ(buffer, "prefix", "View must seek instead of reading from stale offset");
+    arc_stream_close(view);arc_stream_close(parent);
     return true;
 }
 
@@ -167,6 +188,7 @@ int main() {
     RUN_TEST(test_stream_from_memory);
     RUN_TEST(test_stream_byte_limit);
     RUN_TEST(test_stream_from_fd);
+    RUN_TEST(test_fd_initial_offset);
     RUN_TEST(test_stream_seek);
     RUN_TEST(test_stream_tell);
     RUN_TEST(test_substream);

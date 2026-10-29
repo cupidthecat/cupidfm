@@ -139,6 +139,8 @@ size_t search_rebuild(AppState *state, const char *query) {
 
     size_t total = Vector_len(state->files);
     if (total == 0) return 0;
+    /* A query can match every loaded entry; reserve the complete upper bound. */
+    if (!Vector_add(&state->search_files, total)) return 0;
 
     if (state->search_mode == SEARCH_MODE_EXACT) {
         size_t count = 0;
@@ -147,7 +149,6 @@ size_t search_rebuild(AppState *state, const char *query) {
             const char *name = FileAttr_get_name(fa);
             if (!name) continue;
             if (!ci_substr(name, query)) continue;
-            Vector_add(&state->search_files, 1);
             state->search_files.el[count++] = fa;
         }
         Vector_set_len_no_free(&state->search_files, count);
@@ -165,7 +166,6 @@ size_t search_rebuild(AppState *state, const char *query) {
             const char *name = FileAttr_get_name(fa);
             if (!name) continue;
             if (regexec(&re, name, 0, NULL, 0) != 0) continue;
-            Vector_add(&state->search_files, 1);
             state->search_files.el[count++] = fa;
         }
         Vector_set_len_no_free(&state->search_files, count);
@@ -197,7 +197,6 @@ size_t search_rebuild(AppState *state, const char *query) {
 
     qsort(hits, count, sizeof(*hits), fuzzyhit_cmp);
 
-    Vector_add(&state->search_files, count);
     for (size_t i = 0; i < count; i++) {
         state->search_files.el[i] = hits[i].entry;
     }

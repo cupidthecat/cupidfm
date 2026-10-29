@@ -32,3 +32,10 @@ log.txt
 
 /tests/test_text_preview
 /tests/test_archive_preview
+/tests/test_search_capacity
+/tests/test_mime_cache
+/tests/test_directory_listing
+/tests/test_input_queue
+
+__pycache__/
+*.py[cod]

@@ -5,3 +5,6 @@
 /tests/test_arc_reader
 /tests/test_arc_extract
 /tests/archive_driver
+
+__pycache__/
+*.py[cod]
