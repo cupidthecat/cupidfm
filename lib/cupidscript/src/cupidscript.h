@@ -80,7 +80,7 @@ cs_value cs_nil(void);
 cs_value cs_bool(int v);
 cs_value cs_int(int64_t v);
 cs_value cs_float(double v);
-cs_value cs_str(cs_vm* vm, const char* s); // makes a VM-owned string
+cs_value cs_str(cs_vm* vm, const char* s); // returns an owned, reference-counted string
 cs_value cs_str_take(cs_vm* vm, char* owned, uint64_t len); // takes ownership of malloc'd string
 cs_value cs_list(cs_vm* vm);
 cs_value cs_map(cs_vm* vm);
@@ -109,7 +109,7 @@ void     cs_value_release(cs_value v);
 cs_type  cs_typeof(cs_value v);
 const char* cs_type_name(cs_type t);
 
-// Convert to C string (returns internal pointer; valid while VM lives)
+// Borrow the string buffer; valid while the corresponding value remains alive.
 const char* cs_to_cstr(cs_value v);
 
 // Capture current call stack (for error objects)

@@ -394,7 +394,7 @@ try {
 Notes:
 
 * `catch` is required; `finally` is optional.
-* The `finally` block runs on normal completion, `return`, `break`/`continue`, or `throw`.
+* The `finally` block runs on normal completion, `return`, `break`/`continue`, `throw`, and runtime errors. Cleanup remains subject to host execution limits.
 * `finally` can be a block or a single expression statement.
 * If `finally` itself returns or throws, it overrides the prior control flow.
 * `break;` inside a `switch` exits the switch (not an enclosing loop).

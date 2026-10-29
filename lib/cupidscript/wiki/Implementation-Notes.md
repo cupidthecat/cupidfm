@@ -177,7 +177,8 @@ All heap objects use reference counting:
 
 * Strings (`cs_string`)
 * Lists (`cs_list_obj`)
-* Maps (`cs_map_obj`)
+* Maps and sets (`cs_map_obj`)
+* Tuples (`cs_tuple_obj`)
 * String builders (`cs_strbuf_obj`)
 * Functions (`cs_func`)
 * Native functions (`cs_native`)
@@ -186,7 +187,7 @@ When refcount reaches 0, objects are freed immediately.
 
 ### Cycle Detection
 
-Lists and maps can form reference cycles (e.g., `list[0] = list`). The VM tracks all live lists/maps in a linked list (`vm->tracked`).
+Lists, maps, sets, and tuples can form container cycles. The VM tracks these containers in `vm->tracked`; the collector follows list items, map keys and values, set members, and tuple fields. Host-held references preserve reachable objects.
 
 **Algorithm:**
 
@@ -212,7 +213,7 @@ The VM supports automatic garbage collection based on two policies:
 - Set via `cs_vm_set_gc_threshold(vm, N)` or `gc_config(N, ...)`
 
 **Allocation-Based:**
-- `vm->gc_alloc_trigger` - collect every N list/map allocations
+- `vm->gc_alloc_trigger` - collect every N tracked-container allocations
 - `vm->gc_allocations` tracks allocations since last GC
 - Useful for regular cleanup during heavy allocation
 - Set via `cs_vm_set_gc_alloc_trigger(vm, N)` or `gc_config(..., N)`

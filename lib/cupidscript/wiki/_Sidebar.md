@@ -18,7 +18,7 @@
 * [Async & Await](Async-Await)
 * [Background Event Loop (Linux)](Event-Loop)
 * [Collections (list/map)](Collections)
-* [Comprehensions](COMPREHENSIONS)
+* [Comprehensions](Comprehensions)
 * [Tuples](TUPLES)
 * [Strings & strbuf](Strings-and-Strbuf)
 * [Regex](Regex)
@@ -31,3 +31,5 @@
 * [Data Formats](Data-Formats)
 * [File Handling](File-Handling)
 * [Implementation Notes (Lexer/Parser/VM)](Implementation-Notes)
+
+* [Embedding API and value ownership](Embedding-API)

@@ -203,6 +203,7 @@ Works for:
 * string: number of bytes
 * bytes: byte length
 * list: element count
+* tuple: field count
 * map: entry count
 * set: entry count
 * strbuf: byte length
@@ -1863,7 +1864,7 @@ Manually triggers garbage collection cycle detection. Returns the number of cycl
 
 Returns GC statistics as a map:
 
-* `tracked` - Number of tracked objects (lists/maps)
+* `tracked` - Number of tracked objects (lists/maps/sets/tuples)
 * `collections` - Total collections performed
 * `collected` - Total objects collected
 * `allocations` - Total allocations since VM start

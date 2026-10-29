@@ -105,6 +105,8 @@ sudo pacman -S base-devel ncurses file openssl zlib bzip2 xz xclip
 
 Run `make -j` to build CupidFM and its bundled libraries from source. The executable is `./cupidfm`. Run `make test` for the application regressions, or `make test-libs` for the library suites.
 
+Text previews read only through the visible range. See [PERFORMANCE.md](PERFORMANCE.md) for the measured read budget and benchmark commands.
+
 `./dev.sh` builds with sanitizers and launches the application after a prompt.
 
 ### Compilation Flags

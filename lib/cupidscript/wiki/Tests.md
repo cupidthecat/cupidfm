@@ -56,3 +56,14 @@ Files starting with `_` are ignored by the test runner. Use these for shared fix
 ## C API Tests
 
 `tests/c_api_tests.c` is compiled into `bin/c_api_tests` and run by `make test`. It exercises the embedding API directly (lists, maps, error handling, etc.).
+
+## Sanitizer builds
+
+Use separate object and binary directories:
+
+```sh
+make -j2 all OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined -lssl -lcrypto'
+BIN="$PWD/bin-asan/cupidscript" API_TEST_BIN="$PWD/bin-asan/c_api_tests" bash tests/run_tests.sh
+```
+
+The runner checks sanitizer diagnostics and signals even for `EXPECT_FAIL` scripts. Coverage includes tuple host ownership, tuple comprehension bindings, container cycles, pending async tasks, and cleanup error/control-flow precedence.

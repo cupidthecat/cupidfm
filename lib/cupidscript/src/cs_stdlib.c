@@ -704,6 +704,7 @@ static int nf_len(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     if (argc != 1) { *out = cs_int(0); return 0; }
     if (argv[0].type == CS_T_STR) { *out = cs_int((int64_t)((cs_string*)argv[0].as.p)->len); return 0; }
     if (argv[0].type == CS_T_LIST) { *out = cs_int((int64_t)((cs_list_obj*)argv[0].as.p)->len); return 0; }
+    if (argv[0].type == CS_T_TUPLE) { *out = cs_int((int64_t)((cs_tuple_obj*)argv[0].as.p)->len); return 0; }
     if (argv[0].type == CS_T_MAP) { *out = cs_int((int64_t)((cs_map_obj*)argv[0].as.p)->len); return 0; }
     if (argv[0].type == CS_T_SET) { *out = cs_int((int64_t)((cs_map_obj*)argv[0].as.p)->len); return 0; }
     if (argv[0].type == CS_T_STRBUF) { *out = cs_int((int64_t)((cs_strbuf_obj*)argv[0].as.p)->len); return 0; }
