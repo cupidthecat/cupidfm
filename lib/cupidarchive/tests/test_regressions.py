@@ -121,6 +121,41 @@ class Extraction(unittest.TestCase):
         self.assertEqual((self.dest/"first").read_bytes(),b"one")
         self.assertFalse((self.dest/"second").exists())
 
+    def test_7z_supported_methods_names_and_encoded_headers(self):
+        fixtures=Path(__file__).resolve().parent/"fixtures"
+        payload=b"hello CupidArchive\n"*20
+        for fixture,name in (("copy","sample.txt"),("lzma1","sample.txt"),("lzma2","sample.txt"),
+                             ("encoded-header","sample.txt"),("unicode","caf\u00e9-\U0001f600.txt")):
+            for stream in (False,True):
+                self.assertEqual(self.extract(fixtures/(fixture+".7z"),stream),0,fixture)
+                self.assertEqual((self.dest/name).read_bytes(),payload)
+        self.assertEqual(self.extract(fixtures/"empty-file.7z"),0)
+        self.assertEqual((self.dest/"empty").read_bytes(),b"")
+        self.assertEqual(self.extract(fixtures/"directory.7z"),0)
+        self.assertTrue((self.dest/"folder").is_dir())
+        self.assertEqual(self.extract(fixtures/"empty-archive.7z"),0)
+
+    def test_7z_checksums_and_filename_bounds(self):
+        import struct,zlib
+        original=(Path(__file__).resolve().parent/"fixtures/copy.7z").read_bytes()
+        path=self.base/"corrupt.7z"
+        (self.dest/"sample.txt").write_bytes(b"existing")
+        variants=[]
+        for position in (8,28,32):
+            raw=bytearray(original);raw[position]^=1;variants.append(raw)
+        offset,size=struct.unpack_from("<QQ",original,12)
+        for name_size in (0,127):
+            raw=bytearray(original)
+            where=raw.index(b"\x05\x01\x11",32+offset)+3
+            raw[where]=name_size
+            struct.pack_into("<I",raw,28,zlib.crc32(raw[32+offset:32+offset+size]))
+            struct.pack_into("<I",raw,8,zlib.crc32(raw[12:32]))
+            variants.append(raw)
+        for raw in variants:
+            path.write_bytes(raw)
+            self.assertNotEqual(self.extract(path),0)
+            self.assertEqual((self.dest/"sample.txt").read_bytes(),b"existing")
+
     def test_empty_archives(self):
         archive=self.tar("empty.tar",[])
         self.assertEqual(self.extract(archive),0)

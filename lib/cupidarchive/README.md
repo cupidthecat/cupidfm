@@ -39,7 +39,7 @@ With XZ filter support you can treat `.tar.xz` as a native archive, and `.xz` / 
 - **Hardlinks are copied** – TAR hardlink entries fall back to regular file copies because inode tracking/relink passes are not implemented.
 - **Metadata is partial** – Extraction preserves permissions and timestamps, but ownership (`uid`/`gid`) is not restored and ZIP symlinks/hardlinks are unsupported.
 - **Encrypted ZIP entries are unsupported** – The ZIP parser recognizes the encryption flag but cannot decrypt password-protected entries.
-- **XZ support depends on liblzma** – When `lzma.h` is unavailable, `arc_filter_xz()` returns `ENOSYS` and `.xz` archives cannot be read.
+- **liblzma development files are required** – The source build includes both xz and 7z readers; link applications with `-llzma`.
 - **7z support is limited** – Only single-file, single-folder 7z archives with LZMA/LZMA2 (or copy) are supported. No encryption, multi-volume, or solid multi-file archives yet.
 
 ## Limits (ArcLimits)
@@ -640,3 +640,5 @@ Run `make -j` to build all readers, including 7z and xz. Link applications with 
 Extraction traverses destination directories through file descriptors and rejects symlink ancestors. Regular files are written beside their destination and renamed after successful reads and metadata updates. A truncated member, a ZIP checksum mismatch, or a reader error causes extraction to fail; existing files survive failed member writes. Successful members of an archive are retained if a later member fails. Hardlinks can refer to later regular members, and directory metadata is applied after its children.
 
 Close each data stream returned by `arc_open_data` before closing its reader. On successful `arc_open_stream`, the reader owns the supplied stream; on failure the caller still owns it. Seekable raw streams reset their read budget after a successful seek; decompression filters remain forward only and retain their decoded byte budget.
+
+The single-file 7z reader accepts Copy, LZMA1, and LZMA2 data and encoded file tables, decodes UTF-16 names to UTF-8, and validates header and available data checksums. Empty files, single directories, and empty archives are supported. Metadata is bounded before decoding; LZMA decoder memory is capped at 128 MiB. Multi-file, multi-folder, multi-volume, and encrypted 7z archives remain unsupported.
