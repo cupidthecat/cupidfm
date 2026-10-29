@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,16 +19,16 @@ ensure_packages() {
     if command -v apt-get >/dev/null 2>&1; then
         log "Using apt-get to install dependencies"
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev libmagic-dev xclip curl unzip
+        sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev pkg-config xclip curl unzip
     elif command -v pacman >/dev/null 2>&1; then
         log "Using pacman to install dependencies"
         sudo pacman -Syu --noconfirm
-        sudo pacman -S --noconfirm base-devel ncurses file xclip curl unzip
+        sudo pacman -S --noconfirm base-devel ncurses file openssl zlib bzip2 xz pkgconf xclip curl unzip
     elif command -v dnf >/dev/null 2>&1; then
         log "Using dnf to install dependencies"
-        sudo dnf install -y gcc make ncurses-devel libmagic-devel file xclip curl unzip
+        sudo dnf install -y gcc make ncurses-devel libmagic-devel openssl-devel zlib-devel bzip2-devel xz-devel pkgconf-pkg-config file xclip curl unzip
     else
-        warn "Package manager not detected. Please install gcc, make, ncurses-dev, libmagic-dev, xclip, curl, and unzip manually."
+        warn "Package manager not detected. Please install a C compiler, make, pkg-config, ncurses, libmagic, OpenSSL, zlib, bzip2, xz development libraries, xclip, curl, and unzip manually."
     fi
 }
 

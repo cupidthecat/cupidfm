@@ -1,0 +1,22 @@
+{
+  "cupidarchive": {
+    "repository": "https://github.com/cupidthecat/cupidarchive",
+    "commit": "ed68529014316a9cd17b2490b2c4c0954eeecbed"
+  },
+  "cupidconf": {
+    "repository": "https://github.com/cupidthecat/cupidconf",
+    "commit": "5d4a7f6b4dfcab6af49ba771d17bbf125e5c9778"
+  },
+  "cupidgit": {
+    "repository": "https://github.com/cupidthecat/cupidgit",
+    "commit": "1b5427189be113034ab4dfd31884436c658a8390"
+  },
+  "cupidimage": {
+    "repository": "https://github.com/cupidthecat/cupidimage",
+    "commit": "9c9ca86260b47ffcc3879657c8ecc621ce0f53bf"
+  },
+  "cupidscript": {
+    "repository": "https://github.com/cupidthecat/cupidscript",
+    "commit": "fd7514b7806f71af1db838feeda2690d82643170"
+  }
+}

@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "tempfiles.h"
 #include <stdio.h>
+#include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -28,6 +29,20 @@ int main(int argc, char **argv) {
             undo_state_clear(&state);
         }
         paste_log_free(&log);
+        return ok ? 0 : 1;
+    }
+    if (strcmp(argv[1], "cleanup-scope") == 0) {
+        char unrelated[256], trash[256];
+        snprintf(unrelated,sizeof(unrelated),"/tmp/cupidfm_unrelated_%d",getpid());
+        snprintf(trash,sizeof(trash),"/tmp/cupidfm_trash_%d",getpid());
+        int fd = open(unrelated,O_CREAT|O_EXCL|O_WRONLY,0600);
+        if (fd < 0) return 2;
+        close(fd);
+        if (mkdir(trash,0700)) { unlink(unrelated); return 2; }
+        cleanup_temp_files();
+        bool ok = access(unrelated,F_OK)==0 && access(trash,F_OK)!=0;
+        unlink(unrelated);
+        rmdir(trash);
         return ok ? 0 : 1;
     }
     if (strcmp(argv[1], "cut-cleanup") == 0) {

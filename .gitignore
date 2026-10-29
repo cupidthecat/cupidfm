@@ -25,3 +25,7 @@ log.txt
 
 /tests/test_editor_roundtrip
 /tests/test_editor_atomic_save
+
+/build/
+*.d
+/tests/test_config_keys

@@ -13,7 +13,7 @@
 #include <strings.h>
 #include <unistd.h>
 
-#include "../lib/cupidconf.h"
+#include "cupidconf.h"
 #include "globals.h"
 
 #define MAX_SYNTAX_DEFS 50

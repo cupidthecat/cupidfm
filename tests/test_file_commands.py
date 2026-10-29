@@ -27,6 +27,10 @@ class FileCommands(unittest.TestCase):
         return subprocess.run([str(DRIVER), *map(str, args)], cwd=self.root,
                               env=self.env, capture_output=True, text=True)
 
+    def test_cleanup_only_removes_private_session_trash(self):
+        result = self.run_command("cleanup-scope", self.root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_clipboard_filename_is_literal(self):
         self.fake('xclip', 'cat > captured')
         source = self.root / 'literal$(touch injected)'

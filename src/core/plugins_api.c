@@ -1884,12 +1884,15 @@ static int nf_fm_exec(cs_vm *vm, void *ud, int argc, const cs_value *argv,
     v = cs_map_get(argv[2], "timeout_ms");
     if (v.type == CS_T_INT && v.as.i >= 0)
       timeout_ms = v.as.i;
+    cs_value_release(v);
     v = cs_map_get(argv[2], "max_output");
     if (v.type == CS_T_INT && v.as.i >= 0)
       max_output = v.as.i;
+    cs_value_release(v);
     v = cs_map_get(argv[2], "cwd");
     if (v.type == CS_T_STR)
       cwd_opt = cs_to_cstr(v);
+    cs_value_release(v);
   }
 
   size_t argc_extra = args ? args->len : 0;
@@ -1952,7 +1955,10 @@ static int nf_fm_exec(cs_vm *vm, void *ud, int argc, const cs_value *argv,
   if (pid == 0) {
     setpgid(0, 0);
     if (cwd_opt && *cwd_opt) {
-      (void)chdir(cwd_opt);
+      if (chdir(cwd_opt) != 0) {
+        dprintf(err_pipe[1], "Cannot change working directory: %s\n", strerror(errno));
+        _exit(126);
+      }
     }
     dup2(out_pipe[1], STDOUT_FILENO);
     dup2(err_pipe[1], STDERR_FILENO);

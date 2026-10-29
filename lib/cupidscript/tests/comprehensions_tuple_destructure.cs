@@ -1,0 +1,10 @@
+let pairs = [("one", "first"), ("two", "second")];
+let values = [a + b for [a, b] in pairs];
+assert(values[0] == "onefirst", "list comprehension destructures tuples");
+assert(values[1] == "twosecond", "list comprehension reads second tuple");
+let mapped = {a: b for [a, b] in pairs};
+assert(mapped.one == "first" && mapped.two == "second", "map comprehension destructures tuples");
+let unique = {a + b for [a, b] in pairs};
+assert(set_has(unique, "onefirst") && set_has(unique, "twosecond"), "set comprehension destructures tuples");
+let short = [b for [a, b] in [(1,), ()]];
+assert(is_nil(short[0]) && is_nil(short[1]), "missing tuple fields bind nil");

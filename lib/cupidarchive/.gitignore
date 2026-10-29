@@ -1,0 +1,7 @@
+/obj/
+*.a
+/test-extract
+/tests/test_arc_stream
+/tests/test_arc_reader
+/tests/test_arc_extract
+/tests/archive_driver

@@ -1,0 +1,14 @@
+name: Build and tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y zlib1g-dev libbz2-dev liblzma-dev tar
+      - run: make -j2 test
+      - run: make -j2 test CFLAGS='-std=c11 -Wall -Wextra -g -Isrc -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+      - name: Verify switching back to normal build flags
+        run: make -j2 test

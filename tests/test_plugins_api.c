@@ -122,12 +122,37 @@ static bool test_exec_reports_fork_failure_without_leaking(void) {
     return true;
 }
 
+static bool test_exec_rejects_missing_working_directory(void) {
+    PluginManager pm = {0};
+    cs_vm *vm = cs_vm_new();
+    ASSERT_NOT_NULL(vm, "VM should allocate");
+    cs_value args[3] = {cs_str(vm, "printf"), cs_list(vm), cs_map(vm)};
+    cs_value text = cs_str(vm, "must-not-run");
+    cs_value cwd = cs_str(vm, "/dev/null/missing");
+    cs_list_push(args[1], text);
+    cs_map_set(args[2], "cwd", cwd);
+    cs_value_release(text);
+    cs_value_release(cwd);
+    cs_value out = cs_nil();
+    int result = nf_fm_exec(vm, &pm, 3, args, &out);
+    cs_value code = cs_map_get(out, "code");
+    cs_value output = cs_map_get(out, "stdout");
+    bool ok = result == 0 && code.type == CS_T_INT && code.as.i == 126 &&
+              output.type == CS_T_STR && !strcmp(cs_to_cstr(output), "");
+    cs_value_release(code); cs_value_release(output); cs_value_release(out);
+    for (size_t i=0;i<3;i++) cs_value_release(args[i]);
+    cs_vm_free(vm);
+    ASSERT_TRUE(ok, "Invalid working directory must prevent command execution");
+    return true;
+}
+
 int main(void) {
     printf("=== Plugin API Tests ===\n\n");
 
     RUN_TEST(test_clear_selected_paths_preserves_plugin_state);
     RUN_TEST(test_exec_closes_partial_pipe_failure);
     RUN_TEST(test_exec_reports_fork_failure_without_leaking);
+    RUN_TEST(test_exec_rejects_missing_working_directory);
 
     PRINT_SUMMARY();
 }

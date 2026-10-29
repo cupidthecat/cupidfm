@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-CFLAGS='-Wall -Wextra -pedantic -Wshadow -Werror -Wstrict-overflow -fsanitize=address -fsanitize=undefined'
+CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
 make CFLAGS="$CFLAGS"
 
 echo 'COMPILED! PRESS ENTER TO CONTINUE'
