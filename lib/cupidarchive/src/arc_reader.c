@@ -275,6 +275,12 @@ static ArcReader *open_reader(ArcStream *stream, const char *path, const ArcLimi
     return reader;
 }
 
+ArcFormat arc_format(const ArcReader *reader) {
+    int format = arc_reader_format(reader);
+    if (format < ARC_FORMAT_TAR || format > ARC_FORMAT_7Z) return ARC_FORMAT_UNKNOWN;
+    return (ArcFormat)format;
+}
+
 ArcReader *arc_open_path(const char *path) { return arc_open_path_ex(path, NULL); }
 
 ArcReader *arc_open_path_ex(const char *path, const ArcLimits *limits_in) {

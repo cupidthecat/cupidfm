@@ -9,7 +9,7 @@
  * 
  * Supports:
  * - Central Directory parsing (fast listing)
- * - Streaming local header parsing (for archives without central directory)
+ * - Local-header recovery on seekable input when the central directory is absent
  * - ZIP64 support (files >4GB, archives >4GB, >65535 entries)
  * - Store (0) and Deflate (8) compression
  * - Directory detection (name ending with /)
@@ -21,9 +21,10 @@
  * - Uses 64-bit sizes and offsets when standard fields are 0xFFFFFFFF
  * 
  * Streaming Mode:
- * - Falls back to local header parsing when central directory is missing
- * - Builds entry list dynamically as archive is read
- * - Useful for reading archives being created/streamed
+ * - Reads local headers when the central directory is absent
+ * - Recovers Store/Deflate descriptors with 32- or 64-bit sizes, with or without signatures
+ * - Checks decoded byte limits while recovering descriptors
+ * - Rejects malformed headers/end records instead of treating them as EOF
  */
 
 /**

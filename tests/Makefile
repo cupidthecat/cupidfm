@@ -2,13 +2,14 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c2x
 INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
 LIBS =
+CUPIDARCHIVE_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-archive-lib)
 CUPIDSCRIPT_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-script-lib)
 INCLUDES += -I../lib/cupidconf -I../lib/cupidgit -I../lib/cupidimage/src -I../lib/cupidscript/src -I../lib/cupidarchive
 ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -67,6 +68,12 @@ benchmark: benchmark.c
 test_all: test_all.c test_runner.h
 	@echo "Note: test_all requires full application dependencies"
 	@echo "Run individual test suites instead: make test"
+
+$(CUPIDARCHIVE_LIB):
+	$(MAKE) -C .. archive-library
+
+test_archive_preview: test_archive_preview.c ../src/fs/files.c $(CUPIDARCHIVE_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(CUPIDARCHIVE_LIB) $(LIBS) -lncursesw -lz -lbz2 -llzma
 
 test_config_keys: test_config_keys.c ../src/core/config.c
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(LIBS) -lncursesw
@@ -127,6 +134,7 @@ test: all
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@python3 test_archive_preview.py
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -183,6 +191,7 @@ test-asan: clean
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@python3 test_archive_preview.py
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 

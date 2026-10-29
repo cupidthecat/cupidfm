@@ -61,6 +61,11 @@ jobs:
           make -C tests test_config_keys test_plugins_api CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_config_keys
           ./tests/test_plugins_api
+      - name: Check archive previews with sanitizers
+        run: |
+          rm tests/test_archive_preview
+          make -C tests test_archive_preview CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          python3 tests/test_archive_preview.py
       - name: Build all sources with sanitizers and check startup
         run: |
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'

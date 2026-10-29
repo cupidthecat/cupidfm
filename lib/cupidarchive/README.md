@@ -149,6 +149,7 @@ The filter layer wraps underlying streams to provide decompression. Filters are 
 
 - Uses zlib's `inflateInit2()` with `-MAX_WBITS` for raw deflate (no gzip wrapper)
 - Used internally by ZIP format for deflate-compressed entries
+- Input must be bounded to one compressed payload; bytes after its end marker fail validation
 - Maintains a 64KB input buffer
 - Streams decompression
 - Does NOT support seeking (returns ESPIPE)
@@ -239,7 +240,7 @@ The ZIP format implementation supports:
 
 **ZIP Features:**
 - **Central Directory parsing** - Fast listing using central directory (standard ZIP files)
-- **Streaming mode** - Falls back to local header parsing when central directory is missing
+- **Local-header recovery** - Reads complete local entries when the central directory is absent; input must be seekable
 - **ZIP64 support** - Files >4GB, archives >4GB, >65535 entries via ZIP64 EOCD + locator + extra fields
 - **Data descriptor support** - Handles ZIPs created with streaming (bit 3 set in general purpose flags)
 - **Compression methods:** Store (0) and Deflate (8)
@@ -252,7 +253,8 @@ The ZIP format implementation supports:
 - Parses ZIP64 End of Central Directory Record (signature 0x06064b50)
 - Handles ZIP64 Extended Information Extra Field (0x0001) in both central and local headers
 - Supports 64-bit file sizes, compressed sizes, and local header offsets
-- Works in both central directory and streaming modes
+- Replaces only fields marked with ZIP64 sentinels; ordinary sizes and offsets remain intact
+- Works in both central-directory and local-header recovery modes
 
 **ZIP Reader State:**
 Internals are not part of the public API (opaque `ArcReader`), but conceptually the ZIP reader tracks:
@@ -263,16 +265,19 @@ Internals are not part of the public API (opaque `ArcReader`), but conceptually 
 **Data Descriptor Support:**
 - Handles ZIPs created with streaming where sizes aren't known at header time
 - Detects data descriptors via general purpose bit flag 3 (0x0008)
-- For uncompressed entries: searches for data descriptor signature (0x08074b50) after compressed data
-- For compressed entries: decompresses until EOF, then reads data descriptor
-- Supports both signed (with signature) and unsigned data descriptor formats
-- Falls back gracefully when data descriptors can't be found
+- Stored entries in recovery mode locate descriptors by matching CRC, sizes, and the following record boundary
+- Deflated entries in recovery mode decode through the end of the raw deflate stream and count the compressed bytes consumed
+- Supports descriptors with or without a signature and with 32- or 64-bit sizes
+- Rejects missing or inconsistent descriptors instead of guessing zero-length contents
+- Enforces decoded byte limits while recovering descriptors
 
 **Key Implementation Details:**
-- Entry data is NOT read automatically - must call `arc_open_data()` or `arc_skip_data()`
-- Entry remains valid until next `arc_next()` call or explicit `arc_skip_data()`
-- Central directory mode: reads all entries from central directory first
-- Streaming mode: reads entries sequentially from local file headers
+- Use `arc_open_data()` to read an entry or `arc_skip_data()` to discard it
+- Entry data remains available until the next `arc_next()` or explicit `arc_skip_data()`
+- Central-directory mode reads entry metadata first and verifies local names, flags, methods, and sizes before opening data
+- Local-header recovery reads entries sequentially; finding a descriptor may require bounded decoding before the entry is returned
+- A present but malformed EOCD/ZIP64 record is an error. Truncated local headers also fail; they are not treated as an empty archive
+- EOCD comments may contain signature-like bytes; the reader checks the declared comment length and directory bounds before choosing a footer
 - Supports both compressed (deflate) and uncompressed (store) entries
 
 #### Archive Reader (`arc_reader.h`, `arc_reader.c`)
@@ -649,3 +654,7 @@ Record reads retry short underlying reads. File-path readers accept regular file
 GNU sparse files are reconstructed from their extent maps, including old GNU extension headers and PAX sparse versions 0.0, 0.1, and 1.0. Extraction retains holes, and following members use the stored-data boundaries rather than the logical sparse size. The implementation follows the [GNU sparse-format descriptions](https://www.gnu.org/software/tar/manual/html_section/Sparse-Formats.html).
 
 TAR metadata parsing validates record lengths, numeric overflow, sparse ranges, and stored-byte totals before returning a member. PAX size overrides control both data reads and alignment. GNU long names retain literal newlines. `max_extra` bounds per-member extension metadata; `max_uncompressed_bytes` also bounds logical sparse sizes. Sparse fixture tests use GNU tar as an independent producer and Python's TAR reader to check the expected contents.
+
+The ZIP metadata and descriptor layouts follow the [PKWARE ZIP specification](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT). Regression coverage includes every conditional ZIP64 size/offset combination, ZIP64 end records, sparse input with a local-header offset beyond 4 GiB, local-header recovery, unsigned descriptors, descriptor-like payload bytes, and malformed metadata.
+
+Call `arc_format(reader)` to query the decoded container type. A ZIP inside gzip is reported as `ARC_FORMAT_ZIP`; a standalone compressed file is `ARC_FORMAT_COMPRESSED`. The query uses the detected data format rather than filename suffixes, and returns `ARC_FORMAT_UNKNOWN` for a null reader.

@@ -3762,20 +3762,6 @@ bool is_supported_file_type(const char *filename) {
  */
 void display_archive_preview(WINDOW *window, const char *file_path,
                              int start_line, int max_y, int max_x) {
-  // Check if this is a single compressed file (not a TAR archive)
-  bool is_single_compressed = false;
-  const char *ext = strrchr(file_path, '.');
-  if (ext) {
-    if (strcmp(ext, ".gz") == 0 || strcmp(ext, ".bz2") == 0 ||
-        strcmp(ext, ".xz") == 0) {
-      // Check if it's NOT a .tar.gz, .tar.bz2, etc.
-      const char *tar_pos = strstr(file_path, ".tar");
-      if (!tar_pos || tar_pos >= ext) {
-        is_single_compressed = true;
-      }
-    }
-  }
-
   ArcReader *reader = arc_open_path(file_path);
   if (!reader) {
     // Show more detailed error message
@@ -3786,6 +3772,8 @@ void display_archive_preview(WINDOW *window, const char *file_path,
     mvwprintw(window, 7, 2, "%.*s", max_x - 4, error_msg);
     return;
   }
+
+  bool is_single_compressed = arc_format(reader) == ARC_FORMAT_COMPRESSED;
 
   // Display archive header (start after MIME type which is on line 5)
   // For single compressed files, show a different header
@@ -3823,17 +3811,9 @@ void display_archive_preview(WINDOW *window, const char *file_path,
     int ret = arc_next(reader, &entry);
     if (ret != 0) {
       if (ret < 0) {
-        // Error reading - for single compressed files, don't show technical
-        // error
-
-        // For compressed files, silently fail (they're not really archives)
-      } else if (ret == 1 && !found_any) {
-        // EOF but no entries found
-        if (!is_single_compressed) {
-          mvwprintw(window, line_num++, 2,
-                    "Archive appears empty (may be corrupted or invalid)");
-        }
-        // For compressed files, silently fail (they're not really archives)
+        mvwprintw(window, line_num++, 2, "Unable to read archive: %s", strerror(errno));
+      } else if (!found_any) {
+        mvwprintw(window, line_num++, 2, "%s", current_line ? "End of archive" : "Archive is empty");
       }
       break; // Done
     }
@@ -3863,7 +3843,7 @@ void display_archive_preview(WINDOW *window, const char *file_path,
     char size_str[20];
     if (entry.type == ARC_ENTRY_DIR) {
       snprintf(size_str, sizeof(size_str), "<DIR>");
-    } else if (entry.size == 0) {
+    } else if (entry.size == 0 && is_single_compressed) {
       // Streamed compressed files have no reliable total size before decoding.
       snprintf(size_str, sizeof(size_str), "?");
     } else {

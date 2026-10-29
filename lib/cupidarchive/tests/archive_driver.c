@@ -49,6 +49,10 @@ int main(int argc, char **argv) {
         arc_close(other);
     } else reader = arc_open_path(argv[2]);
     if (!reader) { free(buffer); return 1; }
+    if (!strcmp(argv[1],"format")) {
+        printf("%d\n",arc_format(reader));
+        arc_close(reader);free(buffer);return 0;
+    }
     if (!strcmp(argv[1],"inspect")) {
         ArcEntry entry;
         int next;

@@ -21,6 +21,7 @@ LIB_FILES = $(wildcard lib/$(1)/Makefile lib/$(1)/*.c lib/$(1)/*.h lib/$(1)/src/
 all: cupidfm
 libraries: $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT_LIB)
 script-library: $(CUPIDSCRIPT_LIB)
+archive-library: $(CUPIDARCHIVE_LIB)
 
 $(CUPIDARCHIVE_LIB): $(call LIB_FILES,cupidarchive)
 	$(MAKE) -C lib/cupidarchive CC="$(CC)" AR="$(AR)" CFLAGS="$(VENDOR_CFLAGS)" OBJDIR=../../$(BUILD_DIR)/cupidarchive/obj LIBRARY=../../$@
@@ -39,7 +40,7 @@ cupidfm: $(OBJ) $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPID
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ) $(CUPID_LIBS) $(LIBS) $(LD_LIBS)
 
 test: libraries
-	$(MAKE) -C tests test CUPIDSCRIPT_LIB="$(abspath $(CUPIDSCRIPT_LIB))"
+	$(MAKE) -C tests test CUPIDSCRIPT_LIB="$(abspath $(CUPIDSCRIPT_LIB))" CUPIDARCHIVE_LIB="$(abspath $(CUPIDARCHIVE_LIB))"
 test-libs:
 	$(MAKE) -C lib/cupidconf test
 	$(MAKE) -C lib/cupidgit test
@@ -47,6 +48,8 @@ test-libs:
 	$(MAKE) -C lib/cupidscript test
 	$(MAKE) -C lib/cupidimage test
 
+print-archive-lib:
+	@printf '%s\n' '$(abspath $(CUPIDARCHIVE_LIB))'
 print-script-lib:
 	@printf '%s\n' '$(abspath $(CUPIDSCRIPT_LIB))'
 clean:
@@ -55,4 +58,4 @@ clean:
 	$(MAKE) -C tests clean
 
 -include $(OBJ:.o=.d)
-.PHONY: all libraries script-library cupidfm test test-libs print-script-lib clean
+.PHONY: all libraries script-library cupidfm test test-libs print-script-lib print-archive-lib archive-library clean

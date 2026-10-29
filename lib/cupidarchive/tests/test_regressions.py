@@ -193,6 +193,187 @@ class Extraction(unittest.TestCase):
             result=subprocess.run([str(DRIVER),"byte-limit",str(archive),str(self.dest),str(len(raw)-1)],timeout=10)
             self.assertNotEqual(result.returncode,0,ext)
 
+    def test_detected_format_is_independent_of_filename(self):
+        import gzip
+        tar=self.tar("data.zip",[("file",b"contents","file")])
+        zipped=io.BytesIO()
+        with zipfile.ZipFile(zipped,"w") as z: z.writestr("file",b"contents")
+        folder=self.base/"folder.tar";folder.mkdir()
+        single=folder/"data.gz";single.write_bytes(gzip.compress(b"contents"))
+        wrapped=self.base/"wrapped.gz";wrapped.write_bytes(gzip.compress(zipped.getvalue()))
+        seven=Path(__file__).resolve().parent/"fixtures/lzma2.7z"
+        for path,kind in ((tar,0),(wrapped,1),(single,2),(seven,3)):
+            result=subprocess.run([str(DRIVER),"format",str(path),str(self.dest)],capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0)
+            self.assertEqual(int(result.stdout),kind)
+
+    def test_malformed_zip_end_records_and_short_local_headers(self):
+        import struct
+        zipped=io.BytesIO()
+        with zipfile.ZipFile(zipped,"w") as z: z.writestr("file",b"payload")
+        raw=zipped.getvalue();end=raw.index(b"PK\x05\x06")
+        missing64=bytearray(raw);struct.pack_into("<H",missing64,end+10,0xffff)
+        comment=bytearray(raw);struct.pack_into("<H",comment,end+20,99)
+        for data in (b"PK\x03\x04",b"PK\x03\x04"+bytes(8),bytes(missing64),bytes(comment)):
+            path=self.base/"broken.zip";path.write_bytes(data)
+            result=subprocess.run([str(DRIVER),"path",str(path),str(self.dest)],timeout=10)
+            self.assertEqual(result.returncode,1,"malformed ZIP must fail without a signal")
+
+    def test_zip_comment_with_embedded_end_signature(self):
+        archive=self.base/"comment.zip"
+        with zipfile.ZipFile(archive,"w") as z:
+            z.writestr("file",b"payload")
+            z.comment=b"comment ending with false footer: PK\x05\x06"+bytes(18)
+        self.assertEqual(self.extract(archive),0)
+        self.assertEqual((self.dest/"file").read_bytes(),b"payload")
+
+    def test_zip_local_data_descriptors(self):
+        import struct,zlib
+        for method in (zipfile.ZIP_STORED,zipfile.ZIP_DEFLATED):
+            for wide in (False,True):
+                for signature in (False,True):
+                    raw=bytearray()
+                    entries=(("first",b"descriptor PK\x07\x08 marker"*3000),("empty",b""),("last",b"last contents"))
+                    for name,data in entries:
+                        compressor=zlib.compressobj(wbits=-15)
+                        packed=data if method==0 else compressor.compress(data)+compressor.flush()
+                        extra=struct.pack("<HHQQ",1,16,0,0) if wide else b""
+                        raw+=struct.pack("<IHHHHHIIIHH",0x04034b50,45 if wide else 20,8,method,0,0,0,
+                                         0xffffffff if wide else 0,0xffffffff if wide else 0,len(name),len(extra))
+                        raw+=name.encode()+extra+packed
+                        if signature: raw+=b"PK\x07\x08"
+                        raw+=struct.pack("<IQQ" if wide else "<III",zlib.crc32(data),len(packed),len(data))
+                    path=self.base/"descriptor.zip";path.write_bytes(raw)
+                    for stream in (False,True):
+                        self.assertEqual(self.extract(path,stream),0,(method,wide,signature,stream))
+                        for name,data in entries: self.assertEqual((self.dest/name).read_bytes(),data)
+                    total=sum(len(data) for name,data in entries)
+                    for limit,valid in ((total,True),(total-1,False)):
+                        result=subprocess.run([str(DRIVER),"byte-limit",str(path),str(self.dest),str(limit)],timeout=10)
+                        self.assertEqual(result.returncode==0,valid,(method,wide,signature,limit))
+                    path.write_bytes(raw[:-5])
+                    self.assertNotEqual(self.extract(path),0,(method,wide,signature))
+
+    def test_zip64_end_records_and_large_offsets(self):
+        import struct,zlib
+        name=b"wide";data=b"large offset contents";checksum=zlib.crc32(data)
+        local=struct.pack("<IHHHHHIIIHH",0x04034b50,45,0,0,0,0,checksum,len(data),len(data),len(name),0)+name+data
+        for offset in (0,0x100000040):
+            extra=struct.pack("<HHQ",1,8,offset)
+            central=struct.pack("<IHHHHHHIIIHHHHHII",0x02014b50,45,45,0,0,0,0,checksum,len(data),len(data),
+                                len(name),len(extra),0,0,0,0,0xffffffff)+name+extra
+            central_offset=offset+len(local);record_offset=central_offset+len(central)
+            wide=struct.pack("<IQHHIIQQQQ",0x06064b50,44,45,45,0,0,1,1,len(central),central_offset)
+            locator=struct.pack("<IIQI",0x07064b50,0,record_offset,1)
+            end=struct.pack("<IHHHHIIH",0x06054b50,0,0,0xffff,0xffff,0xffffffff,0xffffffff,0)
+            path=self.base/"offset.zip"
+            with path.open("wb") as f:
+                if offset: f.write(b"PK\x03\x04");f.seek(offset)
+                f.write(local+central+wide+locator+end)
+            self.assertEqual(self.extract(path),0,offset)
+            self.assertEqual((self.dest/"wide").read_bytes(),data)
+            if not offset:
+                raw=path.read_bytes()
+                ordinary=struct.pack("<IHHHHIIH",0x06054b50,0,0,1,1,len(central),central_offset,0)
+                path.write_bytes(local+central+wide+locator+ordinary)
+                self.assertEqual(self.extract(path),0,"ZIP64 footer with non-sentinel classic values")
+                for changed in (raw[:record_offset+len(wide)]+locator[:-3]+end,
+                                raw[:record_offset+4]+bytes(8)+raw[record_offset+12:]):
+                    path.write_bytes(changed)
+                    self.assertEqual(self.extract(path),1)
+
+    def test_zip64_entry_count_exceeds_classic_limit(self):
+        archive=self.base/"many.zip"
+        with zipfile.ZipFile(archive,"w",allowZip64=True) as z:
+            for i in range(65536): z.writestr(str(i),b"")
+        result=subprocess.run([str(DRIVER),"inspect",str(archive),str(self.dest)],capture_output=True,text=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(len(result.stdout.splitlines()),65536)
+
+    def test_zip_deflate_compressed_size_rejects_trailing_payload(self):
+        import struct
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as z: z.writestr("file",b"contents"*100)
+        raw=bytearray(archive.getvalue());central=raw.index(b"PK\x01\x02");end=raw.index(b"PK\x05\x06")
+        packed=struct.unpack_from("<I",raw,18)[0];padding=b"hidden trailing payload"
+        raw[central:central]=padding;central+=len(padding);end+=len(padding)
+        struct.pack_into("<I",raw,18,packed+len(padding))
+        struct.pack_into("<I",raw,central+20,packed+len(padding))
+        struct.pack_into("<I",raw,end+16,central)
+        path=self.base/"trailing.zip";path.write_bytes(raw)
+        (self.dest/"file").write_bytes(b"original")
+        self.assertEqual(self.extract(path),1)
+        self.assertEqual((self.dest/"file").read_bytes(),b"original")
+
+    def test_invalid_zip_dos_dates_are_unknown(self):
+        import struct
+        archive=io.BytesIO()
+        with zipfile.ZipFile(archive,"w") as z: z.writestr("file",b"contents")
+        raw=archive.getvalue();central=raw.index(b"PK\x01\x02")
+        invalid=((0,0),(0,(44<<9)|(15<<5)|1),(0,(44<<9)|(2<<5)|31),
+                 (31<<11,(44<<9)|(1<<5)|1),(63<<5,(44<<9)|(1<<5)|1))
+        for clock,date in invalid:
+            changed=bytearray(raw)
+            struct.pack_into("<HH",changed,10,clock,date)
+            struct.pack_into("<HH",changed,central+12,clock,date)
+            path=self.base/"date.zip";path.write_bytes(changed)
+            result=subprocess.run([str(DRIVER),"inspect",str(path),str(self.dest)],capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0)
+            self.assertEqual(result.stdout.split("\t")[-1].strip(),"0")
+
+    def test_zip_names_and_local_metadata_must_agree(self):
+        import struct
+        zipped=io.BytesIO()
+        with zipfile.ZipFile(zipped,"w") as z: z.writestr("file",b"payload")
+        raw=zipped.getvalue();central=raw.index(b"PK\x01\x02")
+        variants=[]
+        for index in (30,central+46):
+            changed=bytearray(raw);changed[index]=0;variants.append(changed)
+        changed=bytearray(raw);changed[30:34]=b"else";variants.append(changed)
+        changed=bytearray(raw);struct.pack_into("<I",changed,18,99);variants.append(changed)
+        changed=bytearray(raw);struct.pack_into("<H",changed,6,1);variants.append(changed)
+        for data in variants:
+            path=self.base/"metadata.zip";path.write_bytes(data)
+            (self.dest/"file").write_bytes(b"existing destination")
+            self.assertEqual(self.extract(path),1)
+            self.assertEqual((self.dest/"file").read_bytes(),b"existing destination")
+
+    def test_zip64_conditional_extra_fields(self):
+        import struct,zlib
+        name=b"file";data=b"ZIP64 conditional values";checksum=zlib.crc32(data)
+        local=struct.pack("<IHHHHHIIIHH",0x04034b50,45,0,0,0,0,checksum,len(data),len(data),len(name),0)+name+data
+        for mask in range(1,8):
+            values=(len(data),len(data),0)
+            payload=b"".join(struct.pack("<Q",values[i]) for i in range(3) if mask & (1<<i))
+            extra=struct.pack("<HH",1,len(payload))+payload
+            uncompressed=0xffffffff if mask&1 else len(data)
+            compressed=0xffffffff if mask&2 else len(data)
+            offset=0xffffffff if mask&4 else 0
+            central=struct.pack("<IHHHHHHIIIHHHHHII",0x02014b50,45,45,0,0,0,0,checksum,compressed,uncompressed,
+                                len(name),len(extra),0,0,0,0,offset)+name+extra
+            end=struct.pack("<IHHHHIIH",0x06054b50,0,0,1,1,len(central),len(local),0)
+            path=self.base/"conditional.zip";path.write_bytes(local+central+end)
+            self.assertEqual(self.extract(path),0,mask)
+            self.assertEqual((self.dest/"file").read_bytes(),data)
+            changed=bytearray(local+central+end)
+            extra_start=len(local)+46+len(name)
+            struct.pack_into("<H",changed,extra_start+2,len(payload)+1)
+            path.write_bytes(changed)
+            self.assertEqual(self.extract(path),1,"truncated ZIP64 extra payload")
+
+    def test_zip_local_header_recovery(self):
+        for method in (zipfile.ZIP_STORED,zipfile.ZIP_DEFLATED):
+            zipped=io.BytesIO()
+            with zipfile.ZipFile(zipped,"w",compression=method) as z:
+                z.writestr("first",b"first contents")
+                z.writestr("last",b"last contents")
+            raw=zipped.getvalue();path=self.base/"local.zip"
+            path.write_bytes(raw[:raw.index(b"PK\x01\x02")])
+            for stream in (False,True):
+                self.assertEqual(self.extract(path,stream),0,(method,stream))
+                self.assertEqual((self.dest/"first").read_bytes(),b"first contents")
+                self.assertEqual((self.dest/"last").read_bytes(),b"last contents")
+
     def test_concatenated_compression_members(self):
         import gzip,bz2,lzma,random
         random_bytes=random.Random(72).randbytes(140000)

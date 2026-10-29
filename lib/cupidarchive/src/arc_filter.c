@@ -326,6 +326,18 @@ struct DeflateFilterData {
     bool initialized;
 };
 
+/* ZIP callers bound this input to the declared compressed size. An early
+   end marker must not hide bytes counted as compressed payload. */
+static int deflate_finish(struct DeflateFilterData *data) {
+    if (data->zs.avail_in) { errno = EINVAL; return -1; }
+    uint8_t extra;
+    ssize_t n = arc_stream_read(data->underlying, &extra, 1);
+    if (n < 0) return -1;
+    if (n) { errno = EINVAL; return -1; }
+    data->eof = true;
+    return 0;
+}
+
 static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
     struct DeflateFilterData *data = (struct DeflateFilterData *)stream->user_data;
     
@@ -377,7 +389,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
                 while (data->zs.avail_out > 0) {
                     int ret = inflate(&data->zs, Z_FINISH);
                     if (ret == Z_STREAM_END) {
-                        data->eof = true;
+                        if (deflate_finish(data)) return -1;
                         break;
                     }
                     if (ret == Z_BUF_ERROR) {
@@ -411,7 +423,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
         size_t output_before = n - data->zs.avail_out;
         int ret = inflate(&data->zs, Z_NO_FLUSH);
         if (ret == Z_STREAM_END) {
-            data->eof = true;
+            if (deflate_finish(data)) return -1;
             break;
         }
         if (ret == Z_BUF_ERROR) {

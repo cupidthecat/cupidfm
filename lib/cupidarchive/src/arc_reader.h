@@ -34,6 +34,18 @@ typedef struct ArcEntry {
  */
 typedef struct ArcReader ArcReader;
 
+/** Format of the decoded container, independent of its filename or compression wrapper. */
+typedef enum ArcFormat {
+    ARC_FORMAT_UNKNOWN = -1,
+    ARC_FORMAT_TAR = 0,
+    ARC_FORMAT_ZIP = 1,
+    ARC_FORMAT_COMPRESSED = 2,
+    ARC_FORMAT_7Z = 3
+} ArcFormat;
+
+/** Returns ARC_FORMAT_UNKNOWN for NULL; standalone compressed files use ARC_FORMAT_COMPRESSED. */
+ArcFormat arc_format(const ArcReader *reader);
+
 /**
  * Safety/resource limits for parsing and extraction.
  * All limits are "best effort" and enforced where possible.
