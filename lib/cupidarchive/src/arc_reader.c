@@ -34,35 +34,6 @@ static bool is_tar_zero_block(const uint8_t *block) {
     return true;
 }
 
-static uint64_t parse_tar_octal(const char *str, size_t len) {
-    uint64_t val = 0;
-    for (size_t i = 0; i < len && str[i] != '\0' && str[i] != ' '; i++) {
-        if (str[i] >= '0' && str[i] <= '7') {
-            val = val * 8 + (str[i] - '0');
-        }
-    }
-    return val;
-}
-
-static bool verify_tar_checksum(const uint8_t *header) {
-    // TAR checksum is at offset 148-155 (8 bytes)
-    const size_t chksum_offset = 148;
-    const size_t chksum_size = 8;
-    
-    uint32_t sum = 0;
-    // Calculate sum treating chksum field as spaces
-    for (size_t i = 0; i < 512; i++) {
-        if (i >= chksum_offset && i < chksum_offset + chksum_size) {
-            sum += ' ';
-        } else {
-            sum += header[i];
-        }
-    }
-    
-    uint32_t stored = (uint32_t)parse_tar_octal((const char *)header + chksum_offset, chksum_size);
-    return sum == stored;
-}
-
 static bool path_looks_like_tar(const char *path) {
     if (!path) return false;
     const char *name = strrchr(path, '/');
@@ -352,7 +323,7 @@ static int detect_format(ArcStream *source, ArcStream **decoded, int *compressio
     n = read_prefix(input, prefix + filled, sizeof(prefix) - filled);
     if (n < 0) return -1;
     filled += (size_t)n;
-    if (filled == sizeof(prefix) && (is_tar_zero_block(prefix) || verify_tar_checksum(prefix))) return ARC_FORMAT_TAR;
+    if (filled == sizeof(prefix) && (is_tar_zero_block(prefix) || arc_tar_header_valid(prefix))) return ARC_FORMAT_TAR;
     if (*compression >= 0 && !path_looks_like_tar(path)) return ARC_FORMAT_COMPRESSED;
     errno = EINVAL;
     return -1;

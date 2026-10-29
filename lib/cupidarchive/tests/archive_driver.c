@@ -49,6 +49,15 @@ int main(int argc, char **argv) {
         arc_close(other);
     } else reader = arc_open_path(argv[2]);
     if (!reader) { free(buffer); return 1; }
+    if (!strcmp(argv[1],"inspect")) {
+        ArcEntry entry;
+        int next;
+        while ((next=arc_next(reader,&entry))==0) {
+            printf("%s\t%llu\t%u\t%u\t%lld\n",entry.path,(unsigned long long)entry.size,entry.uid,entry.gid,(long long)entry.mtime);
+            arc_entry_free(&entry);
+        }
+        arc_close(reader);free(buffer);return next<0 ? 1 : 0;
+    }
     int rc = arc_extract_to_path(reader,argv[3],true,true);
     arc_close(reader);
     free(buffer);

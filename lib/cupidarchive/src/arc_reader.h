@@ -42,7 +42,7 @@ typedef struct ArcReader ArcReader;
 typedef struct ArcLimits {
     uint64_t max_entries;            // Max number of entries in an archive (ZIP central dir, etc.)
     uint64_t max_name;               // Max entry name/path bytes
-    uint64_t max_extra;              // Max extra field bytes
+    uint64_t max_extra;              // Max extra/extension metadata bytes (ZIP fields, TAR member metadata)
     uint64_t max_uncompressed_bytes; // Max uncompressed bytes allowed (zip bombs)
     uint64_t max_nested_depth;       // Max path depth (components) during extraction
 } ArcLimits;

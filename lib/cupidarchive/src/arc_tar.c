@@ -2,816 +2,537 @@
 #include "arc_tar.h"
 #include "arc_reader.h"
 #include "arc_base.h"
-#include "arc_stream.h"
-#include "arc_filter.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#define TAR_BLOCK_SIZE 512
-#define TAR_NAME_SIZE 100
-#define TAR_MODE_SIZE 8
-#define TAR_UID_SIZE 8
-#define TAR_GID_SIZE 8
-#define TAR_SIZE_SIZE 12
-#define TAR_MTIME_SIZE 12
-#define TAR_CHKSUM_SIZE 8
-#define TAR_TYPE_SIZE 1
-#define TAR_LINKNAME_SIZE 100
-#define TAR_MAGIC_SIZE 6
-#define TAR_VERSION_SIZE 2
-#define TAR_UNAME_SIZE 32
-#define TAR_GNAME_SIZE 32
-#define TAR_DEVMAJOR_SIZE 8
-#define TAR_DEVMINOR_SIZE 8
-#define TAR_PREFIX_SIZE 155
+#define BLOCK 512
 
-// TAR header structure (ustar)
-struct TarHeader {
-    char name[TAR_NAME_SIZE];
-    char mode[TAR_MODE_SIZE];
-    char uid[TAR_UID_SIZE];
-    char gid[TAR_GID_SIZE];
-    char size[TAR_SIZE_SIZE];
-    char mtime[TAR_MTIME_SIZE];
-    char chksum[TAR_CHKSUM_SIZE];
-    char typeflag;
-    char linkname[TAR_LINKNAME_SIZE];
-    char magic[TAR_MAGIC_SIZE];
-    char version[TAR_VERSION_SIZE];
-    char uname[TAR_UNAME_SIZE];
-    char gname[TAR_GNAME_SIZE];
-    char devmajor[TAR_DEVMAJOR_SIZE];
-    char devminor[TAR_DEVMINOR_SIZE];
-    char prefix[TAR_PREFIX_SIZE];
-    char padding[12];
+typedef struct Extent { uint64_t offset, length, packed; } Extent;
+enum PaxKey { PATH, LINK, SIZE, UID, GID, MTIME, MODE, SP_SIZE, SP_REAL,
+              SP_NAME, SP_COUNT, SP_MAP, SP_OFFSET, SP_LENGTH, SP_MAJOR, SP_MINOR, KEY_COUNT };
+static const char *const pax_names[] = {
+    "path","linkpath","size","uid","gid","mtime","mode","GNU.sparse.size",
+    "GNU.sparse.realsize","GNU.sparse.name","GNU.sparse.numblocks","GNU.sparse.map",
+    "GNU.sparse.offset","GNU.sparse.numbytes","GNU.sparse.major","GNU.sparse.minor"
 };
-
-// TAR type flags
-#define TAR_REGTYPE   '0'
-#define TAR_AREGTYPE  '\0'
-#define TAR_LNKTYPE   '1'
-#define TAR_SYMTYPE   '2'
-#define TAR_CHRTYPE   '3'
-#define TAR_BLKTYPE   '4'
-#define TAR_DIRTYPE   '5'
-#define TAR_FIFOTYPE  '6'
-#define TAR_CONTTYPE  '7'
-#define TAR_XHDTYPE   'x'  // pax extended header
-#define TAR_XGLTYPE   'g'  // pax global header
-
-
-#define TAR_GNUTYPE_SPARSE 'S'  // GNU old sparse file
-#define TAR_GNUTYPE_LONGNAME 'L'
-#define TAR_GNUTYPE_LONGLINK 'K'
-// Format types (must match arc_reader.c)
-#define ARC_FORMAT_TAR 0
-#define ARC_FORMAT_ZIP 1
-
-// TAR reader structure
-// Note: ArcReader is actually a TarReader (they're the same)
-typedef struct PaxState {
-    char *path;
-    char *linkpath;
-    bool has_size;
-    uint64_t size;
-    bool has_uid;
-    uint32_t uid;
-    bool has_gid;
-    uint32_t gid;
-    bool has_mtime;
-    uint64_t mtime;
-    bool has_mode;
-    uint32_t mode;
-
-    // GNU sparse support (for correct sizing/listing; expansion can be implemented later)
-    bool has_sparse_realsize;
-    uint64_t sparse_realsize;
-    char *sparse_map;             // GNU.sparse.map (v0.1)
-    bool has_sparse_numblocks;
-    uint64_t sparse_numblocks;    // GNU.sparse.numblocks (v0.0)
-    uint64_t *sparse_offsets;     // GNU.sparse.offset (v0.0) repeated
-    uint64_t *sparse_numbytes;    // GNU.sparse.numbytes (v0.0) repeated
-    size_t sparse_pairs;          // number of offset/numbytes pairs collected
-    char *sparse_name;            // GNU.sparse.name (v0.1/v1.0 real filename)
-    bool has_sparse_version;
-    int sparse_major;
-    int sparse_minor;
-
-} PaxState;
-
+typedef struct PaxItem { unsigned key; char *value; } PaxItem;
+typedef struct Pax { PaxItem *items; size_t count, capacity; } Pax;
 typedef struct TarReader {
-    ArcReaderBase base;  // Must be first member for safe dispatch
-    ArcEntry current_entry;
-    bool entry_valid;
-    int64_t entry_data_offset;
-    int64_t entry_data_remaining;
-    bool eof;
-
-    // GNU tar extensions: long name/link apply to NEXT entry only
-    char *gnu_longname;
-    char *gnu_longlink;
-
-    // POSIX pax
-    PaxState pax_global;
+    ArcReaderBase base;
+    ArcEntry current;
+    Pax global;
+    Extent *map;
+    size_t map_count, map_capacity;
+    uint64_t real_size;
+    int64_t data_start, entry_end;
+    bool sparse, entry_valid, eof;
 } TarReader;
 
-// Helper: Parse ASCII octal number from TAR header field (traditional encoding).
-static uint64_t parse_octal_ascii(const char *str, size_t len) {
-    // Skip leading NUL/space
-    size_t i = 0;
-    while (i < len && (str[i] == '\0' || str[i] == ' ')) i++;
-    uint64_t val = 0;
-    for (; i < len; i++) {
-        char c = str[i];
-        if (c == '\0' || c == ' ') break;
-        if (c >= '0' && c <= '7') {
-            val = (val * 8) + (uint64_t)(c - '0');
-        } else {
-            break;
-        }
+static int invalid(void) { errno=EINVAL; return -1; }
+static int overflow(void) { errno=EOVERFLOW; return -1; }
+static const ArcLimits *limits(TarReader *r) { return r->base.limits ? r->base.limits : arc_default_limits(); }
+
+/* Parse all digits, rejecting overflow and ignored suffixes. */
+static int decimal(const char *text, unsigned base, uint64_t *out) {
+    if (!text || !*text) return invalid();
+    uint64_t value=0;
+    for (const unsigned char *p=(const unsigned char *)text; *p; p++) {
+        if (*p<'0' || *p>'9' || (unsigned)(*p-'0')>=base) return invalid();
+        unsigned digit=(unsigned)(*p-'0');
+        if (value>(UINT64_MAX-digit)/base) return overflow();
+        value=value*base+digit;
     }
-    return val;
+    *out=value;return 0;
 }
-
-// Helper: Parse a TAR numeric field that may be ASCII-octal or GNU/star base-256.
-// Base-256 is indicated by setting the high bit of the first byte.
-// The value is stored as a big-endian two's-complement integer in (len*8 - 1) bits
-// (the top bit is just the base-256 marker). See GNU tar and related implementations.
-static int64_t parse_tar_number(const char *field, size_t len) {
-    if (!field || len == 0) return 0;
-
-    const unsigned char *p = (const unsigned char *)field;
-
-    // Base-256 (binary) encoding?
-    if (p[0] & 0x80) {
-        // Build unsigned value from bytes with marker bit cleared.
-        uint64_t u = 0;
-        for (size_t i = 0; i < len; i++) {
-            unsigned char b = p[i];
-            if (i == 0) b &= 0x7F; // clear base-256 marker
-            u = (u << 8) | (uint64_t)b;
+static int header_number(const uint8_t *field,size_t size,bool negative,int64_t *out) {
+    if (field[0]&128) {
+        int64_t value=field[0]&127;
+        if (field[0]&64) value-=128;
+        for (size_t i=1;i<size;i++) {
+            if (value<(INT64_MIN/256) || value>(INT64_MAX-field[i])/256) return overflow();
+            value=value*256+field[i];
         }
-
-        // Sign-extend from (len*8 - 1) bits (marker bit excluded).
-        int bits = (int)(len * 8) - 1;
-        if (bits <= 0 || bits >= 64) {
-            // If bits >= 64, we already filled u; treat as signed 64-bit.
-            return (int64_t)u;
-        }
-        uint64_t sign_bit = 1ULL << (bits - 1);
-        if (u & sign_bit) {
-            uint64_t mask = (~0ULL) << bits;
-            u |= mask;
-        }
-        return (int64_t)u;
+        if (value<0 && !negative) return invalid();
+        *out=value;return 0;
     }
-
-    // Traditional ASCII octal.
-    return (int64_t)parse_octal_ascii(field, len);
+    size_t i=0;
+    while (i<size && (field[i]==' ' || field[i]==0)) i++;
+    uint64_t value=0;
+    for (;i<size && field[i]!=' ' && field[i]!=0;i++) {
+        if (field[i]<'0' || field[i]>'7') return invalid();
+        unsigned digit=field[i]-'0';
+        if (value>((uint64_t)INT64_MAX-digit)/8) return overflow();
+        value=value*8+digit;
+    }
+    for (;i<size;i++) if (field[i]!=' ' && field[i]!=0) return invalid();
+    *out=(int64_t)value;return 0;
 }
-
-
-// Helper: Check if block is all zeros (end of archive)
-static bool is_zero_block(const uint8_t *block) {
-    for (size_t i = 0; i < TAR_BLOCK_SIZE; i++) {
-        if (block[i] != 0) {
-            return false;
-        }
+static int pax_time(const char *text,int64_t *out) {
+    bool negative=*text=='-';
+    if (negative) text++;
+    if (*text<'0'||*text>'9') return invalid();
+    uint64_t value=0,maximum=(uint64_t)INT64_MAX+(negative?1U:0U);
+    while (*text>='0' && *text<='9') {
+        unsigned digit=(unsigned)(*text++-'0');
+        if (value>(maximum-digit)/10) return overflow();
+        value=value*10+digit;
     }
+    bool fraction=false;
+    if (*text=='.') {
+        text++;
+        if (*text<'0'||*text>'9') return invalid();
+        while (*text>='0' && *text<='9') fraction|=*text++!='0';
+    }
+    if (*text) return invalid();
+    if (negative) {
+        if (value==(uint64_t)INT64_MAX+1) {
+            if (fraction) return overflow();
+            *out=INT64_MIN;
+        } else *out=-(int64_t)value-(fraction?1:0);
+    } else *out=(int64_t)value;
+    return 0;
+}
+static bool zero_block(const uint8_t *header) {
+    for (size_t i=0;i<BLOCK;i++) if (header[i]) return false;
     return true;
 }
+static int check_header(const uint8_t *header) {
+    int64_t stored;
+    if (header_number(header+148,8,false,&stored)) return -1;
+    uint64_t sum=0;
+    int64_t signed_sum=0;
+    for (size_t i=0;i<BLOCK;i++) {
+        if (i>=148 && i<156) {sum+=' ';signed_sum+=' ';}
+        else {sum+=header[i];signed_sum+=(int8_t)header[i];}
+    }
+    return stored==(int64_t)sum || stored==signed_sum ? 0 : invalid();
+}
+bool arc_tar_header_valid(const uint8_t *header) { return check_header(header)==0; }
 
-// Helper: Verify TAR header checksum
-static bool verify_checksum(const struct TarHeader *hdr) {
-    uint32_t sum = 0;
-    const uint8_t *bytes = (const uint8_t *)hdr;
-    
-    // Calculate sum treating chksum field as spaces
-    for (size_t i = 0; i < sizeof(struct TarHeader); i++) {
-        if (i >= offsetof(struct TarHeader, chksum) &&
-            i < offsetof(struct TarHeader, chksum) + TAR_CHKSUM_SIZE) {
-            sum += ' ';
-        } else {
-            sum += bytes[i];
+static int metadata_add(TarReader *reader,uint64_t *used,uint64_t bytes) {
+    if (*used>limits(reader)->max_extra || bytes>limits(reader)->max_extra-*used) return overflow();
+    *used+=bytes;return 0;
+}
+static void pax_clear(Pax *pax) {
+    for (size_t i=0;i<pax->count;i++) free(pax->items[i].value);
+    free(pax->items);memset(pax,0,sizeof(*pax));
+}
+static int pax_key(const char *key,size_t length) {
+    for (unsigned i=0;i<KEY_COUNT;i++)
+        if (strlen(pax_names[i])==length && !memcmp(key,pax_names[i],length)) return (int)i;
+    return -1;
+}
+static int pax_set(Pax *pax,unsigned key,const char *value,size_t length,bool global) {
+    if (global && key>=SP_SIZE) {errno=ENOSYS;return -1;}
+    bool repeated=key==SP_OFFSET || key==SP_LENGTH;
+    size_t index=pax->count;
+    if (!repeated) for (size_t i=0;i<pax->count;i++) if (pax->items[i].key==key) {index=i;break;}
+    if (global && !length) {
+        if (index<pax->count) {
+            free(pax->items[index].value);
+            memmove(pax->items+index,pax->items+index+1,(pax->count-index-1)*sizeof(*pax->items));
+            pax->count--;
         }
+        return 0;
     }
-    
-    uint32_t stored = (uint32_t)parse_octal_ascii(hdr->chksum, TAR_CHKSUM_SIZE);
-    return sum == stored;
-}
-
-static void pax_clear(PaxState *st) {
-    if (!st) return;
-    free(st->path);
-    free(st->linkpath);
-    free(st->sparse_map);
-    free(st->sparse_name);
-    free(st->sparse_offsets);
-    free(st->sparse_numbytes);
-    memset(st, 0, sizeof(*st));
-}
-
-// Apply fields from src into dst (overwriting dst fields when present in src).
-static void pax_merge(PaxState *dst, const PaxState *src) {
-    if (!dst || !src) return;
-    if (src->path) { free(dst->path); dst->path = strdup(src->path); }
-    if (src->linkpath) { free(dst->linkpath); dst->linkpath = strdup(src->linkpath); }
-    if (src->has_size) { dst->has_size = true; dst->size = src->size; }
-    if (src->has_uid) { dst->has_uid = true; dst->uid = src->uid; }
-    if (src->has_gid) { dst->has_gid = true; dst->gid = src->gid; }
-    if (src->has_mtime) { dst->has_mtime = true; dst->mtime = src->mtime; }
-    if (src->has_mode) { dst->has_mode = true; dst->mode = src->mode; }
-
-    if (src->has_sparse_realsize) { dst->has_sparse_realsize = true; dst->sparse_realsize = src->sparse_realsize; }
-    if (src->sparse_map) { free(dst->sparse_map); dst->sparse_map = strdup(src->sparse_map); }
-    if (src->has_sparse_numblocks) { dst->has_sparse_numblocks = true; dst->sparse_numblocks = src->sparse_numblocks; }
-    if (src->sparse_pairs) {
-        free(dst->sparse_offsets);
-        free(dst->sparse_numbytes);
-        dst->sparse_offsets = calloc(src->sparse_pairs, sizeof(uint64_t));
-        dst->sparse_numbytes = calloc(src->sparse_pairs, sizeof(uint64_t));
-        if (dst->sparse_offsets && dst->sparse_numbytes) {
-            memcpy(dst->sparse_offsets, src->sparse_offsets, src->sparse_pairs * sizeof(uint64_t));
-            memcpy(dst->sparse_numbytes, src->sparse_numbytes, src->sparse_pairs * sizeof(uint64_t));
-            dst->sparse_pairs = src->sparse_pairs;
-        } else {
-            free(dst->sparse_offsets); dst->sparse_offsets = NULL;
-            free(dst->sparse_numbytes); dst->sparse_numbytes = NULL;
-            dst->sparse_pairs = 0;
+    char *copy=strndup(value,length);
+    if (!copy) return -1;
+    if (index==pax->count) {
+        if (pax->count==pax->capacity) {
+            size_t capacity=pax->capacity ? pax->capacity*2 : 16;
+            if (capacity<pax->capacity || capacity>SIZE_MAX/sizeof(*pax->items)) {free(copy);return overflow();}
+            PaxItem *items=realloc(pax->items,capacity*sizeof(*items));
+            if (!items) {free(copy);return -1;}
+            pax->items=items;pax->capacity=capacity;
         }
-    }
-    if (src->sparse_name) { free(dst->sparse_name); dst->sparse_name = strdup(src->sparse_name); }
-    if (src->has_sparse_version) { dst->has_sparse_version = true; dst->sparse_major = src->sparse_major; dst->sparse_minor = src->sparse_minor; }
+        pax->count++;
+    } else free(pax->items[index].value);
+    pax->items[index]=(PaxItem){key,copy};return 0;
 }
-
-// Old GNU sparse header parser (typeflag 'S').
-// Parses sparse map entries from the header and any extension headers.
-// Returns 0 on success; on success, sets *realsize and *stored_sum (sum of chunk sizes).
-static int parse_oldgnu_sparse(ArcStream *stream, const unsigned char *hdr_block, uint64_t *realsize, uint64_t *stored_sum) {
-    if (realsize) *realsize = 0;
-    if (stored_sum) *stored_sum = 0;
-
-    // Offsets per GNU tar manual. 
-    const size_t SP0 = 386;      // 4 entries in main header
-    const size_t ISEXT = 482;    // 1 byte
-    const size_t REALSZ = 483;   // 12 bytes
-
-    uint64_t real = (uint64_t)parse_tar_number((const char *)(hdr_block + REALSZ), 12);
-    if (realsize) *realsize = real;
-
-    uint64_t sum = 0;
-
-    // main header: 4 entries
-    for (int i = 0; i < 4; i++) {
-        const unsigned char *e = hdr_block + SP0 + (size_t)i * 24;
-        uint64_t off = (uint64_t)parse_tar_number((const char *)e, 12);
-        uint64_t nb  = (uint64_t)parse_tar_number((const char *)(e + 12), 12);
-        if (nb == 0) continue;
-        sum += nb;
-        (void)off;
-    }
-
-    bool isext = hdr_block[ISEXT] == '1';
-
-    // extension headers: each is a 512-byte block with 21 entries and isextended at 504. 
-    while (isext) {
-        unsigned char ext[TAR_BLOCK_SIZE];
-        ssize_t n = arc_stream_read_fully(stream, ext, TAR_BLOCK_SIZE);
-        if (n != TAR_BLOCK_SIZE) return -1;
-
-        for (int i = 0; i < 21; i++) {
-            const unsigned char *e = ext + (size_t)i * 24;
-            uint64_t off = (uint64_t)parse_tar_number((const char *)e, 12);
-            uint64_t nb  = (uint64_t)parse_tar_number((const char *)(e + 12), 12);
-            (void)off;
-            if (nb == 0) continue;
-            sum += nb;
+static const char *pax_get(const Pax *pax,unsigned key) {
+    for (size_t i=pax->count;i;i--) if (pax->items[i-1].key==key) return pax->items[i-1].value;
+    return NULL;
+}
+static const char *resolve(const Pax *local,const Pax *global,unsigned key) {
+    const char *value=pax_get(local,key);
+    return value ? value : pax_get(global,key);
+}
+static int pax_read(TarReader *reader,Pax *pax,uint64_t size,bool global) {
+    if (size>limits(reader)->max_extra || size>SIZE_MAX-1) return overflow();
+    char *buffer=malloc((size_t)size+1);
+    if (!buffer) return -1;
+    int result=-1;
+    if (arc_stream_read_fully(reader->base.stream,buffer,(size_t)size)!=(ssize_t)size) goto done;
+    buffer[size]=0;
+    if (memchr(buffer,0,(size_t)size)) {invalid();goto done;}
+    size_t position=0;
+    while (position<size) {
+        size_t digits=0,length=0;
+        while (digits<size-position && buffer[position+digits]>='0' && buffer[position+digits]<='9') {
+            unsigned digit=(unsigned)(buffer[position+digits]-'0');
+            if (length>(SIZE_MAX-digit)/10) {overflow();goto done;}
+            length=length*10+digit;digits++;
         }
-        isext = ext[504] == '1';
+        if (!digits || digits>=size-position || buffer[position+digits]!=' ' ||
+            length>size-position || length<=digits+3 || buffer[position+length-1]!='\n') {invalid();goto done;}
+        const char *key=buffer+position+digits+1;
+        size_t payload=length-digits-2;
+        const char *equal=memchr(key,'=',payload);
+        if (!equal || equal==key) {invalid();goto done;}
+        int kind=pax_key(key,(size_t)(equal-key));
+        if (kind>=0 && pax_set(pax,(unsigned)kind,equal+1,payload-(size_t)(equal-key)-1,global)) goto done;
+        position+=length;
     }
-
-    if (stored_sum) *stored_sum = sum;
-    return 0;
+    result=0;
+done:
+    free(buffer);return result;
 }
-
-// Helper: skip N bytes from stream (seek if possible, else read/discard)
-static int tar_skip_bytes(ArcStream *stream, uint64_t nbytes) {
-    if (nbytes == 0) return 0;
-    if (arc_stream_seek(stream, (int64_t)nbytes, SEEK_CUR) == 0) return 0;
-
-    char discard[8192];
-    uint64_t remaining = nbytes;
-    while (remaining > 0) {
-        size_t to_read = (remaining > sizeof(discard)) ? sizeof(discard) : (size_t)remaining;
-        ssize_t n = arc_stream_read_fully(stream, discard, to_read);
-        if (n <= 0) return -1;
-        remaining -= (uint64_t)n;
+static int seek_position(ArcStream *stream,int64_t target) {
+    int64_t current=arc_stream_tell(stream);
+    if (current<0 || target<0) return invalid();
+    if (!arc_stream_seek(stream,0,SEEK_END)) {
+        int64_t end=arc_stream_tell(stream);
+        if (end<target) {arc_stream_seek(stream,current,SEEK_SET);errno=EIO;return -1;}
+        return arc_stream_seek(stream,target,SEEK_SET);
+    }
+    if (current>target) {errno=ESPIPE;return -1;}
+    uint8_t discard[8192];
+    while (current<target) {
+        size_t count=(uint64_t)(target-current)>sizeof(discard) ? sizeof(discard) : (size_t)(target-current);
+        if (arc_stream_read_fully(stream,discard,count)!=(ssize_t)count) {if(!errno)errno=EIO;return -1;}
+        current+=(int64_t)count;
     }
     return 0;
 }
-
-static int tar_skip_padding(ArcStream *stream, uint64_t size) {
-    uint64_t pad = (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
-    if (pad == 0) return 0;
-    return tar_skip_bytes(stream, pad);
+static int skip_padding(TarReader *reader,uint64_t size) {
+    int64_t current=arc_stream_tell(reader->base.stream);
+    uint64_t padding=(BLOCK-size%BLOCK)%BLOCK;
+    if (current<0 || padding>(uint64_t)(INT64_MAX-current)) return overflow();
+    return seek_position(reader->base.stream,current+(int64_t)padding);
 }
-
-// Parse a POSIX pax buffer of length `len` into `st`.
-// Records are: <decimal_length><space><key>=<value>\n  (length includes entire record)
-static int pax_parse_buffer(const char *buf, size_t len, PaxState *st) {
-    size_t pos = 0;
-    while (pos < len) {
-        // Parse decimal record length
-        size_t rec_len = 0;
-        size_t digits = 0;
-        while (pos + digits < len && isdigit((unsigned char)buf[pos + digits])) {
-            if (digits > 20) return -1;
-            rec_len = rec_len * 10 + (size_t)(buf[pos + digits] - '0');
-            digits++;
+static char *long_text(TarReader *reader,uint64_t size) {
+    if ((size>limits(reader)->max_name && size-limits(reader)->max_name>1) || size>SIZE_MAX-1) {overflow();return NULL;}
+    char *text=malloc((size_t)size+1);
+    if (!text) return NULL;
+    if (arc_stream_read_fully(reader->base.stream,text,(size_t)size)!=(ssize_t)size) {free(text);return NULL;}
+    text[size]=0;
+    size_t length=strnlen(text,(size_t)size);
+    for (size_t i=length;i<size;i++) if (text[i]) {free(text);invalid();return NULL;}
+    if (length>limits(reader)->max_name) {free(text);overflow();return NULL;}
+    return text;
+}
+static int map_add(TarReader *reader,uint64_t offset,uint64_t length) {
+    if (reader->map_count>limits(reader)->max_extra/4+4) return overflow();
+    if (reader->map_count==reader->map_capacity) {
+        size_t capacity=reader->map_capacity ? reader->map_capacity*2 : 16;
+        if (capacity<reader->map_capacity || capacity>SIZE_MAX/sizeof(*reader->map)) return overflow();
+        Extent *map=realloc(reader->map,capacity*sizeof(*map));
+        if (!map) return -1;
+        reader->map=map;reader->map_capacity=capacity;
+    }
+    reader->map[reader->map_count++]=(Extent){offset,length,0};return 0;
+}
+static int old_map_block(TarReader *reader,const uint8_t *map,unsigned count) {
+    for (unsigned i=0;i<count;i++) {
+        int64_t offset,length;
+        if (header_number(map+i*24,12,false,&offset) || header_number(map+i*24+12,12,false,&length)) return -1;
+        if ((offset || length) && map_add(reader,(uint64_t)offset,(uint64_t)length)) return -1;
+    }
+    return 0;
+}
+static int old_sparse(TarReader *reader,const uint8_t *header,uint64_t *metadata) {
+    int64_t real;
+    if (header_number(header+483,12,false,&real) || old_map_block(reader,header+386,4)) return -1;
+    reader->real_size=(uint64_t)real;
+    int extended=header[482]=='0' ? 0 : header[482];
+    while (extended) {
+        if (extended!=1 && extended!='1') return invalid();
+        if (metadata_add(reader,metadata,BLOCK)) return -1;
+        uint8_t block[BLOCK];
+        if (arc_stream_read_fully(reader->base.stream,block,BLOCK)!=BLOCK || old_map_block(reader,block,21)) return -1;
+        extended=block[504]=='0' ? 0 : block[504];
+    }
+    return 0;
+}
+static int map_number(const char **text,char delimiter,uint64_t *value) {
+    const char *begin=*text;
+    uint64_t result=0;
+    while (**text>='0' && **text<='9') {
+        unsigned digit=(unsigned)(*(*text)++-'0');
+        if (result>(UINT64_MAX-digit)/10) return overflow();
+        result=result*10+digit;
+    }
+    if (*text==begin || **text!=delimiter) return invalid();
+    if (delimiter) (*text)++;
+    *value=result;return 0;
+}
+static int line_number(TarReader *reader,uint64_t physical,uint64_t *used,uint64_t *value) {
+    uint64_t result=0;
+    unsigned digits=0;
+    for (;;) {
+        if (*used>=physical || *used>=limits(reader)->max_extra) return overflow();
+        uint8_t ch;
+        if (arc_stream_read_fully(reader->base.stream,&ch,1)!=1) return -1;
+        (*used)++;
+        if (ch=='\n') {if(!digits)return invalid();*value=result;return 0;}
+        if (ch<'0'||ch>'9') return invalid();
+        unsigned digit=ch-'0';
+        if (result>(UINT64_MAX-digit)/10) return overflow();
+        result=result*10+digit;digits++;
+    }
+}
+static int pax_sparse(TarReader *reader,const Pax *local,uint64_t physical,uint64_t *map_bytes,uint64_t *metadata) {
+    const char *real=pax_get(local,SP_REAL);
+    if (!real || !*real) real=pax_get(local,SP_SIZE);
+    if (decimal(real,10,&reader->real_size)) return -1;
+    const char *major=pax_get(local,SP_MAJOR),*minor=pax_get(local,SP_MINOR),*map=pax_get(local,SP_MAP);
+    uint64_t version=0,revision=0;
+    if (major && decimal(major,10,&version)) return -1;
+    if (minor && decimal(minor,10,&revision)) return -1;
+    if (version>1 || (version==1 && revision) || (!version && revision>1)) {errno=ENOSYS;return -1;}
+    if (version==1) {
+        if (map || pax_get(local,SP_OFFSET) || pax_get(local,SP_LENGTH)) return invalid();
+        uint64_t count,used=0;
+        if (line_number(reader,physical,&used,&count)) return -1;
+        if (count>limits(reader)->max_extra/4+1) return overflow();
+        for (uint64_t i=0;i<count;i++) {
+            uint64_t offset,length;
+            if (line_number(reader,physical,&used,&offset) || line_number(reader,physical,&used,&length) || map_add(reader,offset,length)) return -1;
         }
-        if (digits == 0) break;
-        if (pos + digits >= len || buf[pos + digits] != ' ') return -1;
-        if (rec_len == 0 || pos + rec_len > len) return -1;
-
-        size_t rec_start = pos;
-        size_t rec_data = pos + digits + 1; // after space
-        size_t rec_end  = pos + rec_len;    // one past end
-
-        // record must end with \n (common); tolerate missing \n but clamp
-        size_t payload_len = rec_end - rec_data;
-        if (payload_len == 0) return -1;
-
-        // Extract key=value from payload (strip trailing \n)
-        const char *payload = buf + rec_data;
-        size_t pl = payload_len;
-        if (pl > 0 && payload[pl - 1] == '\n') pl--;
-
-        const char *eq = memchr(payload, '=', pl);
-        if (eq) {
-            size_t key_len = (size_t)(eq - payload);
-            size_t val_len = pl - key_len - 1;
-            if (key_len > 0) {
-                char key[64];
-                if (key_len >= sizeof(key)) key_len = sizeof(key) - 1;
-                memcpy(key, payload, key_len);
-                key[key_len] = '\0';
-
-                const char *val = eq + 1;
-                // Only handle common fields for browsing.
-                if (strcmp(key, "path") == 0) {
-                    free(st->path);
-                    st->path = strndup(val, val_len);
-                } else if (strcmp(key, "linkpath") == 0) {
-                    free(st->linkpath);
-                    st->linkpath = strndup(val, val_len);
-                } else if (strcmp(key, "size") == 0) {
-                    st->has_size = true;
-                    st->size = strtoull(val, NULL, 10);
-                } else if (strcmp(key, "uid") == 0) {
-                    st->has_uid = true;
-                    st->uid = (uint32_t)strtoul(val, NULL, 10);
-                } else if (strcmp(key, "gid") == 0) {
-                    st->has_gid = true;
-                    st->gid = (uint32_t)strtoul(val, NULL, 10);
-                } else if (strcmp(key, "mtime") == 0) {
-                    st->has_mtime = true;
-                    // allow fractional seconds
-                    double t = strtod(val, NULL);
-                    if (t < 0) t = 0;
-                    st->mtime = (uint64_t)t;
-                } else if (strcmp(key, "mode") == 0) {
-                    st->has_mode = true;
-                    // mode is typically an octal string in pax
-                    st->mode = (uint32_t)strtoul(val, NULL, 8);
-                } else if (strcmp(key, "GNU.sparse.size") == 0) {
-                    // PAX sparse v0.0/v0.1 real size
-                    st->has_sparse_realsize = true;
-                    st->sparse_realsize = strtoull(val, NULL, 10);
-                } else if (strcmp(key, "GNU.sparse.realsize") == 0) {
-                    // PAX sparse v1.0 real size
-                    st->has_sparse_realsize = true;
-                    st->sparse_realsize = strtoull(val, NULL, 10);
-                } else if (strcmp(key, "GNU.sparse.map") == 0) {
-                    free(st->sparse_map);
-                    st->sparse_map = strndup(val, val_len);
-                } else if (strcmp(key, "GNU.sparse.numblocks") == 0) {
-                    st->has_sparse_numblocks = true;
-                    st->sparse_numblocks = strtoull(val, NULL, 10);
-                } else if (strcmp(key, "GNU.sparse.offset") == 0) {
-                    // v0.0 repeats this key; collect pairs.
-                    uint64_t v = strtoull(val, NULL, 10);
-                    size_t n = st->sparse_pairs;
-                    uint64_t *noff = realloc(st->sparse_offsets, (n + 1) * sizeof(uint64_t));
-                    uint64_t *nnb  = realloc(st->sparse_numbytes, (n + 1) * sizeof(uint64_t));
-                    if (noff && nnb) {
-                        st->sparse_offsets = noff;
-                        st->sparse_numbytes = nnb;
-                        st->sparse_offsets[n] = v;
-                        st->sparse_numbytes[n] = 0; // filled when GNU.sparse.numbytes arrives
-                        st->sparse_pairs = n + 1;
-                    }
-                } else if (strcmp(key, "GNU.sparse.numbytes") == 0) {
-                    uint64_t v = strtoull(val, NULL, 10);
-                    if (st->sparse_pairs > 0) {
-                        st->sparse_numbytes[st->sparse_pairs - 1] = v;
-                    }
-                } else if (strcmp(key, "GNU.sparse.name") == 0) {
-                    free(st->sparse_name);
-                    st->sparse_name = strndup(val, val_len);
-                } else if (strcmp(key, "GNU.sparse.major") == 0) {
-                    st->has_sparse_version = true;
-                    st->sparse_major = (int)strtol(val, NULL, 10);
-                } else if (strcmp(key, "GNU.sparse.minor") == 0) {
-                    st->has_sparse_version = true;
-                    st->sparse_minor = (int)strtol(val, NULL, 10);
-
-                }
+        uint64_t padding=(BLOCK-used%BLOCK)%BLOCK;
+        if (used>physical || padding>physical-used || metadata_add(reader,metadata,used+padding)) return overflow();
+        for (uint64_t i=0;i<padding;i++) {
+            uint8_t ch;
+            if (arc_stream_read_fully(reader->base.stream,&ch,1)!=1 || ch) return invalid();
+        }
+        *map_bytes=used+padding;
+    } else if (map) {
+        if (pax_get(local,SP_OFFSET) || pax_get(local,SP_LENGTH)) return invalid();
+        const char *p=map;
+        while (*p) {
+            uint64_t offset,length;
+            if (map_number(&p,',',&offset)) return -1;
+            const char *end=strchr(p,',');
+            if (map_number(&p,end?',':0,&length) || (end && !*p) || map_add(reader,offset,length)) return invalid();
+        }
+    } else {
+        bool pending=false;
+        uint64_t offset=0;
+        for (size_t i=0;i<local->count;i++) {
+            PaxItem item=local->items[i];
+            if (item.key==SP_OFFSET) {
+                if (pending || decimal(item.value,10,&offset)) return invalid();
+                pending=true;
+            } else if (item.key==SP_LENGTH) {
+                uint64_t length;
+                if (!pending || decimal(item.value,10,&length) || map_add(reader,offset,length)) return invalid();
+                pending=false;
             }
         }
-
-        pos = rec_start + rec_len;
+        if (pending) return invalid();
     }
+    const char *blocks=pax_get(local,SP_COUNT);
+    uint64_t count;
+    if (blocks && (decimal(blocks,10,&count) || count!=reader->map_count)) return invalid();
     return 0;
 }
-
-static int pax_read_records(ArcStream *stream, uint64_t size, PaxState *st) {
-    if (size == 0) return 0;
-    if (size > 1024ULL * 1024ULL) { // 1 MiB sanity limit for pax headers
-        errno = EOVERFLOW;
-        return -1;
+static int validate_map(TarReader *reader,uint64_t packed) {
+    uint64_t end=0,total=0;
+    for (size_t i=0;i<reader->map_count;i++) {
+        Extent *extent=&reader->map[i];
+        if (extent->offset<end || extent->offset>reader->real_size || extent->length>reader->real_size-extent->offset ||
+            extent->length>packed-total) return invalid();
+        extent->packed=total;
+        total+=extent->length;end=extent->offset+extent->length;
     }
-
-    char *buf = malloc((size_t)size + 1);
-    if (!buf) return -1;
-
-    uint64_t remaining = size;
-    size_t off = 0;
-    while (remaining > 0) {
-        size_t chunk = (remaining > 65536) ? 65536 : (size_t)remaining;
-        ssize_t n = arc_stream_read_fully(stream, buf + off, chunk);
-        if (n <= 0) {
-            free(buf);
-            return -1;
+    return total==packed ? 0 : invalid();
+}
+static char *header_path(const uint8_t *header) {
+    size_t name=strnlen((const char *)header,100);
+    size_t prefix=!memcmp(header+257,"ustar\0",6) ? strnlen((const char *)header+345,155) : 0;
+    char *path=malloc(name+prefix+2);
+    if (!path) return NULL;
+    size_t offset=0;
+    if (prefix) {memcpy(path,header+345,prefix);path[prefix]='/';offset=prefix+1;}
+    memcpy(path+offset,header,name);path[offset+name]=0;return path;
+}
+static int read_entry(TarReader *reader) {
+    Pax local={0};
+    char *long_name=NULL,*long_link=NULL;
+    uint64_t metadata=0;
+    bool pending_member=false;
+    uint8_t header[BLOCK];
+    int result=-1;
+    for (;;) {
+        ssize_t count=arc_stream_read_fully(reader->base.stream,header,BLOCK);
+        if (!count || (count==BLOCK && zero_block(header))) {
+            if (pending_member) {invalid();goto done;}
+            reader->eof=true;result=1;goto done;
         }
-        off += (size_t)n;
-        remaining -= (uint64_t)n;
+        if (count!=BLOCK || check_header(header)) goto done;
+        unsigned type=header[156];
+        if (type!='g' && type!='x' && type!='L' && type!='K') break;
+        if (type!='g') pending_member=true;
+        int64_t length;
+        if (header_number(header+124,12,false,&length) || metadata_add(reader,&metadata,BLOCK+(uint64_t)length)) goto done;
+        if (type=='g' || type=='x') {
+            if (pax_read(reader,type=='g'?&reader->global:&local,(uint64_t)length,type=='g')) goto done;
+        } else {
+            char **target=type=='L'?&long_name:&long_link;
+            char *text=long_text(reader,(uint64_t)length);
+            if (!text) goto done;
+            free(*target);*target=text;
+        }
+        if (skip_padding(reader,(uint64_t)length)) goto done;
     }
-    buf[size] = '\0';
-
-    int r = pax_parse_buffer(buf, (size_t)size, st);
-    free(buf);
-    return r;
+    int64_t size,mode,uid,gid,mtime;
+    if (header_number(header+124,12,false,&size) || header_number(header+100,8,false,&mode) ||
+        header_number(header+108,8,false,&uid) || header_number(header+116,8,false,&gid) ||
+        header_number(header+136,12,true,&mtime)) goto done;
+    uint64_t physical=(uint64_t)size;
+    const char *value=resolve(&local,&reader->global,SIZE);
+    if (value && *value && decimal(value,10,&physical)) goto done;
+    uint64_t u=(uint64_t)uid,g=(uint64_t)gid,m=(uint64_t)mode;
+    value=resolve(&local,&reader->global,UID);if(value&&*value&&decimal(value,10,&u))goto done;
+    value=resolve(&local,&reader->global,GID);if(value&&*value&&decimal(value,10,&g))goto done;
+    value=resolve(&local,&reader->global,MODE);if(value&&*value&&decimal(value,8,&m))goto done;
+    value=resolve(&local,&reader->global,MTIME);if(value&&*value&&pax_time(value,&mtime))goto done;
+    if (u>UINT32_MAX || g>UINT32_MAX || m>UINT32_MAX || physical>INT64_MAX) {overflow();goto done;}
+    reader->real_size=physical;
+    reader->sparse=header[156]=='S';
+    bool pax_sparse_fields=false;
+    for(size_t i=0;i<local.count;i++) if(local.items[i].key>=SP_SIZE)pax_sparse_fields=true;
+    if (reader->sparse && pax_sparse_fields) {invalid();goto done;}
+    if (reader->sparse && old_sparse(reader,header,&metadata)) goto done;
+    reader->data_start=arc_stream_tell(reader->base.stream);
+    uint64_t padding=(BLOCK-physical%BLOCK)%BLOCK;
+    if (reader->data_start<0 || physical>(uint64_t)(INT64_MAX-reader->data_start) ||
+        padding>(uint64_t)(INT64_MAX-reader->data_start)-physical) {overflow();goto done;}
+    reader->entry_end=reader->data_start+(int64_t)(physical+padding);
+    uint64_t map_bytes=0;
+    if (pax_sparse_fields) {
+        reader->sparse=true;
+        if (pax_sparse(reader,&local,physical,&map_bytes,&metadata)) goto done;
+    }
+    if (reader->real_size>limits(reader)->max_uncompressed_bytes) {overflow();goto done;}
+    if (reader->sparse && (map_bytes>physical || validate_map(reader,physical-map_bytes))) goto done;
+    reader->data_start+=(int64_t)map_bytes;
+    const char *path=resolve(&local,&reader->global,PATH);
+    if (!path || !*path) path=long_name;
+    const char *sparse_name=pax_get(&local,SP_NAME);
+    if (!path && sparse_name && *sparse_name) path=sparse_name;
+    reader->current.path=path ? strdup(path) : header_path(header);
+    if (!reader->current.path || !*reader->current.path || strlen(reader->current.path)>limits(reader)->max_name) {invalid();goto done;}
+    reader->current.size=reader->real_size;
+    reader->current.mode=(uint32_t)m;reader->current.uid=(uint32_t)u;reader->current.gid=(uint32_t)g;
+    reader->current.mtime=(uint64_t)mtime;
+    switch (header[156]) {
+        case 0: case '0': case '7': case 'S': reader->current.type=ARC_ENTRY_FILE;break;
+        case '5': reader->current.type=ARC_ENTRY_DIR;break;
+        case '1': reader->current.type=ARC_ENTRY_HARDLINK;break;
+        case '2': reader->current.type=ARC_ENTRY_SYMLINK;break;
+        default: reader->current.type=ARC_ENTRY_OTHER;break;
+    }
+    if (reader->current.type==ARC_ENTRY_HARDLINK || reader->current.type==ARC_ENTRY_SYMLINK) {
+        const char *link=resolve(&local,&reader->global,LINK);
+        if (!link || !*link) link=long_link;
+        reader->current.link_target=link ? strdup(link) : strndup((const char *)header+157,100);
+        if (!reader->current.link_target || strlen(reader->current.link_target)>limits(reader)->max_name) {invalid();goto done;}
+    }
+    reader->entry_valid=true;result=0;
+done:
+    pax_clear(&local);free(long_name);free(long_link);return result;
 }
 
-static char *tar_read_long_text(ArcStream *stream, uint64_t size) {
-    if (size == 0) return strdup("");
-    if (size > 1024ULL * 1024ULL) { errno = EOVERFLOW; return NULL; }
-    char *buf = malloc((size_t)size + 1);
-    if (!buf) return NULL;
-
-    uint64_t remaining = size;
-    size_t off = 0;
-    while (remaining > 0) {
-        size_t chunk = (remaining > 65536) ? 65536 : (size_t)remaining;
-        ssize_t n = arc_stream_read_fully(stream, buf + off, chunk);
-        if (n <= 0) { free(buf); return NULL; }
-        off += (size_t)n;
-        remaining -= (uint64_t)n;
+typedef struct SparseStream {
+    ArcStream *parent;
+    Extent *map;
+    size_t count;
+    uint64_t size,position;
+    int64_t data_start;
+} SparseStream;
+static ssize_t sparse_read(ArcStream *stream,void *buffer,size_t size) {
+    SparseStream *s=stream->user_data;
+    if ((uint64_t)size>s->size-s->position) size=(size_t)(s->size-s->position);
+    size_t total=0;
+    while (total<size) {
+        size_t lo=0,hi=s->count;
+        while(lo<hi) {size_t mid=lo+(hi-lo)/2;if(s->map[mid].offset+s->map[mid].length<=s->position)lo=mid+1;else hi=mid;}
+        const Extent *extent=lo<s->count ? s->map+lo : NULL;
+        uint64_t stop=extent ? (s->position<extent->offset ? extent->offset : extent->offset+extent->length) : s->size;
+        size_t count=stop-s->position>size-total ? size-total : (size_t)(stop-s->position);
+        if (extent && s->position>=extent->offset) {
+            uint64_t packed=extent->packed+s->position-extent->offset;
+            if (packed>(uint64_t)(INT64_MAX-s->data_start) || seek_position(s->parent,s->data_start+(int64_t)packed) ||
+                arc_stream_read_fully(s->parent,(uint8_t *)buffer+total,count)!=(ssize_t)count) return -1;
+        } else memset((uint8_t *)buffer+total,0,count);
+        total+=count;s->position+=count;
     }
-    buf[size] = '\0';
-
-    // Trim at first NUL or newline
-    size_t out_len = 0;
-    while (out_len < (size_t)size && buf[out_len] != '\0' && buf[out_len] != '\n') out_len++;
-    buf[out_len] = '\0';
-
-    // Shrink (optional)
-    char *out = strdup(buf);
-    free(buf);
-    return out;
+    stream->bytes_read+=(int64_t)total;return (ssize_t)total;
 }
-
-// Read next TAR entry
-static int tar_read_entry(struct TarReader *reader) {
-    if (reader->eof) {
-        return 1; // Done
-    }
-    
-    // Read header block
-    struct TarHeader hdr;
-    memset(&hdr, 0, sizeof(hdr)); // Initialize to zero
-    ssize_t n = arc_stream_read_fully(reader->base.stream, &hdr, sizeof(hdr));
-    if (n < 0) {
-        return -1; // Read error
-    }
-    if (n == 0) {
-        // EOF reached
-        reader->eof = true;
-        return 1; // Done
-    }
-    if (n != sizeof(hdr)) {
-        // Partial read - this shouldn't happen for a valid TAR
-        // This can happen if the filter stream isn't reading correctly
-        return -1;
-    }
-    
-    // Check for zero block (end of archive)
-    if (is_zero_block((const uint8_t *)&hdr)) {
-        reader->eof = true;
-        return 1; // Done
-    }
-    
-    // Verify checksum
-    // Note: Checksum verification can fail if:
-    // 1. The stream position is wrong (reading from wrong offset)
-    // 2. The header is corrupted
-    // 3. The filter stream isn't decompressing correctly
-    if (!verify_checksum(&hdr)) {
-        // Checksum failed - might be corrupted or not a TAR file
-        // This can happen if the stream position is wrong or the header is corrupted
-        // For debugging: check if we got any valid data
-        if (hdr.name[0] == '\0' && is_zero_block((const uint8_t *)&hdr)) {
-            // Actually a zero block, should have been caught earlier
-            reader->eof = true;
-            return 1;
-        }
-        // Checksum mismatch - likely stream position issue or corrupted data
-        return -1;
-    }
-    
-    // Free previous entry
-    arc_entry_free(&reader->current_entry);
-    memset(&reader->current_entry, 0, sizeof(reader->current_entry));
-    
-    // Handle POSIX pax headers (x/g) and GNU longname/longlink (L/K).
-    // These special entries apply to the *next* real entry.
-    PaxState pax_local;
-    memset(&pax_local, 0, sizeof(pax_local));
-
-    while (hdr.typeflag == TAR_XHDTYPE || hdr.typeflag == TAR_XGLTYPE || hdr.typeflag == TAR_GNUTYPE_LONGNAME || hdr.typeflag == TAR_GNUTYPE_LONGLINK) {
-        uint64_t meta_size = parse_tar_number(hdr.size, TAR_SIZE_SIZE);
-
-        if (hdr.typeflag == TAR_XGLTYPE) {
-            // Global pax: applies to all following entries (until overridden)
-            PaxState tmp; memset(&tmp, 0, sizeof(tmp));
-            if (pax_read_records(reader->base.stream, meta_size, &tmp) < 0) { pax_clear(&tmp); pax_clear(&pax_local); return -1; }
-            if (tar_skip_padding(reader->base.stream, meta_size) < 0) { pax_clear(&tmp); pax_clear(&pax_local); return -1; }
-            pax_merge(&reader->pax_global, &tmp);
-            pax_clear(&tmp);
-        } else if (hdr.typeflag == TAR_XHDTYPE) {
-            // Per-file pax: applies to next entry only
-            PaxState tmp; memset(&tmp, 0, sizeof(tmp));
-            if (pax_read_records(reader->base.stream, meta_size, &tmp) < 0) { pax_clear(&tmp); pax_clear(&pax_local); return -1; }
-            if (tar_skip_padding(reader->base.stream, meta_size) < 0) { pax_clear(&tmp); pax_clear(&pax_local); return -1; }
-            pax_merge(&pax_local, &tmp);
-            pax_clear(&tmp);
-        } else if (hdr.typeflag == TAR_GNUTYPE_LONGNAME) {
-            // GNU long filename for next entry
-            free(reader->gnu_longname);
-            reader->gnu_longname = tar_read_long_text(reader->base.stream, meta_size);
-            if (!reader->gnu_longname) { pax_clear(&pax_local); return -1; }
-            if (tar_skip_padding(reader->base.stream, meta_size) < 0) { pax_clear(&pax_local); return -1; }
-        } else if (hdr.typeflag == TAR_GNUTYPE_LONGLINK) {
-            // GNU long link name for next entry
-            free(reader->gnu_longlink);
-            reader->gnu_longlink = tar_read_long_text(reader->base.stream, meta_size);
-            if (!reader->gnu_longlink) { pax_clear(&pax_local); return -1; }
-            if (tar_skip_padding(reader->base.stream, meta_size) < 0) { pax_clear(&pax_local); return -1; }
-        }
-
-        // Read the next header (the real entry or another metadata header)
-        memset(&hdr, 0, sizeof(hdr));
-        n = arc_stream_read_fully(reader->base.stream, &hdr, sizeof(hdr));
-        if (n == 0) { reader->eof = true; pax_clear(&pax_local); return 1; }
-        if (n != sizeof(hdr)) { pax_clear(&pax_local); return -1; }
-        if (is_zero_block((const uint8_t *)&hdr)) { reader->eof = true; pax_clear(&pax_local); return 1; }
-        if (!verify_checksum(&hdr)) { pax_clear(&pax_local); return -1; }
-    }
-
-    // Parse entry sizes.
-// - stored_size: number of data bytes actually present in the archive for this member (what we must skip/read)
-// - real_size: logical file size shown to the user (may differ for sparse files)
-    uint64_t stored_size = (uint64_t)parse_tar_number(hdr.size, TAR_SIZE_SIZE);
-    uint64_t real_size = stored_size;
-
-    // Old GNU sparse ('S'): header is followed by one or more extension sparse headers before file data. 
-    if (hdr.typeflag == TAR_GNUTYPE_SPARSE) {
-        uint64_t rs = 0, sum = 0;
-        if (parse_oldgnu_sparse(reader->base.stream, (const unsigned char *)&hdr, &rs, &sum) < 0) {
-            pax_clear(&pax_local);
-            return -1;
-        }
-        if (rs) real_size = rs;
-        // stored_size should already be the condensed data size in hdr.size, but sum is available if you want to sanity-check.
-        (void)sum;
-    }
-
-    // PAX sparse: real size stored in GNU.sparse.size or GNU.sparse.realsize. 
-    if (pax_local.has_sparse_realsize) {
-        real_size = pax_local.sparse_realsize;
-    }
-
-    // Hardlinks have no file data in the archive; treat size as 0 for skipping/open_data. 
-    if (hdr.typeflag == TAR_LNKTYPE) {
-        stored_size = 0;
-        real_size = 0;
-    }
-
-    // Build path
-    char path[TAR_PREFIX_SIZE + TAR_NAME_SIZE + 2];
-    if (hdr.prefix[0] != '\0') {
-        snprintf(path, sizeof(path), "%.*s/%.*s",
-                 (int)TAR_PREFIX_SIZE, hdr.prefix,
-                 (int)TAR_NAME_SIZE, hdr.name);
-    } else {
-        snprintf(path, sizeof(path), "%.*s",
-                 (int)TAR_NAME_SIZE, hdr.name);
-    }
-
-    // Normalize path (remove leading ./ and //)
-    char *normalized = path;
-    while (normalized[0] == '.' && normalized[1] == '/') {
-        normalized += 2;
-    }
-    while (normalized[0] == '/' && normalized[1] == '/') {
-        normalized++;
-    }
-
-    // Apply global pax defaults then per-file overrides.
-    const char *final_path = NULL;
-    if (pax_local.path) {
-        final_path = pax_local.path;
-    } else if (reader->gnu_longname) {
-        final_path = reader->gnu_longname;
-    } else if (pax_local.sparse_name) {
-        // Sparse v0.1/v1.0: real name is stored in GNU.sparse.name. 
-        final_path = pax_local.sparse_name;
-    } else if (reader->pax_global.path) {
-        final_path = reader->pax_global.path;
-    }
-
-    reader->current_entry.path = strdup(final_path ? final_path : normalized);
-    reader->current_entry.size = real_size;
-
-    // mode/uid/gid/mtime
-    uint32_t mode = (uint32_t)parse_tar_number(hdr.mode, TAR_MODE_SIZE);
-    uint32_t uid  = (uint32_t)parse_tar_number(hdr.uid, TAR_UID_SIZE);
-    uint32_t gid  = (uint32_t)parse_tar_number(hdr.gid, TAR_GID_SIZE);
-    uint64_t mtime = parse_tar_number(hdr.mtime, TAR_MTIME_SIZE);
-
-    if (reader->pax_global.has_mode) mode = reader->pax_global.mode;
-    if (reader->pax_global.has_uid)  uid  = reader->pax_global.uid;
-    if (reader->pax_global.has_gid)  gid  = reader->pax_global.gid;
-    if (reader->pax_global.has_mtime) mtime = reader->pax_global.mtime;
-
-    if (pax_local.has_mode) mode = pax_local.mode;
-    if (pax_local.has_uid)  uid  = pax_local.uid;
-    if (pax_local.has_gid)  gid  = pax_local.gid;
-    if (pax_local.has_mtime) mtime = pax_local.mtime;
-
-    reader->current_entry.mode = mode;
-    reader->current_entry.mtime = mtime;
-    reader->current_entry.uid = uid;
-    reader->current_entry.gid = gid;
-    
-    // Determine type
-    if (hdr.typeflag == TAR_DIRTYPE || hdr.typeflag == TAR_REGTYPE || hdr.typeflag == TAR_AREGTYPE || hdr.typeflag == TAR_GNUTYPE_SPARSE) {
-        reader->current_entry.type = (hdr.typeflag == TAR_DIRTYPE) ? ARC_ENTRY_DIR : ARC_ENTRY_FILE;
-    } else if (hdr.typeflag == TAR_SYMTYPE) {
-        reader->current_entry.type = ARC_ENTRY_SYMLINK;
-        const char *lt = pax_local.linkpath ? pax_local.linkpath : (reader->gnu_longlink ? reader->gnu_longlink : NULL);
-        reader->current_entry.link_target = lt ? strdup(lt) : strndup(hdr.linkname, TAR_LINKNAME_SIZE);
-    } else if (hdr.typeflag == TAR_LNKTYPE) {
-        reader->current_entry.type = ARC_ENTRY_HARDLINK;
-        const char *lt = pax_local.linkpath ? pax_local.linkpath : (reader->gnu_longlink ? reader->gnu_longlink : NULL);
-        reader->current_entry.link_target = lt ? strdup(lt) : strndup(hdr.linkname, TAR_LINKNAME_SIZE);
-    } else {
-        reader->current_entry.type = ARC_ENTRY_OTHER;
-    }
-    
-    reader->entry_valid = true;
-    reader->entry_data_offset = arc_stream_tell(reader->base.stream);
-    reader->entry_data_remaining = (int64_t)stored_size;
-
-    // Metadata overrides were only for this entry.
-    pax_clear(&pax_local);
-    free(reader->gnu_longname); reader->gnu_longname = NULL;
-    free(reader->gnu_longlink); reader->gnu_longlink = NULL;
-    
-    return 0;
+static int sparse_seek(ArcStream *stream,int64_t offset,int whence) {
+    SparseStream *s=stream->user_data;
+    uint64_t base;
+    if(whence==SEEK_SET)base=0;else if(whence==SEEK_CUR)base=s->position;else if(whence==SEEK_END)base=s->size;else return invalid();
+    if ((offset<0 && (uint64_t)(-(offset+1))+1>base) || (offset>=0 && (uint64_t)offset>s->size-base)) return invalid();
+    s->position=offset<0 ? base-((uint64_t)(-(offset+1))+1) : base+(uint64_t)offset;
+    stream->bytes_read=0;return 0;
 }
+static int64_t sparse_tell(ArcStream *stream) {return (int64_t)((SparseStream *)stream->user_data)->position;}
+static void sparse_close(ArcStream *stream) {SparseStream *s=stream->user_data;free(s->map);free(s);free(stream);}
 
-// ArcReader vtable for TAR
-int arc_tar_next(ArcReader *reader, ArcEntry *entry) {
-    if (!reader || !entry) {
-        return -1;
-    }
-    TarReader *tar = (TarReader *)reader;
-    
-    if (tar->entry_valid && arc_tar_skip_data(reader) < 0) return -1;
-
-    int ret = tar_read_entry(tar);
-    if (ret == 0) {
-        *entry = tar->current_entry;
-        // Don't clear entry_valid here - keep it valid so arc_open_data() can work
-        // The entry will be invalidated when we read the next entry or skip data
-        // Clear the entry structure so it's not freed when reader closes
-        // But keep entry_valid = true and entry_data_* so arc_open_data() works
-        memset(&tar->current_entry, 0, sizeof(tar->current_entry));
-        // Note: entry_valid stays true, entry_data_offset and entry_data_remaining are preserved
-    }
-    return ret;
+int arc_tar_next(ArcReader *reader,ArcEntry *entry) {
+    if(!reader||!entry)return invalid();
+    TarReader *tar=(TarReader *)reader;
+    if(tar->entry_valid && arc_tar_skip_data(reader))return -1;
+    arc_entry_free(&tar->current);
+    free(tar->map);tar->map=NULL;tar->map_count=tar->map_capacity=0;
+    if(tar->eof)return 1;
+    int result=read_entry(tar);
+    if(!result) {*entry=tar->current;memset(&tar->current,0,sizeof(tar->current));}
+    return result;
 }
-
 ArcStream *arc_tar_open_data(ArcReader *reader) {
-    if (!reader) {
-        return NULL;
+    if(!reader)return NULL;
+    TarReader *tar=(TarReader *)reader;
+    if(!tar->entry_valid)return NULL;
+    if(!tar->sparse)return arc_stream_substream(tar->base.stream,tar->data_start,(int64_t)tar->real_size);
+    static const struct ArcStreamVtable table={sparse_read,sparse_seek,sparse_tell,sparse_close};
+    SparseStream *s=calloc(1,sizeof(*s));ArcStream *stream=calloc(1,sizeof(*stream));
+    if(!s||!stream){free(s);free(stream);return NULL;}
+    if(tar->map_count) {
+        s->map=malloc(tar->map_count*sizeof(*s->map));
+        if(!s->map){free(s);free(stream);return NULL;}
+        memcpy(s->map,tar->map,tar->map_count*sizeof(*s->map));
     }
-    TarReader *tar = (TarReader *)reader;
-    if (!tar->entry_valid) {
-        return NULL;
-    }
-    
-    // Create substream for entry data
-    // Note: We don't invalidate entry_valid here - it will be invalidated
-    // when arc_next() is called again or arc_skip_data() is called
-    return arc_stream_substream(tar->base.stream, tar->entry_data_offset, tar->entry_data_remaining);
+    s->parent=tar->base.stream;s->count=tar->map_count;s->size=tar->real_size;s->data_start=tar->data_start;
+    stream->vtable=&table;stream->user_data=s;return stream;
 }
-
 int arc_tar_skip_data(ArcReader *reader) {
-    if (!reader) {
-        return -1;
-    }
-    TarReader *tar = (TarReader *)reader;
-    if (!tar->entry_valid) {
-        return -1;
-    }
-    
-    int64_t current = arc_stream_tell(tar->base.stream);
-    uint64_t size = (uint64_t)tar->entry_data_remaining;
-    uint64_t padding = (512 - size % 512) % 512;
-    if (tar->entry_data_offset < 0 || size > INT64_MAX - padding ||
-        tar->entry_data_offset > INT64_MAX - (int64_t)(size + padding)) { errno = EOVERFLOW; return -1; }
-    int64_t target = tar->entry_data_offset + (int64_t)(size + padding);
-    if (current < 0 || current > target) { errno = EINVAL; return -1; }
-    if (tar_skip_bytes(tar->base.stream, (uint64_t)(target - current)) < 0) return -1;
-    tar->entry_data_remaining = 0;
-    tar->entry_valid = false; // Mark as invalid after skipping
-    return 0;
+    if(!reader)return invalid();
+    TarReader *tar=(TarReader *)reader;
+    if(!tar->entry_valid)return invalid();
+    if(seek_position(tar->base.stream,tar->entry_end))return -1;
+    tar->entry_valid=false;return 0;
 }
-
 void arc_tar_close(ArcReader *reader) {
-    if (!reader) {
-        return;
-    }
-    TarReader *tar = (TarReader *)reader;
-    arc_entry_free(&tar->current_entry);
-    // Close base.stream first, then owned_stream (filters don't close underlying).
-    if (tar->base.stream) {
-        arc_stream_close(tar->base.stream);
-    }
-    if (tar->base.owned_stream && tar->base.owned_stream != tar->base.stream) {
-        arc_stream_close(tar->base.owned_stream);
-    }
-    pax_clear(&tar->pax_global);
-    free(tar->gnu_longname);
-    free(tar->gnu_longlink);
+    if(!reader)return;
+    TarReader *tar=(TarReader *)reader;
+    arc_entry_free(&tar->current);pax_clear(&tar->global);free(tar->map);
+    arc_stream_close(tar->base.stream);
+    if(tar->base.owned_stream && tar->base.owned_stream!=tar->base.stream)arc_stream_close(tar->base.owned_stream);
     free(tar);
 }
-
-// Note: Functions are now exported, no vtable needed
-
 ArcReader *arc_tar_open(ArcStream *stream) {
-    if (!stream) {
-        return NULL;
-    }
-    TarReader *tar = calloc(1, sizeof(TarReader));
-    if (!tar) {
-        return NULL;
-    }
-    
-    tar->base.format = ARC_FORMAT_TAR;
-    tar->base.stream = stream;
-    tar->base.owned_stream = NULL;
-    tar->base.limits = NULL;
-    tar->entry_valid = false;
-    tar->eof = false;
-    
-    // Cast to ArcReader (they're the same structure)
-    ArcReader *reader = (ArcReader *)tar;
-    
-    // Format detection already verified this is a TAR file and reset the stream position.
-    // For filter streams (gzip/bzip2), we can't seek, so we trust format detection.
-    // Just ensure we start reading from the beginning - tar_read_entry will handle the first read.
-    // No need to verify again here since format detection already did it.
-    
-    return reader;
+    if(!stream)return NULL;
+    TarReader *reader=calloc(1,sizeof(*reader));
+    if(!reader)return NULL;
+    reader->base.format=0;reader->base.stream=stream;
+    arc_base_set_limits(&reader->base,NULL);
+    return (ArcReader *)reader;
 }

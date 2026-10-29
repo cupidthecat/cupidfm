@@ -18,7 +18,7 @@ The library is designed with safety as a primary concern:
 
 ## Current Support
 
-- **Formats:** TAR (ustar + pax + GNU long name extensions), ZIP (central directory + streaming mode, ZIP64 support), 7z (single-file, LZMA/LZMA2), compressed single files (.gz, .bz2, .xz as virtual archives)
+- **Formats:** TAR (ustar, PAX, GNU long names, and GNU/PAX sparse files), ZIP (central directory + streaming mode, ZIP64 support), 7z (single-file, LZMA/LZMA2), compressed single files (.gz, .bz2, .xz as virtual archives)
 - **Compression:** gzip (zlib), bzip2 (libbz2), deflate (zlib, for ZIP), xz/lzma (liblzma)
 - **Entry Types:** Regular files, directories, symlinks, hardlinks (TAR only), files and directories (ZIP)
 - **Operations:** Reading, previewing, and **extraction**
@@ -163,7 +163,7 @@ The filter layer wraps underlying streams to provide decompression. Filters are 
 The TAR format implementation supports:
 
 **Supported TAR Variants:**
-- **ustar format** - Standard POSIX TAR with 100-byte filename limit
+- **ustar format** - Standard POSIX TAR with name and path-prefix fields
 - **pax extended headers** - For long paths (>100 chars) and large files (>8GB)
 - **Old TAR format** - Pre-ustar format (detected by absence of magic)
 
@@ -188,8 +188,8 @@ The TAR format implementation supports:
 PAX (Portable Archive Interchange) extended headers provide POSIX-compliant support for:
 
 **PAX per-file records (typeflag = 'x'):**
-- `path` - Overrides filename (supports arbitrary length)
-- `linkpath` - Overrides symlink target (supports arbitrary length)
+- `path` - Overrides filename, within the configured name limit
+- `linkpath` - Overrides the link target, within the configured name limit
 - `size` - Overrides file size (supports large files)
 - `uid`, `gid`, `mtime`, `mode` - Override metadata (common in the wild)
 - Applied to the next real entry (skipped in entry iteration)
@@ -331,28 +331,24 @@ The extraction layer provides full archive extraction capabilities.
 
 #### Extraction Implementation Details
 
-**Directory Creation:**
-- Uses `mkdir_p_at()` (`openat()` + `mkdirat()`) to create parent directories recursively
-- Default mode: 0755
-- Handles existing directories gracefully (EEXIST)
-- Does **not** follow symlinks while traversing (`O_NOFOLLOW`)
+**Directory creation and attributes:**
+- Traverses each parent through `openat()` with `O_NOFOLLOW`, creating missing directories with `mkdirat()` and mode 0755.
+- Applies directory permissions and timestamps after extracting members, with children before their parents.
+- Uses the last archive entry's metadata when a directory path is repeated.
 
-**File Extraction:**
-- Uses 64KB buffer for copying
-- Creates files with `openat(..., O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, ...)`
-- Preserves permissions if requested
-- Sets timestamps using `futimens()` (fd-based) if requested
+**File extraction:**
+- Copies through a 64 KiB buffer into a new temporary file beside the destination.
+- Keeps zero-filled ranges sparse and sets the final logical size with `ftruncate()`.
+- Replaces the destination only after member reads and requested metadata updates succeed.
 
-**Symlink Extraction (TAR only):**
-- Removes existing file/symlink first (`unlinkat()`)
-- Creates symlink with `symlinkat()`
-- Does NOT preserve permissions (symlinks don't have separate permissions)
-- ZIP format does not support symlinks
+**Symlink extraction (TAR):**
+- Creates a temporary symlink with `symlinkat()` and renames it into place.
+- Symlink permissions are not restored. The ZIP reader does not interpret Unix symlink entries.
 
-**Hardlink Extraction (TAR only):**
-- Currently extracts as regular file (hardlink creation requires inode tracking)
-- Future enhancement: track inode mappings and create links in second pass
-- ZIP format does not support hardlinks
+**Hardlink extraction (TAR):**
+- Resolves targets inside the extraction root and creates links with `linkat()`.
+- Full-archive extraction defers forward hardlinks until their regular targets exist.
+- For single-entry extraction, the target must already exist. The ZIP reader does not interpret hardlink metadata.
 
 **Attribute Preservation:**
 - Permissions: `fchmod()` with `mode & 0777` (only user/group/other bits)
@@ -513,20 +509,20 @@ The library expects:
 
 ### Memory Safety
 
-- All allocated memory is properly freed
+- Close streams and readers to release their state.
 - Entry strings are allocated and must be freed by caller
 - Streams clean up their internal data on close
-- No memory leaks in normal operation
+- Sanitizer regressions check covered decoding and extraction paths for leaks and invalid accesses.
 
 ## Extraction Features
 
 - **Full archive extraction:** `arc_extract_to_path()` extracts all entries
 - **Single entry extraction:** `arc_extract_entry()` extracts one entry at a time
-- **Directory creation:** Automatically creates parent directories as needed (`mkdir_p_at()` via `openat()`/`mkdirat()`)
-- **Permission preservation:** Optional preservation of file permissions and ownership
+- **Directory creation:** Creates parent directories through `openat()` and `mkdirat()`
+- **Permission preservation:** Optional preservation of file permissions; ownership is not restored
 - **Timestamp preservation:** Optional preservation of modification times
 - **Symlink support:** Creates symlinks correctly (TAR format only)
-- **Hardlink handling:** Attempts to create hardlinks, falls back to copying (TAR format only, future: proper inode tracking)
+- **Hardlink handling:** Creates TAR hardlinks and resolves forward references during full-archive extraction
 
 ## Testing
 
@@ -617,7 +613,6 @@ Paths are normalized to:
 - [ ] RAR format support (read-only)
 - [ ] Progress callbacks for extraction
 - [ ] Extraction filters (exclude patterns)
-- [ ] Proper hardlink handling (inode tracking)
 - [ ] Ownership preservation (chown support)
 - [ ] Archive creation (write support)
 - [ ] ZIP encryption support (password-protected archives)
@@ -646,3 +641,7 @@ The single-file 7z reader accepts Copy, LZMA1, and LZMA2 data and encoded file t
 Compressed TAR readers finish the compression stream before reporting archive completion, so missing trailers and checksum failures are reported even after the TAR end marker. ZIP and 7z inside gzip, bzip2, or xz are decoded to an anonymous temporary file for random access, within the configured decoded byte limit. Ordinary compressed files and TAR archives remain streamed.
 
 Record reads retry short underlying reads. File-path readers accept regular files and reject FIFOs without waiting for a writer. XZ streams without a content checksum are accepted, while checksums present in the stream are verified. XZ decoder memory is capped at 128 MiB.
+
+GNU sparse files are reconstructed from their extent maps, including old GNU extension headers and PAX sparse versions 0.0, 0.1, and 1.0. Extraction retains holes, and following members use the stored-data boundaries rather than the logical sparse size. The implementation follows the [GNU sparse-format descriptions](https://www.gnu.org/software/tar/manual/html_section/Sparse-Formats.html).
+
+TAR metadata parsing validates record lengths, numeric overflow, sparse ranges, and stored-byte totals before returning a member. PAX size overrides control both data reads and alignment. GNU long names retain literal newlines. `max_extra` bounds per-member extension metadata; `max_uncompressed_bytes` also bounds logical sparse sizes. Sparse fixture tests use GNU tar as an independent producer and Python's TAR reader to check the expected contents.

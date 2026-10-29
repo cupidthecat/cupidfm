@@ -49,7 +49,7 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
     if (!data->initialized) {
         memset(&data->zs, 0, sizeof(data->zs));
         if (inflateInit2(&data->zs, 16 + MAX_WBITS) != Z_OK) {
-            return -1;
+            errno = ENOMEM; return -1;
         }
         data->initialized = true;
     }
@@ -112,7 +112,7 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
                     }
                     if (ret != Z_OK) {
                         // Other error (Z_DATA_ERROR, Z_MEM_ERROR, etc.)
-                        return -1;
+                        errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
                     }
                     // Z_OK means we made progress, continue
                     size_t output_after = n - data->zs.avail_out;
@@ -143,7 +143,7 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
         }
         if (ret != Z_OK) {
             // Other error
-            return -1;
+            errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
         }
     }
     
@@ -228,7 +228,7 @@ static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
     if (!data->initialized) {
         memset(&data->bzs, 0, sizeof(data->bzs));
         if (BZ2_bzDecompressInit(&data->bzs, 0, 0) != BZ_OK) {
-            return -1;
+            errno = ENOMEM; return -1;
         }
         data->initialized = true;
     }
@@ -282,7 +282,7 @@ static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
             break;
         }
         if (ret != BZ_OK) {
-            return -1;
+            errno = ret == BZ_MEM_ERROR ? ENOMEM : EINVAL; return -1;
         }
     }
     
@@ -380,7 +380,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
         memset(&data->zs, 0, sizeof(data->zs));
         // Use -MAX_WBITS for raw deflate (no gzip wrapper)
         if (inflateInit2(&data->zs, -MAX_WBITS) != Z_OK) {
-            return -1;
+            errno = ENOMEM; return -1;
         }
         data->initialized = true;
     }
@@ -443,7 +443,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
                     }
                     if (ret != Z_OK) {
                         // Other error (Z_DATA_ERROR, Z_MEM_ERROR, etc.)
-                        return -1;
+                        errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
                     }
                     // Z_OK means we made progress, continue
                     size_t output_after = n - data->zs.avail_out;
@@ -474,7 +474,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
         }
         if (ret != Z_OK) {
             // Other error
-            return -1;
+            errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
         }
     }
     

@@ -75,6 +75,29 @@ static void temporary_name(char name[96]) {
              atomic_fetch_add(&sequence, 1));
 }
 
+/* Keep zero-filled ranges sparse without changing the logical data stream. */
+static int write_contents(int fd,const char *buffer,size_t size) {
+    size_t offset=0;
+    while (offset<size) {
+        size_t count=size-offset>4096 ? 4096 : size-offset;
+        bool zero=true;
+        for (size_t i=0;i<count;i++) if (buffer[offset+i]) {zero=false;break;}
+        if (zero) {
+            if (lseek(fd,(off_t)count,SEEK_CUR)<0) return -1;
+        } else {
+            size_t written=0;
+            while (written<count) {
+                ssize_t n=write(fd,buffer+offset+written,count-written);
+                if (n<0 && errno==EINTR) continue;
+                if (n<=0) {if(!n)errno=EIO;return -1;}
+                written+=(size_t)n;
+            }
+        }
+        offset+=count;
+    }
+    return 0;
+}
+
 static int extract_file(ArcReader *reader, const ArcEntry *entry, int parent, const char *leaf,
                         bool permissions, bool timestamps) {
     if (!strcmp(leaf, ".")) { errno = EINVAL; return -1; }
@@ -98,17 +121,12 @@ static int extract_file(ArcReader *reader, const ArcEntry *entry, int parent, co
     while ((n = arc_stream_read(data, buffer, sizeof(buffer))) > 0) {
         if ((uint64_t)n > limits->max_uncompressed_bytes - total) { errno = EOVERFLOW; goto done; }
         total += (uint64_t)n;
-        size_t offset = 0;
-        while (offset < (size_t)n) {
-            ssize_t written = write(fd, buffer + offset, (size_t)n - offset);
-            if (written < 0 && errno == EINTR) continue;
-            if (written <= 0) { if (!written) errno = EIO; goto done; }
-            offset += (size_t)written;
-        }
+        if (write_contents(fd,buffer,(size_t)n)) goto done;
     }
     if (n < 0) goto done;
     if (((ArcReaderBase *)reader)->format != 2 && total != entry->size) { errno = EIO; goto done; }
-    if (set_attributes(fd, entry, permissions, timestamps)) goto done;
+    if ((uint64_t)(off_t)total!=total) { errno=EOVERFLOW; goto done; }
+    if (ftruncate(fd,(off_t)total) || set_attributes(fd, entry, permissions, timestamps)) goto done;
     if (close(fd)) { fd = -1; goto done; }
     fd = -1;
     if (renameat(parent, temporary, parent, leaf)) goto done;
@@ -184,7 +202,39 @@ int arc_extract_entry(ArcReader *reader, const ArcEntry *entry, const char *dest
 typedef struct Pending {
     ArcEntry entry;
     struct Pending *next;
+    size_t order;
 } Pending;
+
+static void canonical_directory(char *path) {
+    char *read=path,*write=path;
+    while (*read) {
+        while (*read=='/') read++;
+        if (!*read) break;
+        char *end=strchr(read,'/');
+        size_t size=end ? (size_t)(end-read) : strlen(read);
+        if (size && !(size==1 && *read=='.')) {
+            memmove(write,read,size);write+=size;*write++='/';
+        }
+        if (!end) break;
+        read=end+1;
+    }
+    if (write!=path) write[-1]=0;
+    else {path[0]='.';path[1]=0;}
+}
+static size_t directory_depth(const char *path) {
+    if (!strcmp(path,".")) return 0;
+    size_t depth=1;
+    for (;*path;path++) if (*path=='/') depth++;
+    return depth;
+}
+static int directory_order(const void *left,const void *right) {
+    const Pending *a=*(const Pending *const *)left,*b=*(const Pending *const *)right;
+    size_t ad=directory_depth(a->entry.path),bd=directory_depth(b->entry.path);
+    if (ad!=bd) return ad>bd ? -1 : 1;
+    int order=strcmp(a->entry.path,b->entry.path);
+    if (order) return order;
+    return a->order==b->order ? 0 : a->order>b->order ? -1 : 1;
+}
 
 int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool permissions, bool timestamps) {
     if (!reader || !dest_dir) { errno = EINVAL; return -1; }
@@ -192,6 +242,7 @@ int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool permission
     if (root < 0) return -1;
     int rc = 0, saved = 0, next;
     Pending *links = NULL, *directories = NULL;
+    size_t directory_count = 0;
     ArcEntry entry;
     while ((next = arc_next(reader, &entry)) == 0) {
         /* Directory metadata is applied after children, in reverse archive order. */
@@ -203,6 +254,8 @@ int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool permission
             Pending *item = malloc(sizeof(*item));
             if (!item) { arc_entry_free(&entry); rc = -1; saved = ENOMEM; break; }
             item->entry = entry;
+            item->order = directory ? directory_count++ : 0;
+            if (directory) canonical_directory(item->entry.path);
             Pending **head = directory ? &directories : &links;
             item->next = *head; *head = item;
         } else {
@@ -227,9 +280,22 @@ int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool permission
         Pending *item = links; links = item->next;
         arc_entry_free(&item->entry); free(item);
     }
+    if (directory_count) {
+        Pending **ordered = directory_count <= SIZE_MAX / sizeof(*ordered) ? malloc(directory_count * sizeof(*ordered)) : NULL;
+        if (!ordered) { rc = -1; saved = ENOMEM; }
+        else {
+            size_t i = 0;
+            for (Pending *item = directories; item; item = item->next) ordered[i++] = item;
+            qsort(ordered,directory_count,sizeof(*ordered),directory_order);
+            for (i = 0; i < directory_count; i++) {
+                if (i && !strcmp(ordered[i-1]->entry.path,ordered[i]->entry.path)) continue;
+                if (extract_at(reader,&ordered[i]->entry,root,permissions,timestamps)) { rc = -1; saved = errno; }
+            }
+            free(ordered);
+        }
+    }
     while (directories) {
         Pending *item = directories; directories = item->next;
-        if (extract_at(reader, &item->entry, root, permissions, timestamps)) { rc = -1; saved = errno; }
         arc_entry_free(&item->entry); free(item);
     }
     close(root); errno = saved;
