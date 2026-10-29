@@ -642,3 +642,7 @@ Extraction traverses destination directories through file descriptors and reject
 Close each data stream returned by `arc_open_data` before closing its reader. On successful `arc_open_stream`, the reader owns the supplied stream; on failure the caller still owns it. Seekable raw streams reset their read budget after a successful seek; decompression filters remain forward only and retain their decoded byte budget.
 
 The single-file 7z reader accepts Copy, LZMA1, and LZMA2 data and encoded file tables, decodes UTF-16 names to UTF-8, and validates header and available data checksums. Empty files, single directories, and empty archives are supported. Metadata is bounded before decoding; LZMA decoder memory is capped at 128 MiB. Multi-file, multi-folder, multi-volume, and encrypted 7z archives remain unsupported.
+
+Compressed TAR readers finish the compression stream before reporting archive completion, so missing trailers and checksum failures are reported even after the TAR end marker. ZIP and 7z inside gzip, bzip2, or xz are decoded to an anonymous temporary file for random access, within the configured decoded byte limit. Ordinary compressed files and TAR archives remain streamed.
+
+Record reads retry short underlying reads. File-path readers accept regular files and reject FIFOs without waiting for a writer. XZ streams without a content checksum are accepted, while checksums present in the stream are verified. XZ decoder memory is capped at 128 MiB.

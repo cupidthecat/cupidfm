@@ -66,7 +66,8 @@ static ssize_t fd_read(ArcStream *stream, void *buf, size_t n) {
         }
     }
     
-    ssize_t ret = read(data->fd, buf, n);
+    ssize_t ret;
+    do { ret = read(data->fd, buf, n); } while (ret < 0 && errno == EINTR);
     if (ret > 0) {
         stream->bytes_read += ret;
         // Update position based on actual file position (in case of seeks)
@@ -281,6 +282,18 @@ ssize_t arc_stream_read(ArcStream *stream, void *buf, size_t n) {
     if (!n) return 0;
     if (n > (size_t)SSIZE_MAX) n = (size_t)SSIZE_MAX;
     return stream->vtable->read(stream, buf, n);
+}
+
+ssize_t arc_stream_read_fully(ArcStream *stream, void *buf, size_t n) {
+    if (n > (size_t)SSIZE_MAX || (!buf && n)) { errno = EINVAL; return -1; }
+    size_t total = 0;
+    while (total < n) {
+        ssize_t count = arc_stream_read(stream, (uint8_t *)buf + total, n - total);
+        if (count < 0) { if (errno == EINTR) continue; return -1; }
+        if (!count) break;
+        total += (size_t)count;
+    }
+    return (ssize_t)total;
 }
 
 int arc_stream_seek(ArcStream *stream, int64_t off, int whence) {

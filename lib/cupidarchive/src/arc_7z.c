@@ -145,7 +145,7 @@ static ssize_t checked_read(ArcStream *s,void *buffer,size_t size) {
     Checked *d=s->user_data;
     if(d->failed) { errno=EIO; return -1; }
     if(size>UINT_MAX) size=UINT_MAX;
-    ssize_t n=arc_stream_read(d->input,buffer,size);
+    ssize_t n=arc_stream_read_fully(d->input,buffer,size);
     if(n>0) {
         if((uint64_t)n>d->expected-d->total) { d->failed=true; errno=EIO; return -1; }
         d->total+=(uint64_t)n; d->crc=crc32(d->crc,buffer,(uInt)n);
@@ -181,7 +181,7 @@ static ssize_t decoder_read(ArcStream *s,void *buffer,size_t size) {
     d->stream.next_out=buffer; d->stream.avail_out=size;
     while(d->stream.avail_out) {
         if(!d->stream.avail_in && !d->input_done) {
-            ssize_t n=arc_stream_read(d->input,d->buffer,sizeof(d->buffer));
+            ssize_t n=arc_stream_read_fully(d->input,d->buffer,sizeof(d->buffer));
             if(n<0) return -1;
             d->input_done=n==0;
             d->stream.next_in=d->buffer; d->stream.avail_in=(size_t)n;
@@ -336,7 +336,7 @@ ArcReader *arc_7z_open_ex(ArcStream *stream,const ArcLimits *limits) {
     if(arc_stream_seek(stream,0,SEEK_END)) return NULL;
     int64_t length=arc_stream_tell(stream);
     if(length<32 || arc_stream_seek(stream,0,SEEK_SET) ||
-       arc_stream_read(stream,signature,sizeof(signature))!=(ssize_t)sizeof(signature)) return NULL;
+       arc_stream_read_fully(stream,signature,sizeof(signature))!=(ssize_t)sizeof(signature)) return NULL;
     if(memcmp(signature,"7z\xbc\xaf\x27\x1c",6) || signature[6]!=0 ||
        crc32(0,signature+12,20)!=le32(signature+8)) {invalid();return NULL;}
     uint64_t offset=le64(signature+12),size=le64(signature+20);
@@ -350,7 +350,7 @@ ArcReader *arc_7z_open_ex(ArcStream *stream,const ArcLimits *limits) {
     uint8_t *buffer=malloc((size_t)size);
     if(!buffer) {free(reader);return NULL;}
     if(arc_stream_seek(stream,(int64_t)offset+32,SEEK_SET) ||
-       arc_stream_read(stream,buffer,(size_t)size)!=(ssize_t)size ||
+       arc_stream_read_fully(stream,buffer,(size_t)size)!=(ssize_t)size ||
        crc32(0,buffer,(uInt)size)!=le32(signature+28)) goto fail;
     if(buffer[0]==ENCODED_HEADER) {
         Cursor encoded={buffer,(size_t)size,1};
@@ -362,9 +362,9 @@ ArcReader *arc_7z_open_ex(ArcStream *stream,const ArcLimits *limits) {
         if(!decoded) {arc_stream_close(data);goto fail;}
         size_t total=0;
         ssize_t n=0;
-        while(total<folder.unpacked && (n=arc_stream_read(data,decoded+total,(size_t)folder.unpacked-total))>0) total+=(size_t)n;
+        while(total<folder.unpacked && (n=arc_stream_read_fully(data,decoded+total,(size_t)folder.unpacked-total))>0) total+=(size_t)n;
         uint8_t extra;
-        bool ok=total==folder.unpacked && n>=0 && arc_stream_read(data,&extra,1)==0;
+        bool ok=total==folder.unpacked && n>=0 && arc_stream_read_fully(data,&extra,1)==0;
         arc_stream_close(data);
         if(!ok) {free(decoded);goto fail;}
         free(buffer);buffer=decoded;size=folder.unpacked;

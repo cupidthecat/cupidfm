@@ -105,7 +105,7 @@ static uint64_t extract_gzip_isize(ArcStream *original_stream) {
     
     // Read ISIZE (4 bytes, little-endian)
     uint8_t isize_bytes[4];
-    ssize_t n = arc_stream_read(original_stream, isize_bytes, 4);
+    ssize_t n = arc_stream_read_fully(original_stream, isize_bytes, 4);
     if (n != 4) {
         // Read failed, restore position and return unknown
         arc_stream_seek(original_stream, current_pos, SEEK_SET);
@@ -156,7 +156,7 @@ static uint64_t extract_xz_usize(ArcStream *original_stream) {
         return 0;
     }
 
-    ssize_t n = arc_stream_read(original_stream, footer, sizeof(footer));
+    ssize_t n = arc_stream_read_fully(original_stream, footer, sizeof(footer));
     if (n != (ssize_t)sizeof(footer)) {
         arc_stream_seek(original_stream, current_pos, SEEK_SET);
         return 0;
@@ -193,7 +193,7 @@ static uint64_t extract_xz_usize(ArcStream *original_stream) {
         return 0;
     }
 
-    ssize_t index_read = arc_stream_read(original_stream, index_buf, index_size);
+    ssize_t index_read = arc_stream_read_fully(original_stream, index_buf, index_size);
     if (index_read != (ssize_t)index_size) {
         free(index_buf);
         arc_stream_seek(original_stream, current_pos, SEEK_SET);

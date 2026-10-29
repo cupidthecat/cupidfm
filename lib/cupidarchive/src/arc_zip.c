@@ -222,7 +222,7 @@ static int find_zip64_locator(ArcStream *stream, int64_t eocd_pos, struct Zip64E
     }
     
     uint8_t buffer[20];
-    ssize_t n = arc_stream_read(stream, buffer, sizeof(buffer));
+    ssize_t n = arc_stream_read_fully(stream, buffer, sizeof(buffer));
     if (n != sizeof(buffer)) {
         return -1;
     }
@@ -247,7 +247,7 @@ static int read_zip64_eocd(ArcStream *stream, int64_t offset, struct Zip64EOCDRe
     }
     
     uint8_t buffer[56]; // Minimum ZIP64 EOCD size
-    ssize_t n = arc_stream_read(stream, buffer, sizeof(buffer));
+    ssize_t n = arc_stream_read_fully(stream, buffer, sizeof(buffer));
     if (n < 56) {
         return -1;
     }
@@ -305,7 +305,7 @@ static int find_eocd(ArcStream *stream, struct ZipEOCD *eocd, struct Zip64EOCDRe
         return -1;
     }
     
-    ssize_t n = arc_stream_read(stream, buffer, scan_size);
+    ssize_t n = arc_stream_read_fully(stream, buffer, scan_size);
     if (n < 22) {
         return -1; // Too small to contain EOCD
     }
@@ -388,7 +388,7 @@ static void free_central_dir_entry(struct ZipCentralDirEntry *entry) {
 static int read_central_dir_entry(ArcStream *stream, struct ZipCentralDirEntry *entry, const ArcLimits *limits) {
     uint8_t header[46]; // Fixed part of central directory header
     
-    ssize_t n = arc_stream_read(stream, header, sizeof(header));
+    ssize_t n = arc_stream_read_fully(stream, header, sizeof(header));
     if (n != sizeof(header)) {
         return -1;
     }
@@ -445,7 +445,7 @@ static int read_central_dir_entry(ArcStream *stream, struct ZipCentralDirEntry *
         if (!entry->filename) {
             return -1;
         }
-        n = arc_stream_read(stream, entry->filename, entry->filename_length);
+        n = arc_stream_read_fully(stream, entry->filename, entry->filename_length);
         if (n != entry->filename_length) {
             free(entry->filename);
             entry->filename = NULL;
@@ -460,7 +460,7 @@ static int read_central_dir_entry(ArcStream *stream, struct ZipCentralDirEntry *
             free(entry->filename);
             return -1;
         }
-        n = arc_stream_read(stream, entry->extra_field, entry->extra_field_length);
+        n = arc_stream_read_fully(stream, entry->extra_field, entry->extra_field_length);
         if (n != entry->extra_field_length) {
             free(entry->filename);
             free(entry->extra_field);
@@ -480,7 +480,7 @@ static int read_central_dir_entry(ArcStream *stream, struct ZipCentralDirEntry *
             free(entry->extra_field);
             return -1;
         }
-        n = arc_stream_read(stream, entry->comment, entry->comment_length);
+        n = arc_stream_read_fully(stream, entry->comment, entry->comment_length);
         if (n != entry->comment_length) {
             free(entry->filename);
             free(entry->extra_field);
@@ -629,7 +629,7 @@ static uint32_t zip_entry_mode(const struct ZipCentralDirEntry *cd_entry) {
 // Returns 0 on success, -1 on error
 static int read_data_descriptor(ArcStream *stream, uint32_t *crc32_out, uint64_t *compressed_size_out, uint64_t *uncompressed_size_out) {
     uint8_t buf[16];
-    ssize_t n = arc_stream_read(stream, buf, 4);
+    ssize_t n = arc_stream_read_fully(stream, buf, 4);
     if (n != 4) {
         return -1;
     }
@@ -640,14 +640,14 @@ static int read_data_descriptor(ArcStream *stream, uint32_t *crc32_out, uint64_t
     // Check for optional signature (0x08074b50)
     if (first_word == 0x08074b50) {
         // Signature present, read the rest
-        n = arc_stream_read(stream, buf, 12);
+        n = arc_stream_read_fully(stream, buf, 12);
         if (n != 12) {
             return -1;
         }
         offset = 0;
     } else {
         // No signature, first 4 bytes are CRC32, read remaining 8 bytes
-        n = arc_stream_read(stream, buf + 4, 8);
+        n = arc_stream_read_fully(stream, buf + 4, 8);
         if (n != 8) {
             return -1;
         }
@@ -683,7 +683,7 @@ static int read_local_file_header(ArcStream *stream, int64_t *header_pos_out, st
     }
     
     uint8_t header[30];
-    ssize_t n = arc_stream_read(stream, header, sizeof(header));
+    ssize_t n = arc_stream_read_fully(stream, header, sizeof(header));
     if (n != sizeof(header)) {
         return -1;
     }
@@ -744,7 +744,7 @@ static int read_local_file_header(ArcStream *stream, int64_t *header_pos_out, st
         if (!entry->filename) {
             return -1;
         }
-        n = arc_stream_read(stream, entry->filename, filename_length);
+        n = arc_stream_read_fully(stream, entry->filename, filename_length);
         if (n != filename_length) {
             free(entry->filename);
             entry->filename = NULL;
@@ -760,7 +760,7 @@ static int read_local_file_header(ArcStream *stream, int64_t *header_pos_out, st
             free(entry->filename);
             return -1;
         }
-        n = arc_stream_read(stream, entry->extra_field, extra_field_length);
+        n = arc_stream_read_fully(stream, entry->extra_field, extra_field_length);
         if (n != extra_field_length) {
             free(entry->filename);
             free(entry->extra_field);
@@ -944,7 +944,7 @@ static int zip_read_entry_streaming(ZipReader *reader) {
             uint64_t uncompressed_size_found = 0;
 
             while (current_pos < search_limit) {
-                ssize_t n = arc_stream_read(reader->base.stream, buf, sizeof(buf));
+                ssize_t n = arc_stream_read_fully(reader->base.stream, buf, sizeof(buf));
                 if (n <= 0) break;
 
                 // Look for data descriptor signature in the buffer
@@ -988,7 +988,7 @@ static int zip_read_entry_streaming(ZipReader *reader) {
                     // Read all decompressed data to find where compressed data ends
                     uint8_t temp_buf[4096];
                     ssize_t total_decompressed = 0;
-                    while (arc_stream_read(decomp, temp_buf, sizeof(temp_buf)) > 0) {
+                    while (arc_stream_read_fully(decomp, temp_buf, sizeof(temp_buf)) > 0) {
                         total_decompressed += sizeof(temp_buf);
                         // Limit to reasonable size to avoid excessive memory use
                         if (total_decompressed > 100 * 1024 * 1024) break; // 100MB limit
@@ -1134,7 +1134,7 @@ static ssize_t checked_zip_read(ArcStream *stream, void *buffer, size_t size) {
     ZipCheckedData *data = stream->user_data;
     if (data->failed) { errno = EIO; return -1; }
     if (size > UINT_MAX) size = UINT_MAX;
-    ssize_t n = arc_stream_read(data->data, buffer, size);
+    ssize_t n = arc_stream_read_fully(data->data, buffer, size);
     if (n > 0) {
         if ((uint64_t)n > data->expected_size - data->size) { data->failed = true; errno = EIO; return -1; }
         data->size += (uint64_t)n;
@@ -1177,7 +1177,7 @@ ArcStream *arc_zip_open_data(ArcReader *reader) {
     
     // Read local file header
     uint8_t header[30];
-    ssize_t n = arc_stream_read(zip->base.stream, header, sizeof(header));
+    ssize_t n = arc_stream_read_fully(zip->base.stream, header, sizeof(header));
     if (n != sizeof(header)) {
         return NULL;
     }

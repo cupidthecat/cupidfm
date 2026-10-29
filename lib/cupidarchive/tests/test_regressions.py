@@ -156,6 +156,75 @@ class Extraction(unittest.TestCase):
             self.assertNotEqual(self.extract(path),0)
             self.assertEqual((self.dest/"sample.txt").read_bytes(),b"existing")
 
+    def test_tar_compression_trailers_are_checked(self):
+        import gzip,bz2,lzma
+        raw=self.tar("raw.tar",[("file",b"payload","file")]).read_bytes()
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            packed=encode(raw)
+            for stream in (False,True):
+                for data in (packed[:-8],packed[:-8]+bytes([packed[-8]^1])+packed[-7:]):
+                    archive=self.base/("bad.tar."+ext)
+                    archive.write_bytes(data)
+                    self.assertNotEqual(self.extract(archive,stream),0,(ext,stream))
+
+    def test_compressed_zip_and_7z_use_decoded_random_access(self):
+        import gzip,bz2,lzma
+        zipped=io.BytesIO()
+        with zipfile.ZipFile(zipped,"w",compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr("zip-file",b"ZIP contents")
+        seven=(Path(__file__).resolve().parent/"fixtures/lzma2.7z").read_bytes()
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            for contents,format,name,expected in ((zipped.getvalue(),"zip","zip-file",b"ZIP contents"),
+                                                 (seven,"7z","sample.txt",b"hello CupidArchive\n"*20)):
+                archive=self.base/("packed."+format+"."+ext)
+                archive.write_bytes(encode(contents))
+                for stream in (False,True):
+                    self.assertEqual(self.extract(archive,stream),0,(format,ext,stream))
+                    self.assertEqual((self.dest/name).read_bytes(),expected)
+
+    def test_exact_decoded_limit_allows_container_trailer(self):
+        import gzip,bz2,lzma
+        raw=self.tar("raw.tar",[("file",b"payload","file")]).read_bytes()
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            archive=self.base/("limit.tar."+ext)
+            archive.write_bytes(encode(raw))
+            result=subprocess.run([str(DRIVER),"byte-limit",str(archive),str(self.dest),str(len(raw))],timeout=10)
+            self.assertEqual(result.returncode,0,ext)
+            result=subprocess.run([str(DRIVER),"byte-limit",str(archive),str(self.dest),str(len(raw)-1)],timeout=10)
+            self.assertNotEqual(result.returncode,0,ext)
+
+    def test_xz_without_content_checksum_is_valid(self):
+        import lzma
+        archive=self.base/"nocheck.xz"
+        archive.write_bytes(lzma.compress(b"payload",check=lzma.CHECK_NONE))
+        self.assertEqual(self.extract(archive),0)
+        self.assertEqual((self.dest/"nocheck").read_bytes(),b"payload")
+
+    def test_short_reads_in_archive_streams(self):
+        import gzip
+        archive=self.tar("short.tar",[("file",b"contents","file")])
+        compressed=self.base/"short.tar.gz";compressed.write_bytes(gzip.compress(archive.read_bytes()))
+        zipped=self.base/"short.zip"
+        with zipfile.ZipFile(zipped,"w",compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr("zip-file",b"ZIP contents")
+        cases=((archive,"file",b"contents"),(compressed,"file",b"contents"),(zipped,"zip-file",b"ZIP contents"),
+               (Path(__file__).resolve().parent/"fixtures/lzma1.7z","sample.txt",b"hello CupidArchive\n"*20))
+        for file,name,expected in cases:
+            result=subprocess.run([str(DRIVER),"chunked",str(file),str(self.dest)],timeout=10)
+            self.assertEqual(result.returncode,0,file)
+            self.assertEqual((self.dest/name).read_bytes(),expected)
+
+    def test_directory_names_do_not_change_compressed_file_detection(self):
+        import gzip
+        directory=self.base/"folder.tar.cache";directory.mkdir()
+        archive=directory/"payload.gz";archive.write_bytes(gzip.compress(b"contents"))
+        self.assertEqual(self.extract(archive),0)
+        self.assertEqual((self.dest/"payload").read_bytes(),b"contents")
+
+    def test_path_reader_rejects_fifo_without_blocking(self):
+        archive=self.base/"fifo.tar";os.mkfifo(archive)
+        self.assertNotEqual(self.extract(archive),0)
+
     def test_empty_archives(self):
         archive=self.tar("empty.tar",[])
         self.assertEqual(self.extract(archive),0)

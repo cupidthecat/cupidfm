@@ -68,6 +68,9 @@ struct ArcStream {
  */
 ssize_t arc_stream_read(ArcStream *stream, void *buf, size_t n);
 
+/* Fill a record, stopping only on EOF or error; short underlying reads are retried. */
+ssize_t arc_stream_read_fully(ArcStream *stream, void *buf, size_t n);
+
 /**
  * Seek in a stream (if supported).
  * 

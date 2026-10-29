@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <limits.h>
 #include <zlib.h>
 #include <bzlib.h>
 
@@ -61,7 +62,13 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
         if (remaining <= 0) {
-            errno = EOVERFLOW; return -1;
+            uint8_t extra;
+            int64_t limit = stream->byte_limit;
+            stream->byte_limit = 0;
+            ssize_t result = gzip_read(stream, &extra, 1);
+            stream->byte_limit = limit;
+            if (result > 0) { errno = EOVERFLOW; return -1; }
+            return result;
         }
         if ((int64_t)n > remaining) {
             n = (size_t)remaining;
@@ -69,7 +76,8 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
     }
     
     data->zs.next_out = (Bytef *)buf;
-    data->zs.avail_out = n;
+    if (n > UINT_MAX) n = UINT_MAX;
+    data->zs.avail_out = (uInt)n;
     
     while (data->zs.avail_out > 0 && !data->eof) {
         // Read more input if needed
@@ -82,7 +90,7 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
                 // No more input, finish decompression
                 // Loop until we get Z_STREAM_END or an error
                 size_t output_before = n - data->zs.avail_out;
-                for (;;) {
+                while (data->zs.avail_out > 0) {
                     int ret = inflate(&data->zs, Z_FINISH);
                     if (ret == Z_STREAM_END) {
                         data->eof = true;
@@ -233,7 +241,13 @@ static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
         if (remaining <= 0) {
-            errno = EOVERFLOW; return -1;
+            uint8_t extra;
+            int64_t limit = stream->byte_limit;
+            stream->byte_limit = 0;
+            ssize_t result = bzip2_read(stream, &extra, 1);
+            stream->byte_limit = limit;
+            if (result > 0) { errno = EOVERFLOW; return -1; }
+            return result;
         }
         if ((int64_t)n > remaining) {
             n = (size_t)remaining;
@@ -241,7 +255,8 @@ static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
     }
     
     data->bzs.next_out = (char *)buf;
-    data->bzs.avail_out = n;
+    if (n > UINT_MAX) n = UINT_MAX;
+    data->bzs.avail_out = (unsigned)n;
     
     while (data->bzs.avail_out > 0 && !data->eof) {
         // Read more input if needed
@@ -378,7 +393,13 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
         if (remaining <= 0) {
-            errno = EOVERFLOW; return -1;
+            uint8_t extra;
+            int64_t limit = stream->byte_limit;
+            stream->byte_limit = 0;
+            ssize_t result = deflate_read(stream, &extra, 1);
+            stream->byte_limit = limit;
+            if (result > 0) { errno = EOVERFLOW; return -1; }
+            return result;
         }
         if ((int64_t)n > remaining) {
             n = (size_t)remaining;
@@ -386,7 +407,8 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
     }
     
     data->zs.next_out = (Bytef *)buf;
-    data->zs.avail_out = n;
+    if (n > UINT_MAX) n = UINT_MAX;
+    data->zs.avail_out = (uInt)n;
     
     while (data->zs.avail_out > 0 && !data->eof) {
         // Read more input if needed
@@ -399,7 +421,7 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
                 // No more input, finish decompression
                 // Loop until we get Z_STREAM_END or an error
                 size_t output_before = n - data->zs.avail_out;
-                for (;;) {
+                while (data->zs.avail_out > 0) {
                     int ret = inflate(&data->zs, Z_FINISH);
                     if (ret == Z_STREAM_END) {
                         data->eof = true;

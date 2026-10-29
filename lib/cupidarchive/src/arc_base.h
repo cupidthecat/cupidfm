@@ -18,6 +18,8 @@ typedef struct ArcReaderBase {
     ArcLimits limits_storage;
     uint64_t entries_seen;
     uint64_t declared_bytes;
+    int terminal_error;
+    bool drain_on_eof;
     const ArcLimits *limits;  // Safety/resource limits (may be NULL => defaults)
 } ArcReaderBase;
 

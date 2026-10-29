@@ -284,7 +284,7 @@ static int parse_oldgnu_sparse(ArcStream *stream, const unsigned char *hdr_block
     // extension headers: each is a 512-byte block with 21 entries and isextended at 504. 
     while (isext) {
         unsigned char ext[TAR_BLOCK_SIZE];
-        ssize_t n = arc_stream_read(stream, ext, TAR_BLOCK_SIZE);
+        ssize_t n = arc_stream_read_fully(stream, ext, TAR_BLOCK_SIZE);
         if (n != TAR_BLOCK_SIZE) return -1;
 
         for (int i = 0; i < 21; i++) {
@@ -311,7 +311,7 @@ static int tar_skip_bytes(ArcStream *stream, uint64_t nbytes) {
     uint64_t remaining = nbytes;
     while (remaining > 0) {
         size_t to_read = (remaining > sizeof(discard)) ? sizeof(discard) : (size_t)remaining;
-        ssize_t n = arc_stream_read(stream, discard, to_read);
+        ssize_t n = arc_stream_read_fully(stream, discard, to_read);
         if (n <= 0) return -1;
         remaining -= (uint64_t)n;
     }
@@ -456,7 +456,7 @@ static int pax_read_records(ArcStream *stream, uint64_t size, PaxState *st) {
     size_t off = 0;
     while (remaining > 0) {
         size_t chunk = (remaining > 65536) ? 65536 : (size_t)remaining;
-        ssize_t n = arc_stream_read(stream, buf + off, chunk);
+        ssize_t n = arc_stream_read_fully(stream, buf + off, chunk);
         if (n <= 0) {
             free(buf);
             return -1;
@@ -481,7 +481,7 @@ static char *tar_read_long_text(ArcStream *stream, uint64_t size) {
     size_t off = 0;
     while (remaining > 0) {
         size_t chunk = (remaining > 65536) ? 65536 : (size_t)remaining;
-        ssize_t n = arc_stream_read(stream, buf + off, chunk);
+        ssize_t n = arc_stream_read_fully(stream, buf + off, chunk);
         if (n <= 0) { free(buf); return NULL; }
         off += (size_t)n;
         remaining -= (uint64_t)n;
@@ -508,7 +508,7 @@ static int tar_read_entry(struct TarReader *reader) {
     // Read header block
     struct TarHeader hdr;
     memset(&hdr, 0, sizeof(hdr)); // Initialize to zero
-    ssize_t n = arc_stream_read(reader->base.stream, &hdr, sizeof(hdr));
+    ssize_t n = arc_stream_read_fully(reader->base.stream, &hdr, sizeof(hdr));
     if (n < 0) {
         return -1; // Read error
     }
@@ -589,7 +589,7 @@ static int tar_read_entry(struct TarReader *reader) {
 
         // Read the next header (the real entry or another metadata header)
         memset(&hdr, 0, sizeof(hdr));
-        n = arc_stream_read(reader->base.stream, &hdr, sizeof(hdr));
+        n = arc_stream_read_fully(reader->base.stream, &hdr, sizeof(hdr));
         if (n == 0) { reader->eof = true; pax_clear(&pax_local); return 1; }
         if (n != sizeof(hdr)) { pax_clear(&pax_local); return -1; }
         if (is_zero_block((const uint8_t *)&hdr)) { reader->eof = true; pax_clear(&pax_local); return 1; }
