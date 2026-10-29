@@ -3864,9 +3864,7 @@ void display_archive_preview(WINDOW *window, const char *file_path,
     if (entry.type == ARC_ENTRY_DIR) {
       snprintf(size_str, sizeof(size_str), "<DIR>");
     } else if (entry.size == 0) {
-      // Unknown size (e.g., compressed single files like .gz, .bz2)
-      // For compressed files, size is unknown until decompressed
-      // (or if ISIZE is available in gzip metadata)
+      // Streamed compressed files have no reliable total size before decoding.
       snprintf(size_str, sizeof(size_str), "?");
     } else {
       format_file_size(size_str, entry.size);

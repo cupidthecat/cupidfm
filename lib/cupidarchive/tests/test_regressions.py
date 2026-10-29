@@ -193,6 +193,54 @@ class Extraction(unittest.TestCase):
             result=subprocess.run([str(DRIVER),"byte-limit",str(archive),str(self.dest),str(len(raw)-1)],timeout=10)
             self.assertNotEqual(result.returncode,0,ext)
 
+    def test_concatenated_compression_members(self):
+        import gzip,bz2,lzma,random
+        random_bytes=random.Random(72).randbytes(140000)
+        parts=(b"",random_bytes[:70000],b"",random_bytes[70000:],b"")
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            archive=self.base/("joined."+ext)
+            archive.write_bytes(b"".join(encode(part) for part in parts))
+            for mode,name in (("path","joined"),("stream","file"),("chunked","file")):
+                result=subprocess.run([str(DRIVER),mode,str(archive),str(self.dest)],timeout=10)
+                self.assertEqual(result.returncode,0,(ext,mode))
+                self.assertEqual((self.dest/name).read_bytes(),random_bytes,(ext,mode))
+            for limit,valid in ((len(random_bytes),True),(len(random_bytes)-1,False)):
+                result=subprocess.run([str(DRIVER),"byte-limit",str(archive),str(self.dest),str(limit)],timeout=10)
+                self.assertEqual(result.returncode==0,valid,(ext,limit))
+
+    def test_archives_split_across_compression_members(self):
+        import gzip,bz2,lzma
+        raw=self.tar("joined.tar",[("file",b"member-boundary"*1000,"file")]).read_bytes()
+        zipped=io.BytesIO()
+        with zipfile.ZipFile(zipped,"w") as z: z.writestr("file",b"ZIP member-boundary"*1000)
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            for data,kind,expected in ((raw,"tar",b"member-boundary"*1000),
+                                       (zipped.getvalue(),"zip",b"ZIP member-boundary"*1000)):
+                archive=self.base/("joined."+kind+"."+ext)
+                archive.write_bytes(b"".join(encode(part) for part in (data[:777],b"",data[777:])))
+                for stream in (False,True):
+                    self.assertEqual(self.extract(archive,stream),0,(ext,kind,stream))
+                    self.assertEqual((self.dest/"file").read_bytes(),expected)
+
+    def test_invalid_later_compression_members_fail(self):
+        import gzip,bz2,lzma
+        for encode,ext in ((gzip.compress,"gz"),(bz2.compress,"bz2"),(lzma.compress,"xz")):
+            first=encode(b"first"*1000);second=encode(b"second"*1000)
+            for tail in (second[:-8],second[:-8]+bytes([second[-8]^1])+second[-7:],b"trailing garbage"):
+                archive=self.base/("invalid."+ext);archive.write_bytes(first+tail)
+                (self.dest/"invalid").write_bytes(b"previous destination")
+                self.assertNotEqual(self.extract(archive),0,ext)
+                self.assertEqual((self.dest/"invalid").read_bytes(),b"previous destination")
+
+    def test_compressed_size_does_not_claim_last_members_size(self):
+        import gzip,lzma
+        for encode,ext in ((gzip.compress,"gz"),(lzma.compress,"xz")):
+            archive=self.base/("metadata."+ext)
+            archive.write_bytes(encode(b"large"*1000)+encode(b"last"))
+            result=subprocess.run([str(DRIVER),"inspect",str(archive),str(self.dest)],capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0)
+            self.assertEqual(result.stdout.split("\t")[1],"0", "streamed compressed sizes are unknown")
+
     def test_xz_without_content_checksum_is_valid(self):
         import lzma
         archive=self.base/"nocheck.xz"

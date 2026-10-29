@@ -27,6 +27,16 @@ all: $(LIBRARY)
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
+# Rebuild objects when compiler flags change, including sanitizer switches.
+BUILD_CONFIG := $(OBJDIR)/.build-flags
+.PHONY: FORCE
+FORCE:
+$(BUILD_CONFIG): FORCE | $(OBJDIR)
+	@build_tmp=$$(mktemp '$@.XXXXXX'); \
+	 printf '%s\n' '$(CC)|$(CPPFLAGS)|$(CFLAGS)|$(AR)|$(ARFLAGS)' > "$$build_tmp"; \
+	 if cmp -s "$$build_tmp" '$@'; then rm -f "$$build_tmp"; else mv -f "$$build_tmp" '$@'; fi
+$(OBJECTS): $(BUILD_CONFIG)
+
 # Build static library
 $(LIBRARY): $(OBJECTS)
 	$(AR) $(ARFLAGS) $(LIBDIR)/$(LIBRARY) $(OBJECTS)

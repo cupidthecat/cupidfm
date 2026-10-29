@@ -271,7 +271,7 @@ static ArcReader *open_reader(ArcStream *stream, const char *path, const ArcLimi
     }
     ArcReaderBase *base = (ArcReaderBase *)reader;
     base->owned_stream = input != stream ? stream : NULL;
-    base->drain_on_eof = compression >= 0 && format == ARC_FORMAT_TAR;
+    base->drain_on_eof = compression >= 0 && (format == ARC_FORMAT_TAR || format == ARC_FORMAT_COMPRESSED);
     return reader;
 }
 

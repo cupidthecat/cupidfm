@@ -16,21 +16,20 @@ TEST_TARGETS = test_arc_stream test_arc_reader test_arc_extract
 
 all: $(TEST_TARGETS)
 
-# Build library first (ensure it exists)
-$(LIBRARY):
+# Check source/flag changes once before building any test executable.
+.PHONY: FORCE
+FORCE:
+$(LIBRARY): FORCE
 	@$(MAKE) -C $(LIBDIR) all
 
 # Test executables
 test_arc_stream: test_arc_stream.c test_runner.h $(LIBRARY)
-	@$(MAKE) -C $(LIBDIR) all
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_arc_stream.c -L$(LIBDIR) -lcupidarchive $(LIBS)
 
 test_arc_reader: test_arc_reader.c test_runner.h $(LIBRARY)
-	@$(MAKE) -C $(LIBDIR) all
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_arc_reader.c -L$(LIBDIR) -lcupidarchive $(LIBS)
 
 test_arc_extract: test_arc_extract.c test_runner.h $(LIBRARY)
-	@$(MAKE) -C $(LIBDIR) all
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_arc_extract.c -L$(LIBDIR) -lcupidarchive $(LIBS)
 
 # Run all tests

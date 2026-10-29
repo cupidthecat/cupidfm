@@ -9,21 +9,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <libgen.h>
-#include <zlib.h>
-
-#ifndef HAVE_LZMA
-#  if defined(__has_include)
-#    if __has_include(<lzma.h>)
-#      include <lzma.h>
-#      define HAVE_LZMA 1
-#    else
-#      define HAVE_LZMA 0
-#    endif
-#  else
-#    include <lzma.h>
-#    define HAVE_LZMA 1
-#  endif
-#endif
 
 // Format types (must match arc_reader.c)
 #define ARC_FORMAT_TAR 0
@@ -35,14 +20,10 @@ typedef struct CompressedReader {
     ArcReaderBase base;  // Must be first member for safe dispatch
     // Note: base.stream = decompressed (the stream we read from)
     //       base.owned_stream = original_stream (for closing)
-    ArcStream *original_stream;    // Original compressed stream (needs to be closed) - also in base.owned_stream
     ArcStream *decompressed;        // Decompressed stream (filter) - also in base.stream
     ArcEntry current_entry;        // Current entry data
     bool entry_valid;              // Whether entry data is available
     bool entry_returned;           // Whether we've returned the entry
-    char *original_path;           // Original file path (for filename extraction)
-    int compression_type;          // ARC_COMPRESSED_GZIP or ARC_COMPRESSED_BZIP2
-    uint64_t uncompressed_size;    // Uncompressed size (if known, 0 = unknown)
 } CompressedReader;
 
 /**
@@ -80,144 +61,6 @@ static char *extract_base_filename(const char *path) {
     return result;
 }
 
-/**
- * Try to extract uncompressed size (ISIZE) from gzip footer.
- * ISIZE is stored in the last 4 bytes of the gzip file (little-endian uint32_t).
- * Returns 0 if size cannot be determined.
- */
-static uint64_t extract_gzip_isize(ArcStream *original_stream) {
-    if (!original_stream) {
-        return 0;
-    }
-    
-    // Save current position
-    int64_t current_pos = arc_stream_tell(original_stream);
-    if (current_pos < 0) {
-        return 0;
-    }
-    
-    // Seek to 4 bytes before end
-    if (arc_stream_seek(original_stream, -4, SEEK_END) < 0) {
-        // Seek failed, restore position and return unknown
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-    
-    // Read ISIZE (4 bytes, little-endian)
-    uint8_t isize_bytes[4];
-    ssize_t n = arc_stream_read_fully(original_stream, isize_bytes, 4);
-    if (n != 4) {
-        // Read failed, restore position and return unknown
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-    
-    // Parse little-endian uint32_t
-    uint32_t isize = (uint32_t)isize_bytes[0] |
-                     ((uint32_t)isize_bytes[1] << 8) |
-                     ((uint32_t)isize_bytes[2] << 16) |
-                     ((uint32_t)isize_bytes[3] << 24);
-    
-    // Restore position
-    arc_stream_seek(original_stream, current_pos, SEEK_SET);
-    
-    return (uint64_t)isize;
-}
-
-#if HAVE_LZMA
-/**
- * Extract uncompressed size from an .xz stream by decoding the Index.
- * Returns 0 if size cannot be determined.
- */
-static uint64_t extract_xz_usize(ArcStream *original_stream) {
-    if (!original_stream) {
-        return 0;
-    }
-
-    int64_t current_pos = arc_stream_tell(original_stream);
-    if (current_pos < 0) {
-        return 0;
-    }
-
-    if (arc_stream_seek(original_stream, 0, SEEK_END) < 0) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    int64_t file_size = arc_stream_tell(original_stream);
-    if (file_size <= (int64_t)LZMA_STREAM_HEADER_SIZE) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    uint8_t footer[LZMA_STREAM_HEADER_SIZE];
-    if (arc_stream_seek(original_stream, file_size - (int64_t)LZMA_STREAM_HEADER_SIZE, SEEK_SET) < 0) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    ssize_t n = arc_stream_read_fully(original_stream, footer, sizeof(footer));
-    if (n != (ssize_t)sizeof(footer)) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    lzma_stream_flags flags;
-    if (lzma_stream_footer_decode(&flags, footer) != LZMA_OK) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    if (flags.backward_size < LZMA_BACKWARD_SIZE_MIN || flags.backward_size > LZMA_BACKWARD_SIZE_MAX) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    uint64_t index_size = (uint64_t)flags.backward_size;
-    if (index_size + LZMA_STREAM_HEADER_SIZE > (uint64_t)file_size) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    uint8_t *index_buf = malloc(index_size);
-    if (!index_buf) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    if (arc_stream_seek(original_stream,
-                        file_size - (int64_t)LZMA_STREAM_HEADER_SIZE - (int64_t)index_size,
-                        SEEK_SET) < 0) {
-        free(index_buf);
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    ssize_t index_read = arc_stream_read_fully(original_stream, index_buf, index_size);
-    if (index_read != (ssize_t)index_size) {
-        free(index_buf);
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    size_t pos = 0;
-    uint64_t memlimit = UINT64_MAX;
-    lzma_index *index = NULL;
-    lzma_ret ret = lzma_index_buffer_decode(&index, &memlimit, NULL, index_buf, &pos, index_size);
-    free(index_buf);
-    if (ret != LZMA_OK || !index) {
-        arc_stream_seek(original_stream, current_pos, SEEK_SET);
-        return 0;
-    }
-
-    lzma_vli usize = lzma_index_uncompressed_size(index);
-    lzma_index_end(index, NULL);
-
-    arc_stream_seek(original_stream, current_pos, SEEK_SET);
-    return (uint64_t)usize;
-}
-#endif
-
 ArcReader *arc_compressed_open(ArcStream *decompressed_stream, const char *original_path, int compression_type) {
     if (!decompressed_stream) {
         return NULL;
@@ -229,25 +72,13 @@ ArcReader *arc_compressed_open(ArcStream *decompressed_stream, const char *origi
     }
     
     reader->base.format = ARC_FORMAT_COMPRESSED;
-    // decompressed_stream is the filter stream from detect_format
+    (void)compression_type;
+    // The caller supplies a fresh filter after format detection.
     reader->base.stream = decompressed_stream;
     reader->decompressed = decompressed_stream;  // Keep for backward compatibility
-    // We need to get the original stream from the filter's underlying stream
-    // But filters don't expose this easily. For now, we'll rely on arc_open_path
-    // to manage the original stream closure.
-    reader->base.owned_stream = NULL; // Will be set by caller if needed
-    reader->original_stream = NULL; // Will be set by caller if needed
-    reader->compression_type = compression_type;
     reader->entry_valid = false;
     reader->entry_returned = false;
-    reader->uncompressed_size = 0; // Unknown size (will try to extract for gzip)
-    
-    if (original_path) {
-        reader->original_path = strdup(original_path);
-    } else {
-        reader->original_path = NULL;
-    }
-    
+
     // Create virtual entry
     reader->current_entry.path = extract_base_filename(original_path);
     if (!reader->current_entry.path) {
@@ -255,15 +86,14 @@ ArcReader *arc_compressed_open(ArcStream *decompressed_stream, const char *origi
         reader->current_entry.path = strdup("file");
         if (!reader->current_entry.path) {
             // Memory allocation failed - can't create entry
-            free(reader->original_path);
             free(reader);
             return NULL;
         }
     }
     
-    // Try to extract uncompressed size for gzip files
-    // Note: This will be set later when original_stream is available
-    reader->current_entry.size = 0; // Unknown size (will be updated if ISIZE available)
+    // Per-member footer sizes do not describe the whole decoded file;
+    // gzip ISIZE also wraps at 2^32. Zero denotes an unknown streamed size.
+    reader->current_entry.size = 0;
     reader->current_entry.mode = 0644; // Default
     reader->current_entry.mtime = 0; // Unknown
     reader->current_entry.type = ARC_ENTRY_FILE;
@@ -346,8 +176,10 @@ int arc_compressed_skip_data(ArcReader *reader) {
         return -1;
     }
     
-    // For compressed files, we can't easily skip without decompressing
-    // Just mark as invalid
+    uint8_t buffer[65536];
+    ssize_t n;
+    while ((n = arc_stream_read(comp->decompressed, buffer, sizeof(buffer))) > 0) {}
+    if (n < 0) return -1;
     comp->entry_valid = false;
     return 0;
 }
@@ -358,26 +190,6 @@ void arc_compressed_set_original_stream(ArcReader *reader, ArcStream *original_s
     }
     CompressedReader *comp = (CompressedReader *)reader;
     comp->base.owned_stream = original_stream;
-    comp->original_stream = original_stream;  // Keep for backward compatibility
-    
-    // Try to extract ISIZE from gzip footer if available
-    if (original_stream && comp->compression_type == ARC_COMPRESSED_GZIP) {
-        uint64_t isize = extract_gzip_isize(original_stream);
-        if (isize > 0) {
-            comp->uncompressed_size = isize;
-            comp->current_entry.size = isize;
-        }
-    }
-    // Note: bzip2 doesn't store uncompressed size in the file footer
-#if HAVE_LZMA
-    if (original_stream && comp->compression_type == ARC_COMPRESSED_XZ) {
-        uint64_t usize = extract_xz_usize(original_stream);
-        if (usize > 0) {
-            comp->uncompressed_size = usize;
-            comp->current_entry.size = usize;
-        }
-    }
-#endif
 }
 
 void arc_compressed_close(ArcReader *reader) {
@@ -399,10 +211,8 @@ void arc_compressed_close(ArcReader *reader) {
     if (comp->base.owned_stream) {
         arc_stream_close(comp->base.owned_stream);
         comp->base.owned_stream = NULL;
-        comp->original_stream = NULL;
     }
     
-    free(comp->original_path);
     free(comp);
 }
 

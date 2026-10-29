@@ -640,6 +640,10 @@ The single-file 7z reader accepts Copy, LZMA1, and LZMA2 data and encoded file t
 
 Compressed TAR readers finish the compression stream before reporting archive completion, so missing trailers and checksum failures are reported even after the TAR end marker. ZIP and 7z inside gzip, bzip2, or xz are decoded to an anonymous temporary file for random access, within the configured decoded byte limit. Ordinary compressed files and TAR archives remain streamed.
 
+Gzip, bzip2, and xz filters decode concatenated members as one byte stream and enforce the decoded limit across all members. Damaged later members and trailing non-member data fail instead of returning a successful prefix. The gzip/bzip2 readers reset their decoder at each member boundary, as required by the [zlib manual](https://www.zlib.net/manual.html) and [bzip2 manual](https://sourceware.org/bzip2/manual/manual.html).
+
+Standalone compressed entries report `size = 0` for unknown length. A gzip trailer contains only one member's size modulo 2^32, and an xz footer describes its own stream; neither is a reliable total for concatenated input. Read the entry data until EOF to obtain the full contents. Advancing past or skipping a compressed entry drains the filter and reports decoding failures.
+
 Record reads retry short underlying reads. File-path readers accept regular files and reject FIFOs without waiting for a writer. XZ streams without a content checksum are accepted, while checksums present in the stream are verified. XZ decoder memory is capped at 128 MiB.
 
 GNU sparse files are reconstructed from their extent maps, including old GNU extension headers and PAX sparse versions 0.0, 0.1, and 1.0. Extraction retains holes, and following members use the stored-data boundaries rather than the logical sparse size. The implementation follows the [GNU sparse-format descriptions](https://www.gnu.org/software/tar/manual/html_section/Sparse-Formats.html).

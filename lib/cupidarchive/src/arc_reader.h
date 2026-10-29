@@ -20,7 +20,7 @@
  */
 typedef struct ArcEntry {
     char     *path;        // Normalized path (allocated, caller must free)
-    uint64_t  size;        // File size in bytes
+    uint64_t  size;        // File size in bytes; 0 also denotes unknown size for streamed compressed files
     uint32_t  mode;        // File mode/permissions
     uint64_t  mtime;       // Modification time (Unix timestamp)
     uint8_t   type;        // Entry type (ARC_ENTRY_*)
