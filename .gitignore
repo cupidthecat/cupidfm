@@ -29,3 +29,6 @@ log.txt
 /build/
 *.d
 /tests/test_config_keys
+
+/tests/test_text_preview
+/tests/test_archive_preview

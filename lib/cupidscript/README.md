@@ -693,26 +693,33 @@ See `examples/safety_config.cs` and `examples/safety_test.cs` for demonstrations
 
 ## C API for List and Map Manipulation
 
-CupidScript provides a comprehensive C API for manipulating lists and maps from host code.
+The C API provides retained values for lists, maps, and tuples. See the [embedding guide](wiki/Embedding-API.md) for ownership rules and a complete host example.
 
 ### List Operations
 
 ```c
 cs_value mylist = cs_list(vm);
 cs_list_push(mylist, cs_int(42));
-cs_list_push(mylist, cs_str(vm, "hello"));
+cs_value greeting = cs_str(vm, "hello");
+cs_list_push(mylist, greeting);
+cs_value_release(greeting);
 
 size_t len = cs_list_len(mylist);
 cs_value val = cs_list_get(mylist, 0);
-cs_list_set(mylist, 2, cs_float(3.14));
+cs_list_set(mylist, 1, cs_float(3.14));
 cs_value last = cs_list_pop(mylist);
+cs_value_release(val);
+cs_value_release(last);
+cs_value_release(mylist);
 ```
 
 ### Map Operations
 
 ```c
 cs_value mymap = cs_map(vm);
-cs_map_set(mymap, "name", cs_str(vm, "Alice"));
+cs_value label = cs_str(vm, "Alice");
+cs_map_set(mymap, "name", label);
+cs_value_release(label);
 cs_map_set(mymap, "age", cs_int(30));
 
 if (cs_map_has(mymap, "name")) {
@@ -723,6 +730,8 @@ if (cs_map_has(mymap, "name")) {
 
 cs_value keys = cs_map_keys(vm, mymap);
 cs_map_del(mymap, "age");
+cs_value_release(keys);
+cs_value_release(mymap);
 ```
 
 All returned `cs_value` objects must be released with `cs_value_release()`.

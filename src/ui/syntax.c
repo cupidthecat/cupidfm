@@ -435,51 +435,40 @@ static bool is_followed_by_paren(const char *line, int pos, int len) {
     return (pos < len && line[pos] == '(');
 }
 
-// Helper: scan backwards through lines to determine initial block comment state
-// Returns 1 if we're inside a block comment at the start of the given line, 0 otherwise
-int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
-    (void)num_lines;
-    if (!syntax || !syntax->block_comment_start || !syntax->block_comment_end) return 0;
-
-    const char *start_delim = syntax->block_comment_start;
-    const char *end_delim   = syntax->block_comment_end;
-    const int start_len = (int)strlen(start_delim);
-    const int end_len   = (int)strlen(end_delim);
-
-    int depth = 0;
-
-    // Walk upward through earlier lines
-    for (int li = current_line - 1; li >= 0; --li) {
-        const char *s = lines[li];
-        if (!s) continue;
-        int L = (int)strlen(s);
-
-        // Scan this line right-to-left
-        for (int pos = L - 1; pos >= 0; --pos) {
-            // Check for end delimiter "*/" ending at pos
-            if (pos - end_len + 1 >= 0 &&
-                strncmp(&s[pos - end_len + 1], end_delim, (size_t)end_len) == 0) {
-                depth++;                 // treat end as an "open" when scanning backwards
-                pos -= (end_len - 1);
-                continue;
-            }
-
-            // Check for start delimiter "/*" ending at pos
-            if (pos - start_len + 1 >= 0 &&
-                strncmp(&s[pos - start_len + 1], start_delim, (size_t)start_len) == 0) {
-
-                if (depth == 0) {
-                    // Found an unmatched start => we are inside a block comment at current_line
-                    return 1;
-                }
-                depth--;                 // match it against an end we saw later (above current_line)
-                pos -= (start_len - 1);
-                continue;
-            }
+/* Track comments through an entire physical line, including clipped columns. */
+int syntax_scan_line_state(const char *line, const SyntaxDef *syntax, int state) {
+    if (!line || !syntax) return 0;
+    size_t opening = syntax->block_comment_start ? strlen(syntax->block_comment_start) : 0;
+    size_t closing = syntax->block_comment_end ? strlen(syntax->block_comment_end) : 0;
+    size_t comment = syntax->line_comment ? strlen(syntax->line_comment) : 0;
+    char quote = 0;
+    for (size_t i = 0; line[i];) {
+        if (state) {
+            if (closing && !strncmp(line + i, syntax->block_comment_end, closing)) {
+                state = 0; i += closing;
+            } else i++;
+        } else if (quote) {
+            if (line[i] == '\\' && line[i + 1]) i += 2;
+            else { if (line[i] == quote) quote = 0; i++; }
+        } else if (comment && !strncmp(line + i, syntax->line_comment, comment)) {
+            break;
+        } else if (opening && closing && !strncmp(line + i, syntax->block_comment_start, opening)) {
+            state = 1; i += opening;
+        } else {
+            if ((syntax->string_delim && line[i] == syntax->string_delim) ||
+                (syntax->char_delim && line[i] == syntax->char_delim)) quote = line[i];
+            i++;
         }
     }
+    return state;
+}
 
-    return 0;
+int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
+    int state = 0;
+    if (!lines) return state;
+    for (int i = 0; i < current_line && i < num_lines; i++)
+        state = syntax_scan_line_state(lines[i], syntax, state);
+    return state;
 }
 
 // Helper: parse and highlight a number (supports various formats)
