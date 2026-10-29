@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT_DIR/bin/cupidscript"
+BIN="${BIN:-$ROOT_DIR/bin/cupidscript}"
+API_TEST_BIN="${API_TEST_BIN:-$ROOT_DIR/bin/c_api_tests}"
 TEST_DIR="$ROOT_DIR/tests"
 
 if [[ ! -x "$BIN" ]]; then
@@ -34,7 +35,13 @@ for t in "${tests[@]}"; do
     expect_fail=1
   fi
 
-  if "$BIN" "$path" >"$tmp_out" 2>&1; then
+  status=0
+  "$BIN" "$path" >"$tmp_out" 2>&1 || status=$?
+  if grep -qE 'AddressSanitizer|LeakSanitizer|UndefinedBehaviorSanitizer|runtime error:' "$tmp_out" || [[ $status -ge 128 ]]; then
+    echo "FAIL $t (sanitizer error or signal)"
+    cat "$tmp_out"
+    fail=$((fail + 1))
+  elif [[ $status -eq 0 ]]; then
     if [[ $expect_fail -eq 1 ]]; then
       echo "FAIL $t (expected failure, got success)"
       cat "$tmp_out"
@@ -57,9 +64,11 @@ for t in "${tests[@]}"; do
   rm -f "$tmp_out"
 done
 
-if [[ -x "$ROOT_DIR/bin/c_api_tests" ]]; then
+if [[ -x "$API_TEST_BIN" ]]; then
   tmp_out="$(mktemp)"
-  if "$ROOT_DIR/bin/c_api_tests" >"$tmp_out" 2>&1; then
+  status=0
+  "$API_TEST_BIN" >"$tmp_out" 2>&1 || status=$?
+  if [[ $status -eq 0 ]] && ! grep -qE 'AddressSanitizer|LeakSanitizer|UndefinedBehaviorSanitizer|runtime error:' "$tmp_out"; then
     echo "PASS c_api_tests"
     pass=$((pass + 1))
   else
@@ -69,7 +78,7 @@ if [[ -x "$ROOT_DIR/bin/c_api_tests" ]]; then
   fi
   rm -f "$tmp_out"
 else
-  echo "FAIL c_api_tests (missing $ROOT_DIR/bin/c_api_tests)"
+  echo "FAIL c_api_tests (missing $API_TEST_BIN)"
   fail=$((fail + 1))
 fi
 

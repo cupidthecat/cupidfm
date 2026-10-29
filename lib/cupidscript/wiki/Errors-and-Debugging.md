@@ -129,6 +129,8 @@ Benefits of error objects:
 * Error codes for categorization (`code` is always present)
 * Easy to check with `is_error()`
 
+`catch` handles explicit `throw` values, including rejected promises. VM runtime errors such as division by zero still abort execution, but `finally` runs before the error reaches the host. A return or throw from `finally` replaces the earlier result; a new runtime error replaces the earlier diagnostic. Cleanup remains subject to the host's instruction, timeout, and interrupt limits.
+
 `finally` can be a block or a single expression statement:
 
 ```c

@@ -147,18 +147,6 @@ void cs_tuple_incref(cs_tuple_obj* t) {
     if (t) t->ref++;
 }
 
-void cs_tuple_decref(cs_tuple_obj* t) {
-    if (!t) return;
-    t->ref--;
-    if (t->ref <= 0) {
-        for (size_t i = 0; i < t->len; i++) {
-            free(t->fields[i].name);
-            cs_value_release(t->fields[i].value);
-        }
-        free(t->fields);
-        free(t);
-    }
-}
 
 uint32_t cs_value_hash(cs_value v) {
     switch (v.type) {

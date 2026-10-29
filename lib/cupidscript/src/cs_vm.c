@@ -518,7 +518,12 @@ cs_value cs_capture_stack_trace(cs_vm* vm) {
         
         cs_value entry = cs_str(vm, buf);
         if (entry.as.p) {
-            list_push(list, entry);  // Use list_push() to ensure capacity
+            if (!list_push(list, entry)) {
+                cs_value_release(entry);
+                cs_value_release(stack_list);
+                return cs_nil();
+            }
+            cs_value_release(entry);
         }
     }
     
@@ -757,6 +762,87 @@ cs_value cs_bytes_take(cs_vm* vm, uint8_t* owned, size_t len) {
     return v;
 }
 
+void cs_tuple_decref(cs_tuple_obj* t) {
+    if (!t || --t->ref > 0) return;
+    for (size_t i = 0; i < t->len; i++) {
+        free(t->fields[i].name);
+        cs_value_release(t->fields[i].value);
+    }
+    free(t->fields);
+    vm_track_remove(t->owner, CS_TRACK_TUPLE, t);
+    free(t);
+}
+
+cs_value cs_tuple(cs_vm* vm, size_t field_count) {
+    cs_tuple_obj* t = cs_tuple_new(field_count);
+    if (!t) return cs_nil();
+    t->owner = vm;
+    if (vm && !vm_track_add(vm, CS_TRACK_TUPLE, t)) {
+        cs_tuple_decref(t);
+        return cs_nil();
+    }
+    if (vm) {
+        vm->gc_allocations++;
+        vm_maybe_auto_gc(vm);
+    }
+    cs_value value; value.type = CS_T_TUPLE; value.as.p = t;
+    return value;
+}
+
+int cs_tuple_set_positional(cs_value tuple, size_t index, cs_value value) {
+    if (tuple.type != CS_T_TUPLE || !tuple.as.p) return -1;
+    cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
+    if (index >= t->len) return -1;
+    cs_value copy = cs_value_copy(value);
+    cs_value_release(t->fields[index].value);
+    t->fields[index].value = copy;
+    return 0;
+}
+
+int cs_tuple_set_named(cs_value tuple, const char* name, cs_value value) {
+    if (tuple.type != CS_T_TUPLE || !tuple.as.p || !name) return -1;
+    cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
+    size_t index = t->len, unused = t->len;
+    for (size_t i = 0; i < t->len; i++) {
+        if (t->fields[i].name && strcmp(t->fields[i].name, name) == 0) { index = i; break; }
+        if (!t->fields[i].name && unused == t->len) unused = i;
+    }
+    if (index == t->len) index = unused;
+    if (index == t->len) return -1;
+    char* copy = cs_strdup2(name);
+    if (!copy) return -1;
+    cs_tuple_set_positional(tuple, index, value);
+    free(t->fields[index].name);
+    t->fields[index].name = copy;
+    return 0;
+}
+
+cs_value cs_tuple_get_positional(cs_value tuple, size_t index) {
+    if (tuple.type != CS_T_TUPLE || !tuple.as.p) return cs_nil();
+    cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
+    return index < t->len ? cs_value_copy(t->fields[index].value) : cs_nil();
+}
+
+cs_value cs_tuple_get_named(cs_value tuple, const char* name) {
+    if (tuple.type != CS_T_TUPLE || !tuple.as.p || !name) return cs_nil();
+    cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
+    for (size_t i = 0; i < t->len; i++) {
+        if (t->fields[i].name && strcmp(t->fields[i].name, name) == 0)
+            return cs_value_copy(t->fields[i].value);
+    }
+    return cs_nil();
+}
+
+size_t cs_tuple_len(cs_value tuple) {
+    return tuple.type == CS_T_TUPLE && tuple.as.p ? ((cs_tuple_obj*)tuple.as.p)->len : 0;
+}
+
+const char* cs_tuple_field_name(cs_value tuple, size_t index) {
+    if (tuple.type != CS_T_TUPLE || !tuple.as.p) return NULL;
+    cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
+    return index < t->len ? t->fields[index].name : NULL;
+}
+
 cs_value cs_value_copy(cs_value v) {
     if (v.type == CS_T_STR) cs_str_incref(as_str(v));
     else if (v.type == CS_T_LIST) list_incref(as_list(v));
@@ -766,6 +852,7 @@ cs_value cs_value_copy(cs_value v) {
     else if (v.type == CS_T_BYTES) bytes_incref(as_bytes(v));
     else if (v.type == CS_T_RANGE) range_incref(as_range(v));
     else if (v.type == CS_T_PROMISE) promise_incref(as_promise(v));
+    else if (v.type == CS_T_TUPLE) cs_tuple_incref((cs_tuple_obj*)v.as.p);
     else if (v.type == CS_T_NATIVE) as_native(v)->ref++;
     else if (v.type == CS_T_FUNC) as_func(v)->ref++;
     return v;
@@ -780,6 +867,7 @@ void cs_value_release(cs_value v) {
     else if (v.type == CS_T_BYTES) bytes_decref(as_bytes(v));
     else if (v.type == CS_T_RANGE) range_decref(as_range(v));
     else if (v.type == CS_T_PROMISE) promise_decref(as_promise(v));
+    else if (v.type == CS_T_TUPLE) cs_tuple_decref((cs_tuple_obj*)v.as.p);
     else if (v.type == CS_T_NATIVE) {
         cs_native* nf = as_native(v);
         if (nf && --nf->ref <= 0) free(nf);
@@ -2809,16 +2897,14 @@ static void execute_nested_list_iteration(
                 // Destructure the list item [a, b] into two variables
                 cs_value item = list->items[i];
                 if (item.type == CS_T_LIST || item.type == CS_T_TUPLE) {
-                    cs_list_obj* item_list = (item.type == CS_T_LIST) ? as_list(item) : (cs_list_obj*)item.as.p;
-                    if (item_list->len >= 1) {
-                        env_set_here(loop_env, actual_var, cs_value_copy(item_list->items[0]));
-                    } else {
-                        env_set_here(loop_env, actual_var, cs_nil());
-                    }
-                    if (var2 && item_list->len >= 2) {
-                        env_set_here(loop_env, var2, cs_value_copy(item_list->items[1]));
-                    } else if (var2) {
-                        env_set_here(loop_env, var2, cs_nil());
+                    size_t count = item.type == CS_T_LIST ? as_list(item)->len : cs_tuple_len(item);
+                    cs_value first = count ? (item.type == CS_T_LIST ? as_list(item)->items[0]
+                        : ((cs_tuple_obj*)item.as.p)->fields[0].value) : cs_nil();
+                    env_set_here(loop_env, actual_var, first);
+                    if (var2) {
+                        cs_value second = count >= 2 ? (item.type == CS_T_LIST ? as_list(item)->items[1]
+                            : ((cs_tuple_obj*)item.as.p)->fields[1].value) : cs_nil();
+                        env_set_here(loop_env, var2, second);
                     }
                 } else {
                     vm_set_err(vm, "destructuring expects list or tuple", source_name, line, col);
@@ -2827,7 +2913,7 @@ static void execute_nested_list_iteration(
                     return;
                 }
             } else {
-                env_set_here(loop_env, actual_var, cs_value_copy(list->items[i]));
+                env_set_here(loop_env, actual_var, list->items[i]);
                 if (var2) {
                     env_set_here(loop_env, var2, cs_int((int64_t)i));
                 }
@@ -2862,9 +2948,9 @@ static void execute_nested_list_iteration(
         }
         for (size_t i = 0; i < m->cap && *ok; i++) {
             if (!m->entries[i].in_use) continue;
-            env_set_here(loop_env, actual_var, cs_value_copy(m->entries[i].key));
+            env_set_here(loop_env, actual_var, m->entries[i].key);
             if (var2) {
-                env_set_here(loop_env, var2, cs_value_copy(m->entries[i].val));
+                env_set_here(loop_env, var2, m->entries[i].val);
             }
             execute_nested_list_iteration(vm, loop_env, expr, filter, result,
                 vars, vars2, iterables, iter_count, depth + 1, ok,
@@ -2880,7 +2966,9 @@ static void execute_nested_list_iteration(
         }
         for (size_t i = 0; i < s->len && *ok; i++) {
             char ch[2] = { s->data[i], '\0' };
-            env_set_here(loop_env, actual_var, cs_str(vm, ch));
+            cs_value character = cs_str(vm, ch);
+            env_set_here(loop_env, actual_var, character);
+            cs_value_release(character);
             if (var2) {
                 env_set_here(loop_env, var2, cs_int((int64_t)i));
             }
@@ -2965,16 +3053,14 @@ static void execute_nested_map_iteration(
                 // Destructure the list item [a, b] into two variables
                 cs_value item = list->items[i];
                 if (item.type == CS_T_LIST || item.type == CS_T_TUPLE) {
-                    cs_list_obj* item_list = (item.type == CS_T_LIST) ? as_list(item) : (cs_list_obj*)item.as.p;
-                    if (item_list->len >= 1) {
-                        env_set_here(loop_env, actual_var, cs_value_copy(item_list->items[0]));
-                    } else {
-                        env_set_here(loop_env, actual_var, cs_nil());
-                    }
-                    if (var2 && item_list->len >= 2) {
-                        env_set_here(loop_env, var2, cs_value_copy(item_list->items[1]));
-                    } else if (var2) {
-                        env_set_here(loop_env, var2, cs_nil());
+                    size_t count = item.type == CS_T_LIST ? as_list(item)->len : cs_tuple_len(item);
+                    cs_value first = count ? (item.type == CS_T_LIST ? as_list(item)->items[0]
+                        : ((cs_tuple_obj*)item.as.p)->fields[0].value) : cs_nil();
+                    env_set_here(loop_env, actual_var, first);
+                    if (var2) {
+                        cs_value second = count >= 2 ? (item.type == CS_T_LIST ? as_list(item)->items[1]
+                            : ((cs_tuple_obj*)item.as.p)->fields[1].value) : cs_nil();
+                        env_set_here(loop_env, var2, second);
                     }
                 } else {
                     vm_set_err(vm, "destructuring expects list or tuple", source_name, line, col);
@@ -2983,7 +3069,7 @@ static void execute_nested_map_iteration(
                     return;
                 }
             } else {
-                env_set_here(loop_env, actual_var, cs_value_copy(list->items[i]));
+                env_set_here(loop_env, actual_var, list->items[i]);
                 if (var2) {
                     env_set_here(loop_env, var2, cs_int((int64_t)i));
                 }
@@ -3018,9 +3104,9 @@ static void execute_nested_map_iteration(
         }
         for (size_t i = 0; i < m->cap && *ok; i++) {
             if (!m->entries[i].in_use) continue;
-            env_set_here(loop_env, actual_var, cs_value_copy(m->entries[i].key));
+            env_set_here(loop_env, actual_var, m->entries[i].key);
             if (var2) {
-                env_set_here(loop_env, var2, cs_value_copy(m->entries[i].val));
+                env_set_here(loop_env, var2, m->entries[i].val);
             }
             execute_nested_map_iteration(vm, loop_env, key_expr, val_expr, filter, result,
                 key_vars, val_vars, iterables, iter_count, depth + 1, ok,
@@ -3096,16 +3182,14 @@ static void execute_nested_set_iteration(
                 // Destructure the list item [a, b] into two variables
                 cs_value item = list->items[i];
                 if (item.type == CS_T_LIST || item.type == CS_T_TUPLE) {
-                    cs_list_obj* item_list = (item.type == CS_T_LIST) ? as_list(item) : (cs_list_obj*)item.as.p;
-                    if (item_list->len >= 1) {
-                        env_set_here(loop_env, actual_var, cs_value_copy(item_list->items[0]));
-                    } else {
-                        env_set_here(loop_env, actual_var, cs_nil());
-                    }
-                    if (var2 && item_list->len >= 2) {
-                        env_set_here(loop_env, var2, cs_value_copy(item_list->items[1]));
-                    } else if (var2) {
-                        env_set_here(loop_env, var2, cs_nil());
+                    size_t count = item.type == CS_T_LIST ? as_list(item)->len : cs_tuple_len(item);
+                    cs_value first = count ? (item.type == CS_T_LIST ? as_list(item)->items[0]
+                        : ((cs_tuple_obj*)item.as.p)->fields[0].value) : cs_nil();
+                    env_set_here(loop_env, actual_var, first);
+                    if (var2) {
+                        cs_value second = count >= 2 ? (item.type == CS_T_LIST ? as_list(item)->items[1]
+                            : ((cs_tuple_obj*)item.as.p)->fields[1].value) : cs_nil();
+                        env_set_here(loop_env, var2, second);
                     }
                 } else {
                     vm_set_err(vm, "destructuring expects list or tuple", source_name, line, col);
@@ -3114,7 +3198,7 @@ static void execute_nested_set_iteration(
                     return;
                 }
             } else {
-                env_set_here(loop_env, actual_var, cs_value_copy(list->items[i]));
+                env_set_here(loop_env, actual_var, list->items[i]);
                 if (var2) {
                     env_set_here(loop_env, var2, cs_int((int64_t)i));
                 }
@@ -3149,9 +3233,9 @@ static void execute_nested_set_iteration(
         }
         for (size_t i = 0; i < m->cap && *ok; i++) {
             if (!m->entries[i].in_use) continue;
-            env_set_here(loop_env, actual_var, cs_value_copy(m->entries[i].key));
+            env_set_here(loop_env, actual_var, m->entries[i].key);
             if (var2) {
-                env_set_here(loop_env, var2, cs_value_copy(m->entries[i].val));
+                env_set_here(loop_env, var2, m->entries[i].val);
             }
             execute_nested_set_iteration(vm, loop_env, expr, filter, result,
                 vars, vars2, iterables, iter_count, depth + 1, ok,
@@ -3167,7 +3251,9 @@ static void execute_nested_set_iteration(
         }
         for (size_t i = 0; i < s->len && *ok; i++) {
             char ch[2] = { s->data[i], '\0' };
-            env_set_here(loop_env, actual_var, cs_str(vm, ch));
+            cs_value character = cs_str(vm, ch);
+            env_set_here(loop_env, actual_var, character);
+            cs_value_release(character);
             if (var2) {
                 env_set_here(loop_env, var2, cs_int((int64_t)i));
             }
@@ -3186,7 +3272,7 @@ static void execute_nested_set_iteration(
         for (size_t i = 0; i < s->cap && *ok; i++) {
             if (!s->entries[i].in_use) continue;
             // For sets, values are stored as keys
-            env_set_here(loop_env, actual_var, cs_value_copy(s->entries[i].key));
+            env_set_here(loop_env, actual_var, s->entries[i].key);
             if (var2) {
                 // For sets, there's no natural second variable, set to nil
                 env_set_here(loop_env, var2, cs_nil());
@@ -3516,9 +3602,7 @@ static cs_value eval_expr(cs_vm* vm, cs_env* env, ast* e, int* ok) {
                     cs_env* callenv = env_new(fn->closure);
                     if (!callenv) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; }
                     if (*ok) {
-                        if (!bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
-                            env_decref(callenv);
-                        } else {
+                        if (bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
                             cs_value listv = cs_list(vm);
                             cs_list_obj* yl = as_list(listv);
                             if (!yl) {
@@ -3598,9 +3682,7 @@ static cs_value eval_expr(cs_vm* vm, cs_env* env, ast* e, int* ok) {
                                     }
                                     env_set_here(callenv, "super", super_val);
                                     cs_value_release(super_val);
-                                    if (!bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
-                                        env_decref(callenv);
-                                    } else {
+                                    if (bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
                                         exec_result r = exec_block(vm, callenv, fn->body);
                                         if (r.did_throw) {
                                             vm_set_pending_throw(vm, r.thrown);
@@ -3921,7 +4003,8 @@ struct_done:
 
         case N_TUPLELIT: {
             size_t count = e->as.tuplelit.count;
-            cs_tuple_obj* t = cs_tuple_new(count);
+            cs_value tuple = cs_tuple(vm, count);
+            cs_tuple_obj* t = (cs_tuple_obj*)tuple.as.p;
             if (!t) {
                 vm_set_err(vm, "out of memory", e->source_name, e->line, e->col);
                 *ok = 0;
@@ -4147,9 +4230,7 @@ struct_done:
                                             cs_env* callenv = env_new(fn->closure);
                                             if (!callenv) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; }
                                             if (*ok) {
-                                                if (!bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
-                                                    env_decref(callenv);
-                                                } else {
+                                                if (bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
                                                     vm_frames_push(vm, name, e->source_name, e->line, e->col);
                                                     exec_result r = exec_block(vm, callenv, fn->body);
                                                     if (r.did_throw) {
@@ -4558,9 +4639,7 @@ strbuf_done:
                                         }
 
                                         if (*ok) {
-                                            if (!bind_params_with_defaults(vm, callenv, fn, argc0, argv0, ok)) {
-                                                env_decref(callenv);
-                                            } else {
+                                            if (bind_params_with_defaults(vm, callenv, fn, argc0, argv0, ok)) {
                                                 vm_frames_push(vm, field, e->source_name, e->line, e->col);
                                                 exec_result r = exec_block(vm, callenv, fn->body);
                                                 if (r.did_throw) {
@@ -4944,9 +5023,7 @@ strbuf_done_opt:
                                         }
 
                                         if (*ok) {
-                                            if (!bind_params_with_defaults(vm, callenv, fn, argc0, argv0, ok)) {
-                                                env_decref(callenv);
-                                            } else {
+                                            if (bind_params_with_defaults(vm, callenv, fn, argc0, argv0, ok)) {
                                                 vm_frames_push(vm, field, e->source_name, e->line, e->col);
                                                 exec_result r = exec_block(vm, callenv, fn->body);
                                                 if (r.did_throw) {
@@ -5022,9 +5099,7 @@ strbuf_done_opt:
                     if (!callenv) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; }
 
                     if (*ok) {
-                        if (!bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
-                            env_decref(callenv);
-                        } else {
+                        if (bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
                             vm_frames_push(vm, call_name ? call_name : (fn->name ? fn->name : "<fn>"), e->source_name, e->line, e->col);
                             cs_value listv = cs_list(vm);
                             cs_list_obj* yl = as_list(listv);
@@ -5106,9 +5181,7 @@ strbuf_done_opt:
                                     }
                                     env_set_here(callenv, "super", super_val);
                                     cs_value_release(super_val);
-                                    if (!bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
-                                        env_decref(callenv);
-                                    } else {
+                                    if (bind_params_with_defaults(vm, callenv, fn, argc, argv, ok)) {
                                         vm_frames_push(vm, call_name ? call_name : (fn->name ? fn->name : "<new>"), e->source_name, e->line, e->col);
                                         exec_result r = exec_block(vm, callenv, fn->body);
                                         if (r.did_throw) {
@@ -5329,6 +5402,25 @@ struct_done_call:
     }
 }
 
+/* A cleanup block can replace an earlier return, throw, or runtime error.
+   Keep the original diagnostic unless cleanup itself changes control flow. */
+static exec_result exec_cleanup(cs_vm* vm, cs_env* env, ast* cleanup,
+                                exec_result previous, size_t frame_depth) {
+    char* saved_error = vm->last_error;
+    vm->last_error = NULL;
+    if (vm->frame_count > frame_depth) vm->frame_count = frame_depth;
+    exec_result result = exec_stmt(vm, env, cleanup);
+    if (!result.ok || result.did_return || result.did_break || result.did_continue || result.did_throw) {
+        free(saved_error);
+        cs_value_release(previous.ret);
+        cs_value_release(previous.thrown);
+        return result;
+    }
+    free(vm->last_error);
+    vm->last_error = saved_error;
+    return previous;
+}
+
 static exec_result exec_block(cs_vm* vm, cs_env* env, ast* b) {
     exec_result r;
     r.did_return = 0;
@@ -5341,6 +5433,7 @@ static exec_result exec_block(cs_vm* vm, cs_env* env, ast* b) {
 
     if (!b || b->type != N_BLOCK) return r;
 
+    size_t frame_depth = vm->frame_count;
     size_t defer_cap = 0;
     size_t defer_count = 0;
     ast** defers = NULL;
@@ -5351,13 +5444,15 @@ static exec_result exec_block(cs_vm* vm, cs_env* env, ast* b) {
         ast* stmt = b->as.block.items[i];
         if (stmt && stmt->type == N_DEFER) {
             if (defer_count == defer_cap) {
-                defer_cap = defer_cap ? defer_cap * 2 : 4;
-                defers = (ast**)realloc(defers, sizeof(ast*) * defer_cap);
-            }
-            if (!defers) {
-                vm_set_err(vm, "out of memory", stmt->source_name, stmt->line, stmt->col);
-                base.ok = 0;
-                break;
+                size_t capacity = defer_cap ? defer_cap * 2 : 4;
+                ast** grown = (ast**)realloc(defers, sizeof(ast*) * capacity);
+                if (!grown) {
+                    vm_set_err(vm, "out of memory", stmt->source_name, stmt->line, stmt->col);
+                    base.ok = 0;
+                    break;
+                }
+                defers = grown;
+                defer_cap = capacity;
             }
             defers[defer_count++] = stmt->as.defer_stmt.stmt;
             continue;
@@ -5368,11 +5463,7 @@ static exec_result exec_block(cs_vm* vm, cs_env* env, ast* b) {
     }
 
     for (size_t i = defer_count; i > 0; i--) {
-        exec_result dr = exec_stmt(vm, env, defers[i - 1]);
-        if (!dr.ok || dr.did_return || dr.did_break || dr.did_continue || dr.did_throw) {
-            free(defers);
-            return dr;
-        }
+        base = exec_cleanup(vm, env, defers[i - 1], base, frame_depth);
     }
 
     free(defers);
@@ -5902,7 +5993,14 @@ static exec_result exec_stmt(cs_vm* vm, cs_env* env, ast* s) {
                 f->is_generator = m->as.fndef.is_generator;
                 env_incref(env);
                 cs_value fv; fv.type = CS_T_FUNC; fv.as.p = f;
-                map_set_cstr(cm, f->name ? f->name : "<method>", fv);
+                int added = map_set_cstr(cm, f->name ? f->name : "<method>", fv);
+                cs_value_release(fv);
+                if (!added) {
+                    cs_value_release(cv);
+                    vm_set_err(vm, "out of memory", s->source_name, s->line, s->col);
+                    r.ok = 0;
+                    return r;
+                }
             }
 
             env_set_here(env, s->as.class_stmt.name, cv);
@@ -6509,42 +6607,26 @@ static exec_result exec_stmt(cs_vm* vm, cs_env* env, ast* s) {
         }
 
         case N_TRY: {
-            size_t base_depth = vm ? vm->frame_count : 0;
-            exec_result tr = exec_stmt(vm, env, s->as.try_stmt.try_b);
-            if (!tr.ok) return tr;
-            exec_result result = tr;
-
-            if (tr.did_throw) {
-                if (vm && vm->frame_count > base_depth) vm->frame_count = base_depth;
+            size_t base_depth = vm->frame_count;
+            exec_result result = exec_stmt(vm, env, s->as.try_stmt.try_b);
+            if (result.ok && result.did_throw) {
+                if (vm->frame_count > base_depth) vm->frame_count = base_depth;
                 cs_env* catchenv = env_new(env);
                 if (!catchenv) {
-                    cs_value_release(tr.thrown);
-                    vm_set_err(vm, "out of memory", s->source_name, s->line, s->col);
-                    tr.ok = 0;
-                    tr.did_throw = 0;
-                    tr.thrown = cs_nil();
-                    return tr;
-                }
-
-                env_set_here(catchenv, s->as.try_stmt.catch_name, tr.thrown);
-                cs_value_release(tr.thrown);
-                tr.thrown = cs_nil();
-                tr.did_throw = 0;
-
-                exec_result cr = exec_stmt(vm, catchenv, s->as.try_stmt.catch_b);
-                env_decref(catchenv);
-                result = cr;
-            }
-
-            if (s->as.try_stmt.finally_b) {
-                exec_result fr = exec_stmt(vm, env, s->as.try_stmt.finally_b);
-                if (!fr.ok || fr.did_return || fr.did_break || fr.did_continue || fr.did_throw) {
-                    cs_value_release(result.ret);
                     cs_value_release(result.thrown);
-                    return fr;
+                    result.thrown = cs_nil();
+                    result.did_throw = 0;
+                    result.ok = 0;
+                    vm_set_err(vm, "out of memory", s->source_name, s->line, s->col);
+                } else {
+                    env_set_here(catchenv, s->as.try_stmt.catch_name, result.thrown);
+                    cs_value_release(result.thrown);
+                    result = exec_stmt(vm, catchenv, s->as.try_stmt.catch_b);
+                    env_decref(catchenv);
                 }
             }
-
+            if (s->as.try_stmt.finally_b)
+                result = exec_cleanup(vm, env, s->as.try_stmt.finally_b, result, base_depth);
             return result;
         }
 
@@ -6566,6 +6648,11 @@ void cs_vm_free(cs_vm* vm) {
         for (int i = 0; i < t->argc; i++) cs_value_release(t->argv[i]);
         free(t->argv);
         promise_decref(t->promise);
+        env_decref(t->bound_env);
+        if (t->fn) {
+            cs_value function; function.type = CS_T_FUNC; function.as.p = t->fn;
+            cs_value_release(function);
+        }
         free(t);
     }
     vm->task_tail = NULL;
@@ -6629,9 +6716,13 @@ void cs_vm_free(cs_vm* vm) {
         env_decref(environments);
         environments = next;
     }
+    cs_vm_collect_cycles(vm);
     while (vm->tracked) {
         cs_track_node* n = vm->tracked;
         vm->tracked = n->next;
+        if (n->type == CS_TRACK_LIST) ((cs_list_obj*)n->ptr)->owner = NULL;
+        else if (n->type == CS_TRACK_MAP) ((cs_map_obj*)n->ptr)->owner = NULL;
+        else if (n->type == CS_TRACK_TUPLE) ((cs_tuple_obj*)n->ptr)->owner = NULL;
         free(n);
     }
     if (vm->interp_cache) {
@@ -6793,19 +6884,113 @@ static size_t gc_find_index(void** keys, unsigned char* types, size_t* vals, siz
     return (size_t)-1;
 }
 
+typedef struct {
+    cs_track_type type;
+    void* ptr;
+    int gc_refs;
+    unsigned char marked;
+} gc_item;
+
+typedef struct {
+    gc_item* items;
+    void** keys;
+    unsigned char* types;
+    size_t* vals;
+    size_t cap;
+    size_t* stack;
+    size_t sp;
+    int marking;
+} gc_walk;
+
+static void gc_visit_value(gc_walk* walk, cs_value value) {
+    cs_track_type type;
+    if (value.type == CS_T_LIST) type = CS_TRACK_LIST;
+    else if (value.type == CS_T_MAP || value.type == CS_T_SET) type = CS_TRACK_MAP;
+    else if (value.type == CS_T_TUPLE) type = CS_TRACK_TUPLE;
+    else return;
+    size_t k = gc_find_index(walk->keys, walk->types, walk->vals, walk->cap, type, value.as.p);
+    if (k == (size_t)-1) return;
+    if (!walk->marking) walk->items[k].gc_refs--;
+    else if (!walk->items[k].marked) {
+        walk->items[k].marked = 1;
+        walk->stack[walk->sp++] = k;
+    }
+}
+
+static void gc_visit_children(gc_walk* walk, gc_item* item) {
+    if (item->type == CS_TRACK_LIST) {
+        cs_list_obj* list = (cs_list_obj*)item->ptr;
+        for (size_t j = 0; j < list->len; j++) gc_visit_value(walk, list->items[j]);
+    } else if (item->type == CS_TRACK_MAP) {
+        cs_map_obj* map = (cs_map_obj*)item->ptr;
+        for (size_t j = 0; j < map->cap; j++) {
+            if (!map->entries[j].in_use) continue;
+            gc_visit_value(walk, map->entries[j].key);
+            gc_visit_value(walk, map->entries[j].val);
+        }
+    } else if (item->type == CS_TRACK_TUPLE) {
+        cs_tuple_obj* tuple = (cs_tuple_obj*)item->ptr;
+        for (size_t j = 0; j < tuple->len; j++) gc_visit_value(walk, tuple->fields[j].value);
+    }
+}
+
+static cs_value gc_item_value(gc_item* item) {
+    cs_value value;
+    value.type = item->type == CS_TRACK_LIST ? CS_T_LIST
+        : item->type == CS_TRACK_MAP ? CS_T_MAP : CS_T_TUPLE;
+    value.as.p = item->ptr;
+    return value;
+}
+
+static void gc_clear_children(gc_item* item) {
+    if (item->type == CS_TRACK_LIST) {
+        cs_list_obj* list = (cs_list_obj*)item->ptr;
+        size_t count = list->len;
+        list->len = 0;
+        for (size_t j = 0; j < count; j++) {
+            cs_value value = list->items[j];
+            list->items[j] = cs_nil();
+            cs_value_release(value);
+        }
+    } else if (item->type == CS_TRACK_MAP) {
+        cs_map_obj* map = (cs_map_obj*)item->ptr;
+        map->len = 0;
+        for (size_t j = 0; j < map->cap; j++) {
+            if (!map->entries[j].in_use) continue;
+            cs_value key = map->entries[j].key, value = map->entries[j].val;
+            map->entries[j].key = map->entries[j].val = cs_nil();
+            map->entries[j].in_use = 0;
+            cs_value_release(key);
+            cs_value_release(value);
+        }
+    } else if (item->type == CS_TRACK_TUPLE) {
+        cs_tuple_obj* tuple = (cs_tuple_obj*)item->ptr;
+        for (size_t j = 0; j < tuple->len; j++) {
+            cs_value value = tuple->fields[j].value;
+            tuple->fields[j].value = cs_nil();
+            cs_value_release(value);
+        }
+    }
+}
+
 size_t cs_vm_collect_cycles(cs_vm* vm) {
     if (!vm || vm->tracked_count == 0) return 0;
-
-    typedef struct {
-        cs_track_type type;
-        void* ptr;
-        int gc_refs;
-        unsigned char marked;
-    } gc_item;
-
     size_t n = vm->tracked_count;
+    if (n > SIZE_MAX / (2 * sizeof(size_t))) return 0;
+    size_t cap = 1;
+    while (cap < n * 2) {
+        if (cap > SIZE_MAX / 2) return 0;
+        cap <<= 1;
+    }
     gc_item* items = (gc_item*)calloc(n, sizeof(gc_item));
-    if (!items) return 0;
+    void** keys = (void**)calloc(cap, sizeof(void*));
+    unsigned char* types = (unsigned char*)calloc(cap, 1);
+    size_t* vals = (size_t*)calloc(cap, sizeof(size_t));
+    size_t* stack = (size_t*)calloc(n, sizeof(size_t));
+    if (!items || !keys || !types || !vals || !stack) {
+        free(stack); free(vals); free(types); free(keys); free(items);
+        return 0;
+    }
 
     size_t idx = 0;
     for (cs_track_node* cur = vm->tracked; cur && idx < n; cur = cur->next) {
@@ -6813,167 +6998,34 @@ size_t cs_vm_collect_cycles(cs_vm* vm) {
         items[idx].ptr = cur->ptr;
         if (cur->type == CS_TRACK_LIST) items[idx].gc_refs = ((cs_list_obj*)cur->ptr)->ref;
         else if (cur->type == CS_TRACK_MAP) items[idx].gc_refs = ((cs_map_obj*)cur->ptr)->ref;
+        else items[idx].gc_refs = ((cs_tuple_obj*)cur->ptr)->ref;
+        uintptr_t h = ((uintptr_t)cur->ptr >> 3) ^ (uintptr_t)cur->type;
+        size_t p = (size_t)(h & (cap - 1));
+        while (keys[p]) p = (p + 1) & (cap - 1);
+        keys[p] = cur->ptr; types[p] = (unsigned char)cur->type; vals[p] = idx;
         idx++;
     }
     n = idx;
-    if (n == 0) { free(items); return 0; }
-
-    // Build ptr/type -> index map (open addressing).
-    size_t cap = 1;
-    while (cap < n * 2) cap <<= 1;
-    void** keys = (void**)calloc(cap, sizeof(void*));
-    unsigned char* types = (unsigned char*)calloc(cap, 1);
-    size_t* vals = (size_t*)calloc(cap, sizeof(size_t));
-    if (!keys || !types || !vals) { free(vals); free(types); free(keys); free(items); return 0; }
-
-    for (size_t i = 0; i < n; i++) {
-        uintptr_t h = ((uintptr_t)items[i].ptr >> 3) ^ (uintptr_t)items[i].type;
-        size_t p = (size_t)(h & (cap - 1));
-        while (keys[p]) p = (p + 1) & (cap - 1);
-        keys[p] = items[i].ptr;
-        types[p] = (unsigned char)items[i].type;
-        vals[p] = i;
-    }
-
-    // Subtract internal list/map references.
-    for (size_t i = 0; i < n; i++) {
-        if (items[i].type == CS_TRACK_LIST) {
-            cs_list_obj* l = (cs_list_obj*)items[i].ptr;
-            for (size_t j = 0; l && j < l->len; j++) {
-                cs_value v = l->items[j];
-                if (v.type == CS_T_LIST) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    if (k != (size_t)-1) items[k].gc_refs--;
-                } else if (v.type == CS_T_MAP) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    if (k != (size_t)-1) items[k].gc_refs--;
-                }
-            }
-        } else if (items[i].type == CS_TRACK_MAP) {
-            cs_map_obj* m = (cs_map_obj*)items[i].ptr;
-            for (size_t j = 0; m && j < m->cap; j++) {
-                if (!m->entries[j].in_use) continue;
-                cs_value k = m->entries[j].key;
-                cs_value v = m->entries[j].val;
-                if (k.type == CS_T_LIST) {
-                    size_t kk = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, k.as.p);
-                    if (kk != (size_t)-1) items[kk].gc_refs--;
-                } else if (k.type == CS_T_MAP) {
-                    size_t kk = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, k.as.p);
-                    if (kk != (size_t)-1) items[kk].gc_refs--;
-                }
-                if (v.type == CS_T_LIST) {
-                    size_t gc_idx = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    if (gc_idx != (size_t)-1) items[gc_idx].gc_refs--;
-                } else if (v.type == CS_T_MAP) {
-                    size_t gc_idx = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    if (gc_idx != (size_t)-1) items[gc_idx].gc_refs--;
-                }
-            }
-        }
-    }
-
-    // Mark reachable from externally-referenced candidates (gc_refs > 0).
-    size_t* stack = (size_t*)malloc(sizeof(size_t) * n);
-    if (!stack) { free(vals); free(types); free(keys); free(items); return 0; }
-    size_t sp = 0;
+    gc_walk walk = {items, keys, types, vals, cap, stack, 0, 0};
+    for (size_t i = 0; i < n; i++) gc_visit_children(&walk, &items[i]);
+    walk.marking = 1;
     for (size_t i = 0; i < n; i++) {
         if (items[i].gc_refs > 0 && !items[i].marked) {
             items[i].marked = 1;
-            stack[sp++] = i;
+            stack[walk.sp++] = i;
         }
     }
+    while (walk.sp) gc_visit_children(&walk, &items[stack[--walk.sp]]);
 
-    while (sp) {
-        size_t i = stack[--sp];
-        if (items[i].type == CS_TRACK_LIST) {
-            cs_list_obj* l = (cs_list_obj*)items[i].ptr;
-            for (size_t j = 0; l && j < l->len; j++) {
-                cs_value v = l->items[j];
-                if (v.type == CS_T_LIST) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    if (k != (size_t)-1 && !items[k].marked) { items[k].marked = 1; stack[sp++] = k; }
-                } else if (v.type == CS_T_MAP) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    if (k != (size_t)-1 && !items[k].marked) { items[k].marked = 1; stack[sp++] = k; }
-                }
-            }
-        } else if (items[i].type == CS_TRACK_MAP) {
-            cs_map_obj* m = (cs_map_obj*)items[i].ptr;
-            for (size_t j = 0; m && j < m->cap; j++) {
-                if (!m->entries[j].in_use) continue;
-                cs_value k = m->entries[j].key;
-                cs_value v = m->entries[j].val;
-                if (k.type == CS_T_LIST) {
-                    size_t kk = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, k.as.p);
-                    if (kk != (size_t)-1 && !items[kk].marked) { items[kk].marked = 1; stack[sp++] = kk; }
-                } else if (k.type == CS_T_MAP) {
-                    size_t kk = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, k.as.p);
-                    if (kk != (size_t)-1 && !items[kk].marked) { items[kk].marked = 1; stack[sp++] = kk; }
-                }
-                if (v.type == CS_T_LIST) {
-                    size_t gc_idx = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    if (gc_idx != (size_t)-1 && !items[gc_idx].marked) { items[gc_idx].marked = 1; stack[sp++] = gc_idx; }
-                } else if (v.type == CS_T_MAP) {
-                    size_t gc_idx = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    if (gc_idx != (size_t)-1 && !items[gc_idx].marked) { items[gc_idx].marked = 1; stack[sp++] = gc_idx; }
-                }
-            }
-        }
-    }
-
+    /* Pin all garbage before releasing any edges. Map keys and values may
+       refer to each other, including through sets or tuples. */
     size_t collected = 0;
     for (size_t i = 0; i < n; i++) {
-        if (items[i].marked) continue;
-        collected++;
-        if (items[i].type == CS_TRACK_LIST) {
-            cs_list_obj* l = (cs_list_obj*)items[i].ptr;
-            for (size_t j = 0; l && j < l->len; j++) {
-                cs_value v = l->items[j];
-                int is_garbage = 0;
-                if (v.type == CS_T_LIST) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    is_garbage = (k != (size_t)-1 && !items[k].marked);
-                } else if (v.type == CS_T_MAP) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    is_garbage = (k != (size_t)-1 && !items[k].marked);
-                }
-                if (!is_garbage) cs_value_release(v);
-                l->items[j] = cs_nil();
-            }
-            free(l->items);
-            vm_track_remove(vm, CS_TRACK_LIST, l);
-            free(l);
-        } else if (items[i].type == CS_TRACK_MAP) {
-            cs_map_obj* m = (cs_map_obj*)items[i].ptr;
-            for (size_t j = 0; m && j < m->cap; j++) {
-                if (!m->entries[j].in_use) continue;
-                cs_value_release(m->entries[j].key);
-                cs_value v = m->entries[j].val;
-                int is_garbage = 0;
-                if (v.type == CS_T_LIST) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_LIST, v.as.p);
-                    is_garbage = (k != (size_t)-1 && !items[k].marked);
-                } else if (v.type == CS_T_MAP) {
-                    size_t k = gc_find_index(keys, types, vals, cap, CS_TRACK_MAP, v.as.p);
-                    is_garbage = (k != (size_t)-1 && !items[k].marked);
-                }
-                if (!is_garbage) cs_value_release(v);
-                m->entries[j].key = cs_nil();
-                m->entries[j].val = cs_nil();
-                m->entries[j].in_use = 0;
-            }
-            free(m->entries);
-            vm_track_remove(vm, CS_TRACK_MAP, m);
-            free(m);
-        }
+        if (!items[i].marked) { cs_value_copy(gc_item_value(&items[i])); collected++; }
     }
-
-    free(stack);
-    free(vals);
-    free(types);
-    free(keys);
-    free(items);
+    for (size_t i = 0; i < n; i++) if (!items[i].marked) gc_clear_children(&items[i]);
+    for (size_t i = 0; i < n; i++) if (!items[i].marked) cs_value_release(gc_item_value(&items[i]));
+    free(stack); free(vals); free(types); free(keys); free(items);
     return collected;
 }
 
@@ -7485,4 +7537,10 @@ cs_value cs_map_keys(cs_vm* vm, cs_value map_val) {
     }
     
     return list_val;
+}
+
+int cs_map_set_owned(cs_value map, const char* key, cs_value value) {
+    int result = cs_map_set(map, key, value);
+    cs_value_release(value);
+    return result;
 }

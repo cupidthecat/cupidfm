@@ -147,7 +147,7 @@ static int nf_tls_connect(cs_vm *vm, void *ud, int argc, const cs_value *argv, c
             cs_value promise = cs_promise_new(vm);
             cs_value sock = cs_make_socket_map(vm, fd, "tcp", host, port);
             cs_value ctx = cs_map(vm);
-            cs_map_set(ctx, "_op", cs_str(vm, "tls_connect"));
+            cs_map_set_owned(ctx, "_op", cs_str(vm, "tls_connect"));
             cs_map_set(ctx, "sock", sock);
             cs_map_set(ctx, "host", argv[0]);
             cs_map_set(ctx, "_ssl", cs_int((int64_t)(uintptr_t)ssl));
@@ -172,7 +172,7 @@ static int nf_tls_connect(cs_vm *vm, void *ud, int argc, const cs_value *argv, c
         cs_value promise = cs_promise_new(vm);
         cs_value sock = cs_make_socket_map(vm, fd, "tcp", host, port);
         cs_value ctx = cs_map(vm);
-        cs_map_set(ctx, "_op", cs_str(vm, "tls_connect"));
+        cs_map_set_owned(ctx, "_op", cs_str(vm, "tls_connect"));
         cs_map_set(ctx, "sock", sock);
         cs_map_set(ctx, "host", argv[0]);
         cs_add_pending_io(vm, fd, CS_POLL_WRITE, promise, ctx, 0);
@@ -253,7 +253,7 @@ static int nf_tls_upgrade(cs_vm *vm, void *ud, int argc, const cs_value *argv, c
     if (hs == 0) {
         cs_value promise = cs_promise_new(vm);
         cs_value ctx = cs_map(vm);
-        cs_map_set(ctx, "_op", cs_str(vm, "tls_upgrade"));
+        cs_map_set_owned(ctx, "_op", cs_str(vm, "tls_upgrade"));
         cs_map_set(ctx, "sock", argv[0]);
         cs_map_set(ctx, "_ssl", cs_int((int64_t)(uintptr_t)ssl));
         cs_add_pending_io(vm, fd, CS_POLL_WRITE, promise, ctx, 0);
@@ -287,14 +287,14 @@ static int nf_tls_info(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_v
     if (info.as.p) {
         const char* ver = SSL_get_version(ssl);
         const char* cipher = SSL_get_cipher(ssl);
-        if (ver) cs_map_set(info, "version", cs_str(vm, ver));
-        if (cipher) cs_map_set(info, "cipher", cs_str(vm, cipher));
+        if (ver) cs_map_set_owned(info, "version", cs_str(vm, ver));
+        if (cipher) cs_map_set_owned(info, "cipher", cs_str(vm, cipher));
 
         X509* cert = SSL_get_peer_certificate(ssl);
         if (cert) {
             char buf[256];
             X509_NAME_oneline(X509_get_subject_name(cert), buf, sizeof(buf));
-            cs_map_set(info, "cert_subject", cs_str(vm, buf));
+            cs_map_set_owned(info, "cert_subject", cs_str(vm, buf));
             X509_free(cert);
         }
     }

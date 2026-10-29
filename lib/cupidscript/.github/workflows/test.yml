@@ -9,9 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libssl-dev zlib1g-dev
       - run: make -j2 test
-      - name: Check parser and VM teardown with sanitizers
+      - name: Run the full suite with sanitizers
         run: |
           make -j2 all OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined -lssl -lcrypto'
-          bin-asan/cupidscript tests/string_repeat_bounds.cs
-          bin-asan/cupidscript tests/closure_teardown.cs
-          bin-asan/c_api_tests
+          BIN="$PWD/bin-asan/cupidscript" API_TEST_BIN="$PWD/bin-asan/c_api_tests" bash tests/run_tests.sh

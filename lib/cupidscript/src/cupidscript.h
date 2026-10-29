@@ -56,7 +56,7 @@ int cs_vm_run_string(cs_vm* vm, const char* code, const char* virtual_name);
 // Module loader: executes a file once and returns its exports map.
 // Path should generally be absolute or already resolved by the host.
 int cs_vm_require_module(cs_vm* vm, const char* path, cs_value* exports_out);
-// Cycle collection for refcounted containers (lists/maps). Returns number of objects collected.
+// Collect cycles through lists, maps, sets, and tuples. Returns objects collected.
 size_t cs_vm_collect_cycles(cs_vm* vm);
 
 // GC auto-collect configuration
@@ -89,7 +89,10 @@ cs_value cs_strbuf(cs_vm* vm);
 cs_value cs_bytes(cs_vm* vm, const uint8_t* data, size_t len);
 cs_value cs_bytes_take(cs_vm* vm, uint8_t* owned, size_t len);
 
-// Tuple operations
+// Tuple builders for hosts; script field assignment remains immutable.
+// Setters return 0 on success, -1 for invalid input, full tuples, or allocation failure.
+// Named setters update an existing field or name the first unnamed slot.
+// Getters return retained values; release them with cs_value_release.
 cs_value cs_tuple(cs_vm* vm, size_t field_count); // Create empty tuple
 int cs_tuple_set_positional(cs_value tuple_val, size_t index, cs_value value);
 int cs_tuple_set_named(cs_value tuple_val, const char* name, cs_value value);

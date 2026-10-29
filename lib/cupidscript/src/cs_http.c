@@ -88,7 +88,7 @@ static void parse_header_line(cs_http_parser* p, cs_vm* vm, const char* line) {
     memcpy(key, line, key_len);
     key[key_len] = 0;
 
-    cs_map_set(p->headers, key, cs_str(vm, val));
+    cs_map_set_owned(p->headers, key, cs_str(vm, val));
 
     if (strcasecmp(key, "content-length") == 0) {
         p->content_length = (size_t)atoll(val);
@@ -218,7 +218,7 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
     if (scheme_end) {
         char* scheme = dup_n(url, (size_t)(scheme_end - url));
         if (scheme) {
-            cs_map_set(result, "scheme", cs_str(vm, scheme));
+            cs_map_set_owned(result, "scheme", cs_str(vm, scheme));
             free(scheme);
         }
         rest = scheme_end + 3;
@@ -226,7 +226,7 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
 
     const char* frag = strchr(rest, '#');
     if (frag) {
-        cs_map_set(result, "fragment", cs_str(vm, frag + 1));
+        cs_map_set_owned(result, "fragment", cs_str(vm, frag + 1));
     }
 
     const char* query = strchr(rest, '?');
@@ -234,7 +234,7 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
         size_t qlen = frag ? (size_t)(frag - query - 1) : strlen(query + 1);
         char* q = dup_n(query + 1, qlen);
         if (q) {
-            cs_map_set(result, "query", cs_str(vm, q));
+            cs_map_set_owned(result, "query", cs_str(vm, q));
             free(q);
         }
     }
@@ -250,7 +250,7 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
         size_t plen = (size_t)(path_end - path_start);
         char* p = dup_n(path_start, plen);
         if (p) {
-            cs_map_set(result, "path", cs_str(vm, p));
+            cs_map_set_owned(result, "path", cs_str(vm, p));
             free(p);
         }
     }
@@ -268,20 +268,20 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
         char* colon = strchr(auth, ':');
         if (colon) {
             *colon = 0;
-            cs_map_set(result, "user", cs_str(vm, auth));
-            cs_map_set(result, "pass", cs_str(vm, colon + 1));
+            cs_map_set_owned(result, "user", cs_str(vm, auth));
+            cs_map_set_owned(result, "pass", cs_str(vm, colon + 1));
         } else if (*auth) {
-            cs_map_set(result, "user", cs_str(vm, auth));
+            cs_map_set_owned(result, "user", cs_str(vm, auth));
         }
     }
 
     char* colon = strchr(hostport, ':');
     if (colon) {
         *colon = 0;
-        if (*hostport) cs_map_set(result, "host", cs_str(vm, hostport));
+        if (*hostport) cs_map_set_owned(result, "host", cs_str(vm, hostport));
         cs_map_set(result, "port", cs_int((int64_t)atoi(colon + 1)));
     } else if (*hostport) {
-        cs_map_set(result, "host", cs_str(vm, hostport));
+        cs_map_set_owned(result, "host", cs_str(vm, hostport));
     }
 
     cs_value scheme_val = cs_map_get(result, "scheme");
@@ -542,9 +542,9 @@ static int nf_http_request(cs_vm* vm, void* ud, int argc, const cs_value* argv, 
     cs_value resp = cs_map(vm);
     if (resp.as.p) {
         cs_map_set(resp, "status", cs_int(http_parser.status_code));
-        cs_map_set(resp, "status_text", cs_str(vm, http_parser.status_text));
+        cs_map_set_owned(resp, "status_text", cs_str(vm, http_parser.status_text));
         cs_map_set(resp, "headers", http_parser.headers);
-        cs_map_set(resp, "body", cs_str_take(vm, http_parser.body ? http_parser.body : dup_cstr(""), (uint64_t)http_parser.body_len));
+        cs_map_set_owned(resp, "body", cs_str_take(vm, http_parser.body ? http_parser.body : dup_cstr(""), (uint64_t)http_parser.body_len));
         http_parser.body = NULL;
         http_parser.body_len = 0;
     }
@@ -573,7 +573,7 @@ static int nf_http_get(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     }
     cs_value opts = cs_map(vm);
     cs_map_set(opts, "url", argv[0]);
-    cs_map_set(opts, "method", cs_str(vm, "GET"));
+    cs_map_set_owned(opts, "method", cs_str(vm, "GET"));
     int ret = nf_http_request(vm, ud, 1, &opts, out);
     cs_value_release(opts);
     return ret;
@@ -587,7 +587,7 @@ static int nf_http_post(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     }
     cs_value opts = cs_map(vm);
     cs_map_set(opts, "url", argv[0]);
-    cs_map_set(opts, "method", cs_str(vm, "POST"));
+    cs_map_set_owned(opts, "method", cs_str(vm, "POST"));
     if (argc >= 2 && argv[1].type == CS_T_STR) cs_map_set(opts, "body", argv[1]);
     int ret = nf_http_request(vm, ud, 1, &opts, out);
     cs_value_release(opts);
@@ -602,7 +602,7 @@ static int nf_http_delete(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     }
     cs_value opts = cs_map(vm);
     cs_map_set(opts, "url", argv[0]);
-    cs_map_set(opts, "method", cs_str(vm, "DELETE"));
+    cs_map_set_owned(opts, "method", cs_str(vm, "DELETE"));
     int ret = nf_http_request(vm, ud, 1, &opts, out);
     cs_value_release(opts);
     return ret;

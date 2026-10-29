@@ -332,7 +332,8 @@ defer { /* block */ }
 Rules:
 
 * Defers run in **last-in, first-out** order when leaving the current block.
-* Defers run on normal block exit, and also on `return`, `break`, `continue`, or `throw`.
+* Defers run on normal block exit, `return`, `break`, `continue`, `throw`, and VM runtime errors.
+* All registered defers run in reverse order, even when one changes control flow. A return, throw, or runtime error from a defer replaces the earlier result. Cleanup remains subject to host execution limits.
 * `defer` is usually used for cleanup like closing files or restoring state.
 
 ## `match` Expression

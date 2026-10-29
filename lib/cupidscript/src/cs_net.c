@@ -15,8 +15,8 @@ static void net_errorf(cs_vm* vm, const char* prefix, const char* err) {
 static cs_value net_error_obj(cs_vm* vm, const char* msg, const char* code) {
     cs_value err = cs_map(vm);
     if (!err.as.p) return cs_nil();
-    cs_map_set(err, "msg", cs_str(vm, msg));
-    cs_map_set(err, "code", cs_str(vm, code));
+    cs_map_set_owned(err, "msg", cs_str(vm, msg));
+    cs_map_set_owned(err, "code", cs_str(vm, code));
     return err;
 }
 
@@ -49,8 +49,8 @@ cs_value cs_make_socket_map(cs_vm* vm, cs_socket_t fd, const char* type, const c
     if (!sock.as.p) return cs_nil();
 
     cs_map_set(sock, "_fd", cs_int((int64_t)fd));
-    cs_map_set(sock, "_type", cs_str(vm, type));
-    if (host) cs_map_set(sock, "host", cs_str(vm, host));
+    cs_map_set_owned(sock, "_type", cs_str(vm, type));
+    if (host) cs_map_set_owned(sock, "host", cs_str(vm, host));
     if (port > 0) cs_map_set(sock, "port", cs_int(port));
     return sock;
 }
@@ -70,7 +70,7 @@ cs_socket_t cs_socket_map_fd(cs_value sock) {
 static cs_value make_op_context(cs_vm* vm, const char* op, cs_value sock) {
     cs_value ctx = cs_map(vm);
     if (!ctx.as.p) return cs_nil();
-    cs_map_set(ctx, "_op", cs_str(vm, op));
+    cs_map_set_owned(ctx, "_op", cs_str(vm, op));
     cs_map_set(ctx, "sock", sock);
     return ctx;
 }
@@ -481,8 +481,8 @@ static int nf_socket_accept(cs_vm* vm, void* ud, int argc, const cs_value* argv,
         cs_value sock = cs_map(vm);
         if (sock.as.p) {
             cs_map_set(sock, "_fd", cs_int((int64_t)client));
-            cs_map_set(sock, "_type", cs_str(vm, "tcp"));
-            if (ip) cs_map_set(sock, "host", cs_str(vm, ip));
+            cs_map_set_owned(sock, "_type", cs_str(vm, "tcp"));
+            if (ip) cs_map_set_owned(sock, "host", cs_str(vm, ip));
             cs_map_set(sock, "port", cs_int((int)ntohs(addr.sin_port)));
         }
         if (out) *out = sock;

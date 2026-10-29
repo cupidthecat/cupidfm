@@ -78,6 +78,7 @@ typedef struct cs_tuple_field {
 
 typedef struct cs_tuple_obj {
     int ref;
+    cs_vm* owner;
     size_t len;
     cs_tuple_field* fields;
 } cs_tuple_obj;

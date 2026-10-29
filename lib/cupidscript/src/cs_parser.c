@@ -239,6 +239,7 @@ static ast* parse_fn_expr(parser* P, int is_async) {
                 seen_default = 1;
             } else if (seen_default) {
                 if (!P->error) P->error = fmt_err(P, &P->tok, "non-default parameter after default parameter");
+                cnt++; // Include the allocated name in error cleanup.
                 break;
             }
             cnt++;
@@ -2242,6 +2243,7 @@ static ast* parse_fn(parser* P, int is_async) {
                 seen_default = 1;
             } else if (seen_default) {
                 if (!P->error) P->error = fmt_err(P, &P->tok, "non-default parameter after default parameter");
+                cnt++; // Include the allocated name in error cleanup.
                 break;
             }
             cnt++;
@@ -2306,6 +2308,7 @@ static ast* build_assignment(parser* P, ast* lv, token_type op, ast* rhs) {
         ast* n = node(P, N_ASSIGN);
         n->as.assign_stmt.name = lv->as.ident.name;
         lv->as.ident.name = NULL; // transfer ownership
+        ast_free(lv);
         if (op == TK_ASSIGN) n->as.assign_stmt.value = rhs;
         else {
             int bop = TK_PLUS;
@@ -2328,19 +2331,28 @@ static ast* build_assignment(parser* P, ast* lv, token_type op, ast* rhs) {
         n->as.setindex_stmt.index = lv->as.index.index;
         n->as.setindex_stmt.value = rhs;
         n->as.setindex_stmt.op = op;
+        lv->as.index.target = lv->as.index.index = NULL;
+        ast_free(lv);
         return n;
     }
     if (lv && lv->type == N_GETFIELD) {
         ast* idx = make_quoted_str_lit(P, lv->as.getfield.field);
-        if (!idx) { if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory"); return lv; }
+        if (!idx) {
+            if (!P->error) P->error = fmt_err(P, &P->tok, "out of memory");
+            ast_free(rhs);
+            return lv;
+        }
         ast* n = node(P, N_SETINDEX);
         n->as.setindex_stmt.target = lv->as.getfield.target;
         n->as.setindex_stmt.index = idx;
         n->as.setindex_stmt.value = rhs;
         n->as.setindex_stmt.op = op;
+        lv->as.getfield.target = NULL;
+        ast_free(lv);
         return n;
     }
     if (!P->error) P->error = fmt_err(P, &P->tok, "invalid assignment target");
+    ast_free(rhs);
     return lv;
 }
 
@@ -2772,6 +2784,10 @@ void ast_free(ast* node) {
             ast_free(node->as.let_stmt.init);
             ast_free(node->as.let_stmt.pattern);
             break;
+        case N_WALRUS:
+            free(node->as.walrus.name);
+            ast_free(node->as.walrus.value);
+            break;
         case N_ASSIGN:
             free(node->as.assign_stmt.name);
             ast_free(node->as.assign_stmt.value);
@@ -2957,6 +2973,10 @@ void ast_free(ast* node) {
             free(node->as.funclit.defaults);
             free(node->as.funclit.rest_param);
             ast_free(node->as.funclit.body);
+            break;
+        case N_SETLIT:
+            for (size_t i = 0; i < node->as.setlit.count; i++) ast_free(node->as.setlit.items[i]);
+            free(node->as.setlit.items);
             break;
         case N_LISTLIT:
             for (size_t i = 0; i < node->as.listlit.count; i++) {
