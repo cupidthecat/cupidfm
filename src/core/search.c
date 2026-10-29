@@ -263,28 +263,25 @@ void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas) {
 
 void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
     if (!state || !cas) return;
-    char old_name[MAX_PATH_LENGTH] = {0};
-    if (state->selected_entry && *state->selected_entry) {
-        strncpy(old_name, state->selected_entry, sizeof(old_name) - 1);
-        old_name[sizeof(old_name) - 1] = '\0';
-    }
     Vector *files = active_files(state);
     cas->num_files = (SIZE)Vector_len(*files);
+    const char *name = "";
     if (cas->num_files <= 0) {
         cas->cursor = 0;
         cas->start = 0;
-        state->selected_entry = "";
-        return;
+    } else {
+        if (cas->cursor >= (SIZE)cas->num_files) cas->cursor = (SIZE)cas->num_files - 1;
+        fix_cursor(cas);
+        const char *current = FileAttr_get_name((FileAttr)files->el[cas->cursor]);
+        if (current) name = current;
     }
-    if (cas->cursor >= (SIZE)cas->num_files) cas->cursor = (SIZE)cas->num_files - 1;
-    fix_cursor(cas);
-    state->selected_entry = FileAttr_get_name((FileAttr)files->el[cas->cursor]);
-    if (state->preview_override_active) {
-        const char *new_name = state->selected_entry ? state->selected_entry : "";
-        if (strcmp(old_name, new_name) != 0) {
-            state->preview_override_active = false;
-            state->preview_override_path[0] = '\0';
-        }
+    bool changed = strncmp(state->selected_name, name, sizeof(state->selected_name)) != 0;
+    strncpy(state->selected_name, name, sizeof(state->selected_name) - 1);
+    state->selected_name[sizeof(state->selected_name) - 1] = '\0';
+    state->selected_entry = state->selected_name;
+    if (changed && state->preview_override_active) {
+        state->preview_override_active = false;
+        state->preview_override_path[0] = '\0';
     }
 }
 

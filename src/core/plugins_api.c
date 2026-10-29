@@ -2902,6 +2902,13 @@ void plugins_register_fm_api(PluginManager *pm, cs_vm *vm) {
   cs_register_native(vm, "fm.undo", nf_fm_undo, pm);
   cs_register_native(vm, "fm.redo", nf_fm_redo, pm);
   cs_register_native(vm, "fm.bind", nf_fm_bind, pm);
+  // Compatibility names used by existing plugins and the published API guide.
+  cs_register_native(vm, "fm.get_cwd", nf_fm_cwd, pm);
+  cs_register_native(vm, "fm.set_cwd", nf_fm_cd, pm);
+  cs_register_native(vm, "fm.refresh", nf_fm_reload, pm);
+  cs_register_native(vm, "fm.get_selected", nf_fm_selected_name, pm);
+  cs_register_native(vm, "fm.get_selected_path", nf_fm_selected_path, pm);
+  cs_register_native(vm, "fm.get_files", nf_fm_entries, pm);
   cs_register_native(vm, "fm.key_name", nf_fm_key_name, pm);
   cs_register_native(vm, "fm.key_code", nf_fm_key_code, pm);
 }
