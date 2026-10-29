@@ -1,0 +1,2 @@
+// EXPECT_FAIL
+str_repeat("abcd", 9223372036854775807);

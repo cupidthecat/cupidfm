@@ -1,6 +1,6 @@
 // config.c
 #include "config.h"
-#include "../lib/cupidconf.h"
+#include "cupidconf.h"
 #include <strings.h>
 #include <string.h>
 #include <stdio.h>
@@ -339,11 +339,11 @@ static int parse_key(const char *val) {
     if (strcasecmp(val, "KEY_RIGHT") == 0)     return KEY_RIGHT;
 
     if (strncasecmp(val, "KEY_F(", 6) == 0) {
-        // e.g., KEY_F(1), KEY_F(2), extract number inside KEY_F(n)
-        int fnum = atoi(val + 6);
-        if (fnum >= 1 && fnum <= 63) { // ncurses typically supports F1-F63
-            return KEY_F(fnum);
-        }
+        char *end;
+        errno = 0;
+        long number = strtol(val + 6, &end, 10);
+        if (!errno && end != val + 6 && *end == ')' && !end[1] && number >= 1 && number <= 63)
+            return KEY_F((int)number);
         return -1;
     }
 
@@ -353,18 +353,18 @@ static int parse_key(const char *val) {
         return KEY_BACKSPACE;
     }
 
-    // Support for F1 - F12
-    for (int i = 1; i <= 12; i++) {
-        char fn_key[5];
-        snprintf(fn_key, sizeof(fn_key), "F%d", i);
-        if (strcasecmp(val, fn_key) == 0) {
-            return KEY_F(i);
-        }
+    // Match the full range emitted by keycode_to_config_string().
+    if (val[0] == 'F' || val[0] == 'f') {
+        char *end;
+        errno = 0;
+        long number = strtol(val + 1, &end, 10);
+        if (!errno && end != val + 1 && !*end && number >= 1 && number <= 63)
+            return KEY_F((int)number);
     }
 
     // Handle Ctrl+X keys: "^C" -> ASCII 3
     if (val[0] == '^' && val[1] != '\0' && val[2] == '\0') {
-        char c = toupper(val[1]);
+        char c = toupper((unsigned char)val[1]);
         if (c >= 'A' && c <= 'Z') {
             return c - 'A' + 1;  // ASCII control code
         }
@@ -380,13 +380,13 @@ static int parse_key(const char *val) {
         char shift_key = val[6];
 
         // Convert letter keys to uppercase
-        if (isalpha(shift_key)) {
+        if (shift_key && val[7] == '\0' && isalpha((unsigned char)shift_key)) {
             return toupper(shift_key);
         }
 
         // Handle Shift-modified number keys
         static const char shift_symbols[] = ")!@#$%^&*(";
-        if (isdigit(shift_key)) {
+        if (shift_key && val[7] == '\0' && isdigit((unsigned char)shift_key)) {
             int num = shift_key - '0';
             return shift_symbols[num]; // Returns corresponding symbol
         }

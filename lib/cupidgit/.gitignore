@@ -1,0 +1,3 @@
+/obj/
+*.a
+/tests/status_driver

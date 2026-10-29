@@ -60,11 +60,13 @@ System/third-party dependencies:
 - [xclip](https://github.com/astrand/xclip) (clipboard integration)
 
 Project libraries (customized/updated versions):
-- [cupidconf](https://github.com/cupidthecat/cupidconf) (config loader; this repo vendors a customized version in `lib/cupidconf.c`)
-- [cupidscript](https://github.com/cupidthecat/cupidscript) (plugin scripting; linked as `lib/libcupidscript.a`)
-- [cupidarchive](https://github.com/cupidthecat/cupidarchive) (archive preview; linked as `lib/libcupidarchive.a`)
-- [cupidimage](https://github.com/cupidthecat/cupidimage) (image preview; linked as `lib/libcupidimage.a`)
-- [cupidgit](https://github.com/cupidthecat/Please cupidgit/) (git status detection; linked as `lib/libcupidgit.a`)
+- [cupidconf](https://github.com/cupidthecat/cupidconf) for configuration loading
+- [cupidscript](https://github.com/cupidthecat/cupidscript) for plugin scripting
+- [cupidarchive](https://github.com/cupidthecat/cupidarchive) for archive previews
+- [cupidimage](https://github.com/cupidthecat/cupidimage) for image previews
+- [cupidgit](https://github.com/cupidthecat/cupidgit) for Git status
+
+These libraries are built from the source snapshots under `lib/<library>/`. [lib/sources.json](lib/sources.json) records their upstream revisions. No prebuilt static archives are required.
 
 To build and run cupidfm, you must have the following packages installed:
 
@@ -101,20 +103,16 @@ sudo pacman -S base-devel ncurses file openssl zlib bzip2 xz xclip
 
 ## Building the Project
 
-To compile the project, run the provided build script:
+Run `make -j` to build CupidFM and its bundled libraries from source. The executable is `./cupidfm`. Run `make test` for the application regressions, or `make test-libs` for the library suites.
 
-```bash
-./dev.sh
-```
-
-This script invokes `make` (with predefined flags) to compile the source code and produce an executable named `cupidfm`.
+`./dev.sh` builds with sanitizers and launches the application after a prompt.
 
 ### Compilation Flags
 
 The build script uses flags such as:
-- `-Wall -Wextra -pedantic` to enable warnings
-- Additional warnings (`-Wshadow -Werror -Wstrict-overflow`)
-- Sanitizers (`-fsanitize=address -fsanitize=undefined`) for debugging
+- `-Wall -Wextra` for compiler warnings
+- `-g -O1 -fno-omit-frame-pointer` for useful debug traces
+- `-fsanitize=address,undefined` for memory and undefined-behavior checks
 
 ---
 

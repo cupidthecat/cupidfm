@@ -2,11 +2,13 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c2x
 INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
 LIBS =
+CUPIDSCRIPT_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-script-lib)
+INCLUDES += -I../lib/cupidconf -I../lib/cupidgit -I../lib/cupidimage/src -I../lib/cupidscript/src -I../lib/cupidarchive
 ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -39,17 +41,20 @@ test_mutation: test_mutation.c mutation_test.h test_runner.h
 test_integration: test_integration.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_integration.c $(LIBS)
 
-test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -o $@ test_plugins_api.c ../lib/libcupidscript.a \
-		$(LIBS) -fsanitize=address -fsanitize=undefined -lpthread -lssl -lcrypto -lm -lz
+$(CUPIDSCRIPT_LIB):
+	$(MAKE) -C .. script-library
+
+test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c $(CUPIDSCRIPT_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections \
+		-Wl,--gc-sections -o $@ test_plugins_api.c $(CUPIDSCRIPT_LIB) \
+		$(LIBS) -pthread -lssl -lcrypto -lm -lz
 
 file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/core/utils.h ../src/fs/clipboard.c ../src/fs/clipboard.h ../src/fs/tempfiles.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/utils.c ../src/fs/clipboard.c ../src/fs/tempfiles.c $(LIBS)
 
 test_history_allocations: test_history_allocations.c ../src/core/utils.c ../src/core/undo.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
 		-o $@ test_history_allocations.c $(LIBS)
 
@@ -63,30 +68,33 @@ test_all: test_all.c test_runner.h
 	@echo "Note: test_all requires full application dependencies"
 	@echo "Run individual test suites instead: make test"
 
+test_config_keys: test_config_keys.c ../src/core/config.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(LIBS) -lncursesw
+
 test_editor_loading: test_editor_loading.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
 		-o $@ test_editor_loading.c $(LIBS)
 
 test_editor_allocations: test_editor_allocations.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
 		-o $@ test_editor_allocations.c $(LIBS)
 
 test_editor_roundtrip: test_editor_roundtrip.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ test_editor_roundtrip.c $(LIBS)
 
 test_editor_atomic_save: test_editor_atomic_save.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -Wl,--wrap=fputs,--wrap=fflush,--wrap=fsync,--wrap=fclose,--wrap=rename,--wrap=fchown,--wrap=fchmod,--wrap=fsetxattr,--wrap=link,--wrap=mkstemp,--wrap=malloc -o $@ test_editor_atomic_save.c $(LIBS)
 
 test_editor_save: test_editor_save.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ test_editor_save.c $(LIBS)
 
 test_editor_ranges: test_editor_ranges.c ../src/fs/files.c
-	$(CC) $(CFLAGS) $(INCLUDES) -I../lib -I../cupidarchive -ffunction-sections -fdata-sections \
+	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
 		-Wl,--gc-sections -o $@ test_editor_ranges.c $(LIBS)
 
 test: all
@@ -118,6 +126,7 @@ test: all
 	@./test_editor_save
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
+	@./test_config_keys
 
 # Build tests with AddressSanitizer for memory error detection
 test-asan: clean
@@ -173,6 +182,7 @@ test-asan: clean
 	@./test_editor_save
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
+	@./test_config_keys
 	@echo ""
 	@echo "✅ All tests passed with AddressSanitizer - no memory errors detected!"
 

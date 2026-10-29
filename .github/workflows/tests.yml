@@ -14,6 +14,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev python3
       - name: Build application
         run: make
+      - name: Run terminal startup and shutdown
+        run: python3 tests/test_terminal_smoke.py
+      - name: Run bundled library tests
+        run: make -j2 test-libs
       - name: Run tests
         run: make test
       - name: Run file-command regressions with sanitizers
@@ -51,3 +55,13 @@ jobs:
           make -C tests test_editor_roundtrip test_editor_atomic_save CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_editor_roundtrip
           ./tests/test_editor_atomic_save
+      - name: Check configuration keys and plugin execution with sanitizers
+        run: |
+          rm tests/test_config_keys tests/test_plugins_api
+          make -C tests test_config_keys test_plugins_api CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_config_keys
+          ./tests/test_plugins_api
+      - name: Build all sources with sanitizers and check startup
+        run: |
+          make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
+          python3 tests/test_terminal_smoke.py

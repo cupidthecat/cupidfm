@@ -6,7 +6,7 @@
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
-#include "../cupidarchive/cupidarchive.h" // For archive reading
+#include "cupidarchive.h" // For archive reading
 #include "syntax.h"                       // For syntax highlighting
 #include <ctype.h>                        // for toupper
 #include <dirent.h>    // for DIR, struct dirent, opendir, readdir, closedir
