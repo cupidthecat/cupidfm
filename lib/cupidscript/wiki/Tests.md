@@ -59,11 +59,17 @@ Files starting with `_` are ignored by the test runner. Use these for shared fix
 
 ## Sanitizer builds
 
-Use separate object and binary directories:
-
 ```sh
-make -j2 all OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined -lssl -lcrypto'
-BIN="$PWD/bin-asan/cupidscript" API_TEST_BIN="$PWD/bin-asan/c_api_tests" bash tests/run_tests.sh
+make -j2 test OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
 ```
 
-The runner checks sanitizer diagnostics and signals even for `EXPECT_FAIL` scripts. Coverage includes tuple host ownership, tuple comprehension bindings, container cycles, pending async tasks, and cleanup error/control-flow precedence.
+`make test` runs the corpus and C API binary, an HTTP parser/transport binary, and Python loopback HTTP/TLS tests. Install Python 3 and the OpenSSL command-line tool for the TLS test certificate. No public network service is required. Both valid and malformed responses are tested, including binary bodies, peer-name verification, and a closed peer during a write.
+
+To check both TLS modes in the same output directories:
+
+```sh
+make -j2 test CS_NO_TLS=1
+make -j2 test
+```
+
+The build detects compiler/feature/flag changes and rebuilds affected objects. The runner checks sanitizer diagnostics and signals even for `EXPECT_FAIL` scripts. Coverage includes tuple host ownership, tuple comprehension bindings, container cycles, pending async tasks, nested interpolation, binary string patterns, and cleanup error/control-flow precedence.

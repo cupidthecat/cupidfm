@@ -2,6 +2,7 @@
 #include "cs_vm.h"
 #include "cs_tls.h"
 #include <stdlib.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
@@ -36,6 +37,27 @@ int cs_socket_set_nonblocking(cs_socket_t fd) {
     if (flags < 0) return -1;
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0 ? -1 : 0;
 #endif
+}
+
+ssize_t cs_socket_send(cs_socket_t fd, const void *data, size_t length) {
+    if (length > INT_MAX) length = INT_MAX;
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags = MSG_NOSIGNAL;
+#endif
+#ifdef SO_NOSIGPIPE
+    int enabled = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+#endif
+    ssize_t result;
+    do {
+        result = send(fd, (const char*)data, (int)length, flags);
+#ifdef _WIN32
+    } while (result < 0 && WSAGetLastError() == WSAEINTR);
+#else
+    } while (result < 0 && errno == EINTR);
+#endif
+    return result;
 }
 
 int cs_socket_close(cs_socket_t fd) {
@@ -153,14 +175,14 @@ static int handle_send_ready(cs_vm* vm, cs_pending_io* io) {
     }
 
     const char* data = cs_to_cstr(data_val);
-    size_t len = strlen(data);
+    size_t len = (size_t)((cs_string*)data_val.as.p)->len;
 
     ssize_t sent = -1;
 #ifndef CS_NO_TLS
     cs_value tls_val = cs_map_get(sock, "_tls");
     if (tls_val.type == CS_T_INT && tls_val.as.i != 0) {
         SSL* ssl = (SSL*)(uintptr_t)tls_val.as.i;
-        sent = SSL_write(ssl, data, (int)len);
+        sent = cs_tls_write(ssl, data, len > INT_MAX ? INT_MAX : (int)len);
         if (sent <= 0) {
             int err = SSL_get_error(ssl, (int)sent);
             cs_value_release(tls_val);
@@ -179,10 +201,10 @@ static int handle_send_ready(cs_vm* vm, cs_pending_io* io) {
         cs_value_release(tls_val);
     } else {
         cs_value_release(tls_val);
-        sent = send(io->fd, data, len, 0);
+        sent = cs_socket_send(io->fd, data, len);
     }
 #else
-    sent = send(io->fd, data, len, 0);
+    sent = cs_socket_send(io->fd, data, len);
 #endif
 
     cs_value_release(sock);
@@ -227,7 +249,7 @@ static int handle_recv_ready(cs_vm* vm, cs_pending_io* io) {
     cs_value tls_val = cs_map_get(sock, "_tls");
     if (tls_val.type == CS_T_INT && tls_val.as.i != 0) {
         SSL* ssl = (SSL*)(uintptr_t)tls_val.as.i;
-        received = SSL_read(ssl, buf, max_bytes);
+        received = cs_tls_read(ssl, buf, max_bytes);
         if (received <= 0) {
             int err = SSL_get_error(ssl, (int)received);
             cs_value_release(tls_val);
@@ -370,7 +392,7 @@ static int handle_tls_handshake(cs_vm* vm, cs_pending_io* io, int is_upgrade) {
     }
     cs_value_release(ssl_val);
 
-    int ret = SSL_connect(ssl);
+    int ret = cs_tls_connect_raw(ssl);
     if (ret == 1) {
         if (cs_tls_verify_cert(ssl) != 0) {
             cs_tls_close(ssl);

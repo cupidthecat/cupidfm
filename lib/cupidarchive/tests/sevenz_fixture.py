@@ -22,3 +22,12 @@ def archive(*, lengths=(5,), crc_delta=0, stream_counts=(2, 1), names=("alpha", 
     header = b"\x01\x04" + streams + files + b"\x00"
     start = struct.pack("<QQI", len(packed), len(header), zlib.crc32(header))
     return b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack("<I", zlib.crc32(start)) + start + packed + header
+
+
+def empty_archive(count, extra=b""):
+    bits = bytes([255]) * ((count + 7) // 8)
+    names = b"\x00" + b"".join((f"entry-{i:05d}\0").encode("utf-16le") for i in range(count))
+    header = (b"\x01\x05" + number(count) + b"\x0e" + number(len(bits)) + bits +
+              b"\x0f" + number(len(bits)) + bits + b"\x11" + number(len(names)) + names + extra + b"\x00\x00")
+    start = struct.pack("<QQI", 0, len(header), zlib.crc32(header))
+    return b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack("<I", zlib.crc32(start)) + start + header

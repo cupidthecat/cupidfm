@@ -7,9 +7,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libssl-dev zlib1g-dev
+      - run: sudo apt-get update && sudo apt-get install -y libssl-dev zlib1g-dev openssl python3
       - run: make -j2 test
       - name: Run the full suite with sanitizers
-        run: |
-          make -j2 all OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined -lssl -lcrypto'
-          BIN="$PWD/bin-asan/cupidscript" API_TEST_BIN="$PWD/bin-asan/c_api_tests" bash tests/run_tests.sh
+        run: make -j2 test OBJDIR=obj-asan BINDIR=bin-asan CFLAGS='-std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined'
+      - name: Build and test without TLS in the same output directories
+        run: make -j2 test CS_NO_TLS=1
+      - name: Restore and test the TLS build
+        run: make -j2 test

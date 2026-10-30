@@ -2,13 +2,15 @@ CC      := gcc
 CFLAGS  := -std=c99 -Wall -Wextra -O2 -g -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
 
-# OpenSSL support (can disable with CS_NO_TLS=1)
+# Keep feature flags and dependency libraries when callers override CFLAGS/LDFLAGS.
 ifndef CS_NO_TLS
-	CFLAGS += $(shell pkg-config --cflags openssl 2>/dev/null)
-	LDFLAGS += $(shell pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto")
+CS_TLS_CPPFLAGS := $(shell pkg-config --cflags openssl 2>/dev/null)
+CS_TLS_LIBS := $(shell pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto")
 else
-	CFLAGS += -DCS_NO_TLS
+CS_TLS_CPPFLAGS := -DCS_NO_TLS
+CS_TLS_LIBS :=
 endif
+THREAD_FLAGS := $(if $(filter Windows_NT,$(OS)),,-pthread)
 DEPFLAGS ?= -MMD -MP
 AR      := ar
 ARFLAGS := rcs
@@ -26,6 +28,7 @@ CLI_OBJS := $(patsubst %.c,$(OBJDIR)/%.o,$(CLI_SRCS))
 LIB := $(BINDIR)/libcupidscript.a
 BIN := $(BINDIR)/cupidscript
 
+HTTP_TEST_BIN := $(BINDIR)/http_parser_tests
 API_TEST_BIN := $(BINDIR)/c_api_tests
 API_TEST_OBJS := $(OBJDIR)/c_api_tests.o
 
@@ -47,9 +50,20 @@ endif
 
 .PHONY: all lib clean dirs test
 
-all: dirs $(LIB) $(BIN) $(API_TEST_BIN)
+all: dirs $(LIB) $(BIN) $(API_TEST_BIN) $(HTTP_TEST_BIN)
 
 lib: $(LIB)
+
+# Rebuild objects when compiler flags, TLS mode, or linked dependencies change.
+BUILD_CONFIG := $(OBJDIR)/.build-flags
+sh_quote = '$(subst ','"'"',$(1))'
+.PHONY: FORCE
+FORCE:
+$(BUILD_CONFIG): FORCE | dirs
+	@build_tmp=$$(mktemp '$@.XXXXXX'); \
+	printf '%s\n' $(call sh_quote,$(CC)|$(CPPFLAGS)|$(CS_TLS_CPPFLAGS)|$(CFLAGS)|$(THREAD_FLAGS)|$(LDFLAGS)|$(CS_TLS_LIBS)|$(LDLIBS)) > "$$build_tmp"; \
+	if ! cmp -s "$$build_tmp" '$@'; then mv "$$build_tmp" '$@'; else rm -f "$$build_tmp"; fi
+$(CS_OBJS) $(CLI_OBJS) $(API_TEST_OBJS): $(BUILD_CONFIG)
 
 # Auto-generated header dependencies.
 # Note: These .d files don't exist on a fresh tree; the rules below will bootstrap them.
@@ -61,29 +75,34 @@ dirs:
 # Bootstrap dependency generation: if a .d is missing, generate it.
 # Use `-MM` so GCC emits deps and exits (no compile/link).
 $(OBJDIR)/%.d: $(SRCDIR)/%.c | dirs
-	@$(CC) $(CFLAGS) -MM -MP -MF $@ -MT $(OBJDIR)/$*.o -Isrc $<
+	@$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) -MM -MP -MF $@ -MT $(OBJDIR)/$*.o -Isrc $<
 
 $(OBJDIR)/c_api_tests.d: tests/c_api_tests.c | dirs
-	@$(CC) $(CFLAGS) -MM -MP -MF $@ -MT $(OBJDIR)/c_api_tests.o -Isrc $<
+	@$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) -MM -MP -MF $@ -MT $(OBJDIR)/c_api_tests.o -Isrc $<
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | dirs
-	$(CC) $(CFLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
 
 $(LIB): $(CS_OBJS) | dirs
 	$(AR) $(ARFLAGS) $@ $^
 
 $(BIN): $(CS_OBJS) $(CLI_OBJS) | dirs
-	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(COVERAGE_LDFLAGS) $(LDFLAGS) -lz -lm
+	$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) -Isrc $^ -o $@ $(COVERAGE_LDFLAGS) $(LDFLAGS) $(CS_TLS_LIBS) -lz -lm $(THREAD_FLAGS) $(LDLIBS)
 
 $(OBJDIR)/c_api_tests.o: tests/c_api_tests.c | dirs
-	$(CC) $(CFLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
 
 $(API_TEST_BIN): $(CS_OBJS) $(API_TEST_OBJS) | dirs
-	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(COVERAGE_LDFLAGS) $(LDFLAGS) -lz -lm
+	$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) -Isrc $^ -o $@ $(COVERAGE_LDFLAGS) $(LDFLAGS) $(CS_TLS_LIBS) -lz -lm $(THREAD_FLAGS) $(LDLIBS)
+
+$(HTTP_TEST_BIN): tests/http_parser_tests.c src/cs_http.h src/cs_tls.h $(CS_OBJS) | dirs
+	$(CC) $(CPPFLAGS) $(CS_TLS_CPPFLAGS) $(CFLAGS) $(THREAD_FLAGS) -Isrc tests/http_parser_tests.c $(CS_OBJS) -o $@ $(COVERAGE_LDFLAGS) $(LDFLAGS) $(CS_TLS_LIBS) -lz -lm $(THREAD_FLAGS) $(LDLIBS)
 
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
 
 test: all $(API_TEST_BIN)
-	@bash tests/run_tests.sh
+	@BIN="$(abspath $(BIN))" API_TEST_BIN="$(abspath $(API_TEST_BIN))" bash tests/run_tests.sh
+	@$(HTTP_TEST_BIN)
+	@python3 tests/test_http.py --bin "$(BIN)" $(if $(CS_NO_TLS),--no-tls,)

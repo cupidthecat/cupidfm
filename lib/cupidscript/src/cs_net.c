@@ -3,6 +3,7 @@
 #include "cs_value.h"
 #include "cs_tls.h"
 #include <stdlib.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -189,14 +190,14 @@ static int nf_socket_send(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     }
 
     const char* data = cs_to_cstr(argv[1]);
-    size_t len = strlen(data);
+    size_t len = (size_t)((cs_string*)argv[1].as.p)->len;
 
     ssize_t sent = -1;
 #ifndef CS_NO_TLS
     cs_value tls_val = cs_map_get(argv[0], "_tls");
     if (tls_val.type == CS_T_INT && tls_val.as.i != 0) {
         SSL* ssl = (SSL*)(uintptr_t)tls_val.as.i;
-        sent = SSL_write(ssl, data, (int)len);
+        sent = cs_tls_write(ssl, data, len > INT_MAX ? INT_MAX : (int)len);
         if (sent <= 0) {
             int err = SSL_get_error(ssl, (int)sent);
             cs_value_release(tls_val);
@@ -216,10 +217,10 @@ static int nf_socket_send(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
         cs_value_release(tls_val);
     } else {
         cs_value_release(tls_val);
-        sent = send(fd, data, len, 0);
+        sent = cs_socket_send(fd, data, len);
     }
 #else
-    sent = send(fd, data, len, 0);
+    sent = cs_socket_send(fd, data, len);
 #endif
 
     if (sent >= 0) {
@@ -292,7 +293,7 @@ static int nf_socket_recv(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     cs_value tls_val = cs_map_get(argv[0], "_tls");
     if (tls_val.type == CS_T_INT && tls_val.as.i != 0) {
         SSL* ssl = (SSL*)(uintptr_t)tls_val.as.i;
-        received = SSL_read(ssl, buf, max_bytes);
+        received = cs_tls_read(ssl, buf, max_bytes);
         if (received <= 0) {
             int err = SSL_get_error(ssl, (int)received);
             cs_value_release(tls_val);

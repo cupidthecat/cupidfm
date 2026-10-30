@@ -52,6 +52,7 @@ void cs_event_cleanup(void);
 // Socket helpers
 int cs_socket_set_nonblocking(cs_socket_t fd);
 int cs_socket_close(cs_socket_t fd);
+ssize_t cs_socket_send(cs_socket_t fd, const void *data, size_t length);
 int cs_socket_get_error(cs_socket_t fd);
 const char* cs_socket_error_str(int err);
 

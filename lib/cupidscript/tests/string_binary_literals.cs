@@ -1,0 +1,11 @@
+let zero = "a\0b";
+let hexzero = "a\x00b";
+assert(len(zero) == 3 && zero == hexzero, "literal NUL length and equality");
+assert(len(str_repeat(zero, 4)) == 12, "repeat preserves literal bytes");
+assert(len("prefix${zero}suffix") == 15, "interpolation preserves literal bytes");
+let kind = match (zero) { case "a\x00b": 1; default: 2; };
+assert(kind == 1, "binary string pattern");
+assert(zero != "a" && zero != "a\0c", "equality checks bytes after NUL");
+assert("a\0b" < "a\0c" && "a" < "a\0b", "ordering checks bytes and length");
+assert(match ("plain") { case "plain": true; default: false; }, "plain string pattern");
+assert(match (`raw\literal`) { case `raw\literal`: true; default: false; }, "raw string pattern");

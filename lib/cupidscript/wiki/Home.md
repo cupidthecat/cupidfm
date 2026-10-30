@@ -96,3 +96,6 @@ print("sum:", add(xs[0], xs[1]));
 * [Tests](Tests)
 * [Data Formats](Data-Formats)
 * [Implementation Notes (Lexer/Parser/VM)](Implementation-Notes)
+
+- [HTTP and TLS](HTTP-and-TLS): response framing, peer verification, build modes, and current limits.
+- [Full reference](Reference): the detailed language and host guide.

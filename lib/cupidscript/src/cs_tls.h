@@ -26,6 +26,7 @@ SSL_CTX* cs_tls_get_ctx(void);
 
 // TLS socket operations
 SSL* cs_tls_new_ssl(cs_socket_t fd, const char *hostname);
+int cs_tls_connect_raw(SSL *ssl);
 int cs_tls_do_handshake(SSL *ssl);
 int cs_tls_read(SSL *ssl, char *buf, int len);
 int cs_tls_write(SSL *ssl, const char *buf, int len);

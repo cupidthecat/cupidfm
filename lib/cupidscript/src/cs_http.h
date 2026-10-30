@@ -25,6 +25,10 @@ typedef struct {
     int chunked;
     size_t chunk_remaining;
     int in_chunk;
+    int has_content_length;
+    int close_delimited;
+    int no_body;
+    int chunk_state;
     char* line_buf;
     size_t line_len;
     size_t line_cap;
@@ -35,6 +39,7 @@ void cs_http_parser_init(cs_http_parser* p, cs_vm* vm);
 void cs_http_parser_free(cs_http_parser* p);
 int cs_http_parser_feed(cs_http_parser* p, const char* data, size_t len);
 int cs_http_parser_is_done(cs_http_parser* p);
+int cs_http_parser_finish(cs_http_parser* p);
 
 // URL parsing
 cs_value cs_url_parse(cs_vm* vm, const char* url);

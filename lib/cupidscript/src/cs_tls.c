@@ -6,6 +6,13 @@
 #include "cs_net.h"
 #include <stdlib.h>
 #include <string.h>
+#include <openssl/x509v3.h>
+#include <errno.h>
+#if defined(__linux__)
+#include <pthread.h>
+#include <signal.h>
+#include <time.h>
+#endif
 
 static SSL_CTX *g_ssl_ctx = NULL;
 static int g_tls_initialized = 0;
@@ -43,18 +50,63 @@ SSL_CTX* cs_tls_get_ctx(void) {
     return g_ssl_ctx;
 }
 
+/* Keep transport-generated SIGPIPE local to this operation. The embedding
+ * application's signal disposition and any preexisting pending signal remain. */
+#if defined(__linux__)
+typedef struct {sigset_t mask, previous; int active, pending;} SigpipeGuard;
+static SigpipeGuard block_sigpipe(void) {
+    SigpipeGuard guard; memset(&guard,0,sizeof(guard));
+    sigemptyset(&guard.mask); sigaddset(&guard.mask,SIGPIPE);
+    if (!pthread_sigmask(SIG_BLOCK,&guard.mask,&guard.previous)) {
+        sigset_t pending; guard.active=1;
+        guard.pending=sigpending(&pending)==0 && sigismember(&pending,SIGPIPE);
+    }
+    return guard;
+}
+static void restore_sigpipe(SigpipeGuard *guard) {
+    int saved=errno;
+    if (guard->active) {
+        if (!guard->pending) {
+            struct timespec zero={0,0};
+            while (sigtimedwait(&guard->mask,NULL,&zero)<0 && errno==EINTR) {}
+        }
+        pthread_sigmask(SIG_SETMASK,&guard->previous,NULL);
+    }
+    errno=saved;
+}
+#else
+typedef int SigpipeGuard;
+static SigpipeGuard block_sigpipe(void) {return 0;}
+static void restore_sigpipe(SigpipeGuard *guard) {(void)guard;}
+#endif
 SSL* cs_tls_new_ssl(cs_socket_t fd, const char *hostname) {
-    SSL_CTX *ctx = cs_tls_get_ctx();
+    SSL_CTX *ctx=cs_tls_get_ctx();
     if (!ctx) return NULL;
-    SSL *ssl = SSL_new(ctx);
+    SSL *ssl=SSL_new(ctx);
     if (!ssl) return NULL;
-    SSL_set_fd(ssl, (int)fd);
-    if (hostname && *hostname) SSL_set_tlsext_host_name(ssl, hostname);
+    if (SSL_set_fd(ssl,(int)fd)!=1) {SSL_free(ssl);return NULL;}
+#ifdef SO_NOSIGPIPE
+    int enabled=1; setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&enabled,sizeof(enabled));
+#endif
+    if (hostname && *hostname) {
+        unsigned char address[16];
+        X509_VERIFY_PARAM *parameters=SSL_get0_param(ssl);
+        int is_ip=inet_pton(AF_INET,hostname,address)==1 || inet_pton(AF_INET6,hostname,address)==1;
+        if (is_ip) {
+            if (X509_VERIFY_PARAM_set1_ip_asc(parameters,hostname)!=1) {SSL_free(ssl);return NULL;}
+        } else {
+            X509_VERIFY_PARAM_set_hostflags(parameters,X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+            if (SSL_set_tlsext_host_name(ssl,hostname)!=1 || SSL_set1_host(ssl,hostname)!=1) {SSL_free(ssl);return NULL;}
+        }
+    }
     return ssl;
 }
-
+int cs_tls_connect_raw(SSL *ssl) {
+    SigpipeGuard guard=block_sigpipe();
+    int result=SSL_connect(ssl); restore_sigpipe(&guard); return result;
+}
 int cs_tls_do_handshake(SSL *ssl) {
-    int ret = SSL_connect(ssl);
+    int ret = cs_tls_connect_raw(ssl);
     if (ret == 1) return 1;
     int err = SSL_get_error(ssl, ret);
     if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) return 0;
@@ -62,16 +114,19 @@ int cs_tls_do_handshake(SSL *ssl) {
 }
 
 int cs_tls_read(SSL *ssl, char *buf, int len) {
-    return SSL_read(ssl, buf, len);
+    SigpipeGuard guard=block_sigpipe();
+    int result=SSL_read(ssl,buf,len); restore_sigpipe(&guard); return result;
 }
 
 int cs_tls_write(SSL *ssl, const char *buf, int len) {
-    return SSL_write(ssl, buf, len);
+    SigpipeGuard guard=block_sigpipe();
+    int result=SSL_write(ssl,buf,len); restore_sigpipe(&guard); return result;
 }
 
 void cs_tls_close(SSL *ssl) {
     if (!ssl) return;
-    SSL_shutdown(ssl);
+    SigpipeGuard guard=block_sigpipe();
+    SSL_shutdown(ssl); restore_sigpipe(&guard);
     SSL_free(ssl);
 }
 

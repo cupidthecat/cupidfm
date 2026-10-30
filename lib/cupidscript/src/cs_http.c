@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <limits.h>
+#include <stdarg.h>
 #include <ctype.h>
 #if !defined(_WIN32)
 #include <strings.h>
@@ -22,186 +25,197 @@ static char* dup_n(const char* s, size_t n) {
     return out;
 }
 
-static char* dup_cstr(const char* s) {
-    if (!s) return dup_n("", 0);
-    return dup_n(s, strlen(s));
-}
-
 static int ensure_buf(char** buf, size_t* cap, size_t need) {
-    if (need <= *cap) return 1;
-    size_t nc = (*cap == 0) ? 256 : *cap * 2;
-    while (nc < need) nc *= 2;
-    char* nb = (char*)realloc(*buf, nc);
-    if (!nb) return 0;
-    *buf = nb;
-    *cap = nc;
-    return 1;
+    if (*buf && need <= *cap) return 1;
+    size_t next = *buf && *cap ? *cap : 256;
+    while (next < need) {
+        if (next > SIZE_MAX / 2) { next = need; break; }
+        next *= 2;
+    }
+    char* data = (char*)realloc(*buf, next);
+    if (!data) return 0;
+    *buf = data; *cap = next; return 1;
 }
 
 void cs_http_parser_init(cs_http_parser* p, cs_vm* vm) {
     memset(p, 0, sizeof(*p));
-    p->state = HTTP_PARSE_STATUS_LINE;
     p->vm = vm;
     p->headers = cs_map(vm);
-    p->body_cap = 1024;
-    p->body = (char*)malloc(p->body_cap);
-    p->line_cap = 256;
-    p->line_buf = (char*)malloc(p->line_cap);
+    p->state = HTTP_PARSE_STATUS_LINE;
+    if (!p->headers.as.p || !ensure_buf(&p->body, &p->body_cap, 1) ||
+        !ensure_buf(&p->line_buf, &p->line_cap, 1)) p->state = HTTP_PARSE_ERROR;
+    if (p->body) p->body[0] = 0;
 }
-
 void cs_http_parser_free(cs_http_parser* p) {
     if (!p) return;
-    cs_value_release(p->headers);
-    free(p->body);
-    free(p->line_buf);
+    cs_value_release(p->headers); free(p->body); free(p->line_buf);
     memset(p, 0, sizeof(*p));
 }
-
-static int parse_status_line(cs_http_parser* p, const char* line) {
-    // HTTP/1.1 200 OK
-    const char* sp = strchr(line, ' ');
-    if (!sp) return -1;
-    while (*sp == ' ') sp++;
-    p->status_code = atoi(sp);
-    const char* sp2 = strchr(sp, ' ');
-    if (sp2) {
-        while (*sp2 == ' ') sp2++;
-        strncpy(p->status_text, sp2, sizeof(p->status_text) - 1);
-        p->status_text[sizeof(p->status_text) - 1] = 0;
-    } else {
-        strncpy(p->status_text, "", sizeof(p->status_text));
-    }
-    return 0;
-}
-
-static void parse_header_line(cs_http_parser* p, cs_vm* vm, const char* line) {
-    const char* colon = strchr(line, ':');
-    if (!colon) return;
-    size_t key_len = (size_t)(colon - line);
-    while (key_len > 0 && isspace((unsigned char)line[key_len - 1])) key_len--;
-
-    const char* val = colon + 1;
-    while (*val && isspace((unsigned char)*val)) val++;
-
-    char* key = (char*)malloc(key_len + 1);
-    if (!key) return;
-    memcpy(key, line, key_len);
-    key[key_len] = 0;
-
-    cs_map_set_owned(p->headers, key, cs_str(vm, val));
-
-    if (strcasecmp(key, "content-length") == 0) {
-        p->content_length = (size_t)atoll(val);
-    }
-    if (strcasecmp(key, "transfer-encoding") == 0 && strcasecmp(val, "chunked") == 0) {
-        p->chunked = 1;
-    }
-
-    free(key);
-}
-
-static int append_body(cs_http_parser* p, const char* data, size_t len) {
-    if (len == 0) return 1;
-    if (!ensure_buf(&p->body, &p->body_cap, p->body_len + len + 1)) return 0;
-    memcpy(p->body + p->body_len, data, len);
-    p->body_len += len;
-    p->body[p->body_len] = 0;
-    return 1;
-}
-
-static int parse_line(cs_http_parser* p, const char* line) {
-    if (p->state == HTTP_PARSE_STATUS_LINE) {
-        if (parse_status_line(p, line) != 0) return -1;
-        p->state = HTTP_PARSE_HEADERS;
+static int http_token(const char *s) {
+    if (!s || !*s) return 0;
+    for (const unsigned char *p = (const unsigned char*)s; *p; p++) {
+        if ((*p >= '0' && *p <= '9') || (*p >= 'A' && *p <= 'Z') ||
+            (*p >= 'a' && *p <= 'z') || strchr("!#$%&'*+-.^_`|~", *p)) continue;
         return 0;
     }
-    if (p->state == HTTP_PARSE_HEADERS) {
-        if (line[0] == 0) {
-            if (p->chunked || p->content_length > 0) p->state = HTTP_PARSE_BODY;
-            else p->state = HTTP_PARSE_DONE;
-        } else {
-            parse_header_line(p, p->vm, line);
-        }
-    }
-    return 0;
-}
-
-int cs_http_parser_feed(cs_http_parser* p, const char* data, size_t len) {
-    if (!p || !data || p->state == HTTP_PARSE_ERROR || p->state == HTTP_PARSE_DONE) return 0;
-
-    size_t i = 0;
-    while (i < len) {
-        if (p->state == HTTP_PARSE_STATUS_LINE || p->state == HTTP_PARSE_HEADERS) {
-            char c = data[i++];
-            if (c == '\n') {
-                if (p->line_len > 0 && p->line_buf[p->line_len - 1] == '\r') p->line_len--;
-                p->line_buf[p->line_len] = 0;
-                if (parse_line(p, p->line_buf) != 0) { p->state = HTTP_PARSE_ERROR; return -1; }
-                p->line_len = 0;
-                if (p->state == HTTP_PARSE_DONE) return 1;
-            } else {
-                if (!ensure_buf(&p->line_buf, &p->line_cap, p->line_len + 2)) { p->state = HTTP_PARSE_ERROR; return -1; }
-                p->line_buf[p->line_len++] = c;
-            }
-            continue;
-        }
-
-        if (p->state == HTTP_PARSE_BODY) {
-            if (!p->chunked) {
-                size_t need = (p->content_length > p->body_len) ? (p->content_length - p->body_len) : 0;
-                size_t take = (need > 0 && need < (len - i)) ? need : (len - i);
-                if (!append_body(p, data + i, take)) { p->state = HTTP_PARSE_ERROR; return -1; }
-                i += take;
-                if (p->content_length > 0 && p->body_len >= p->content_length) {
-                    p->state = HTTP_PARSE_DONE;
-                    return 1;
-                }
-                continue;
-            }
-
-            // Chunked parsing
-            if (!p->in_chunk) {
-                char c = data[i++];
-                if (c == '\n') {
-                    if (p->line_len > 0 && p->line_buf[p->line_len - 1] == '\r') p->line_len--;
-                    p->line_buf[p->line_len] = 0;
-                    p->chunk_remaining = (size_t)strtoul(p->line_buf, NULL, 16);
-                    p->line_len = 0;
-                    if (p->chunk_remaining == 0) {
-                        p->state = HTTP_PARSE_DONE;
-                        return 1;
-                    }
-                    p->in_chunk = 1;
-                } else {
-                    if (!ensure_buf(&p->line_buf, &p->line_cap, p->line_len + 2)) { p->state = HTTP_PARSE_ERROR; return -1; }
-                    p->line_buf[p->line_len++] = c;
-                }
-                continue;
-            }
-
-            size_t take = p->chunk_remaining;
-            if (take > (len - i)) take = (len - i);
-            if (take > 0) {
-                if (!append_body(p, data + i, take)) { p->state = HTTP_PARSE_ERROR; return -1; }
-                i += take;
-                p->chunk_remaining -= take;
-            }
-            if (p->chunk_remaining == 0) {
-                p->in_chunk = 0;
-                // Skip CRLF after chunk if present
-                if (i < len && data[i] == '\r') i++;
-                if (i < len && data[i] == '\n') i++;
-            }
-            continue;
-        }
-    }
-
     return 1;
 }
-
-int cs_http_parser_is_done(cs_http_parser* p) {
-    return p && p->state == HTTP_PARSE_DONE;
+static int field_value(const char *s) {
+    for (const unsigned char *p = (const unsigned char*)s; *p; p++)
+        if ((*p < 32 && *p != '\t') || *p == 127) return 0;
+    return 1;
 }
+static int decimal_lengths(const char *s, size_t *result) {
+    int seen = 0;
+    for (;;) {
+        while (*s == ' ' || *s == '\t') s++;
+        if (*s < '0' || *s > '9') return -1;
+        size_t value = 0;
+        do {
+            unsigned digit = (unsigned)(*s++ - '0');
+            if (value > (SIZE_MAX - digit) / 10) return -1;
+            value = value * 10 + digit;
+        } while (*s >= '0' && *s <= '9');
+        if (seen && value != *result) return -1;
+        *result = value; seen = 1;
+        while (*s == ' ' || *s == '\t') s++;
+        if (!*s) return 0;
+        if (*s++ != ',') return -1;
+    }
+}
+static int parse_status_line(cs_http_parser *p, const char *line) {
+    size_t length = strlen(line);
+    if (length < 12 || (strncmp(line, "HTTP/1.0 ", 9) && strncmp(line, "HTTP/1.1 ", 9)) ||
+        line[9] < '1' || line[9] > '5' || line[10] < '0' || line[10] > '9' ||
+        line[11] < '0' || line[11] > '9' || (line[12] && line[12] != ' ')) return -1;
+    p->status_code = (line[9]-'0')*100+(line[10]-'0')*10+line[11]-'0';
+    const char *reason = length > 12 ? line + 13 : "";
+    if (!field_value(reason)) return -1;
+    snprintf(p->status_text, sizeof(p->status_text), "%s", reason);
+    return 0;
+}
+static int parse_header_line(cs_http_parser *p, char *line, int trailer) {
+    char *colon = strchr(line, ':');
+    if (!colon) return -1;
+    *colon = 0;
+    if (!http_token(line)) return -1;
+    char *value = colon + 1;
+    while (*value == ' ' || *value == '\t') value++;
+    size_t size = strlen(value);
+    while (size && (value[size-1] == ' ' || value[size-1] == '\t')) value[--size] = 0;
+    if (!field_value(value)) return -1;
+    if (!strcasecmp(line, "content-length")) {
+        size_t length = 0;
+        if (trailer || decimal_lengths(value, &length) ||
+            (p->has_content_length && p->content_length != length)) return -1;
+        p->has_content_length = 1; p->content_length = length;
+    } else if (!strcasecmp(line, "transfer-encoding")) {
+        if (trailer || p->chunked || strcasecmp(value, "chunked")) return -1;
+        p->chunked = 1;
+    }
+    cs_value text = cs_str(p->vm, value);
+    if (!text.as.p) return -1;
+    return cs_map_set_owned(p->headers, line, text);
+}
+static int append_body(cs_http_parser *p, const char *data, size_t length) {
+    if (length > SIZE_MAX - p->body_len - 1 ||
+        !ensure_buf(&p->body, &p->body_cap, p->body_len + length + 1)) return 0;
+    memcpy(p->body + p->body_len, data, length);
+    p->body_len += length; p->body[p->body_len] = 0; return 1;
+}
+static int parse_line(cs_http_parser *p, char *line) {
+    if (p->state == HTTP_PARSE_STATUS_LINE) {
+        if (parse_status_line(p, line)) return -1;
+        p->state = HTTP_PARSE_HEADERS; return 0;
+    }
+    if (p->state == HTTP_PARSE_HEADERS) {
+        if (*line) return parse_header_line(p, line, 0);
+        if (p->status_code < 200) {
+            if (p->status_code == 101) return -1; /* Protocol upgrades need another transport API. */
+            cs_value_release(p->headers); p->headers = cs_map(p->vm);
+            if (!p->headers.as.p) return -1;
+            p->has_content_length = 0; p->content_length = 0; p->chunked = 0;
+            p->state = HTTP_PARSE_STATUS_LINE; return 0;
+        }
+        if (p->no_body || p->status_code == 204 || p->status_code == 304) {
+            p->state = HTTP_PARSE_DONE; return 0;
+        }
+        if (p->chunked && p->has_content_length) return -1;
+        if (p->has_content_length && !p->content_length) p->state = HTTP_PARSE_DONE;
+        else { p->close_delimited = !p->chunked && !p->has_content_length; p->state = HTTP_PARSE_BODY; }
+        return 0;
+    }
+    if (p->chunk_state == 4) {
+        if (!*line) { p->state = HTTP_PARSE_DONE; return 0; }
+        return parse_header_line(p, line, 1);
+    }
+    size_t length = 0, digits = 0;
+    while (isxdigit((unsigned char)line[digits])) {
+        unsigned char c = (unsigned char)line[digits++];
+        unsigned value = c <= '9' ? (unsigned)(c-'0') : (unsigned)(tolower(c)-'a'+10);
+        if (length > (SIZE_MAX-value)/16) return -1;
+        length = length*16+value;
+    }
+    if (!digits) return -1;
+    const char *rest = line + digits;
+    while (*rest == ' ' || *rest == '\t') rest++;
+    if ((*rest && *rest != ';') || !field_value(rest)) return -1;
+    p->chunk_remaining = length;
+    p->chunk_state = length ? 1 : 4;
+    p->in_chunk = length != 0;
+    return 0;
+}
+int cs_http_parser_feed(cs_http_parser *p, const char *data, size_t length) {
+    if (!p || (!data && length)) return -1;
+    if (p->state == HTTP_PARSE_ERROR) return -1;
+    size_t index = 0;
+    while (index < length && p->state != HTTP_PARSE_DONE) {
+        if (p->state == HTTP_PARSE_STATUS_LINE || p->state == HTTP_PARSE_HEADERS ||
+            (p->chunked && (p->chunk_state == 0 || p->chunk_state == 4))) {
+            unsigned char c = (unsigned char)data[index++];
+            if (!c) goto error;
+            if (c == '\n') {
+                int had_cr = p->line_len && p->line_buf[p->line_len-1] == '\r';
+                if (p->state == HTTP_PARSE_BODY && !had_cr) goto error;
+                if (had_cr) p->line_len--;
+                p->line_buf[p->line_len] = 0;
+                if (parse_line(p, p->line_buf)) goto error;
+                p->line_len = 0;
+            } else {
+                if (p->line_len > SIZE_MAX-2 || !ensure_buf(&p->line_buf, &p->line_cap, p->line_len+2)) goto error;
+                p->line_buf[p->line_len++] = (char)c;
+            }
+        } else if (!p->chunked) {
+            size_t take = length-index;
+            if (p->has_content_length && take > p->content_length-p->body_len) take = p->content_length-p->body_len;
+            if (!append_body(p, data+index, take)) goto error;
+            index += take;
+            if (p->has_content_length && p->body_len == p->content_length) p->state = HTTP_PARSE_DONE;
+        } else if (p->chunk_state == 1) {
+            size_t take = p->chunk_remaining;
+            if (take > length-index) take = length-index;
+            if (!append_body(p, data+index, take)) goto error;
+            index += take; p->chunk_remaining -= take;
+            if (!p->chunk_remaining) {p->chunk_state = 2; p->in_chunk = 0;}
+        } else if (p->chunk_state == 2) {
+            if (data[index++] != '\r') goto error;
+            p->chunk_state = 3;
+        } else if (p->chunk_state == 3) {
+            if (data[index++] != '\n') goto error;
+            p->chunk_state = 0;
+        } else goto error;
+    }
+    return 1;
+error:
+    p->state = HTTP_PARSE_ERROR; return -1;
+}
+int cs_http_parser_finish(cs_http_parser *p) {
+    if (!p) return -1;
+    if (p->state == HTTP_PARSE_DONE) return 0;
+    if (p->state == HTTP_PARSE_BODY && p->close_delimited) {p->state = HTTP_PARSE_DONE; return 0;}
+    p->state = HTTP_PARSE_ERROR; return -1;
+}
+int cs_http_parser_is_done(cs_http_parser *p) { return p && p->state == HTTP_PARSE_DONE; }
 
 static const char* find_str(const char* s, const char* pat) {
     return strstr(s, pat);
@@ -218,6 +232,7 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
     if (scheme_end) {
         char* scheme = dup_n(url, (size_t)(scheme_end - url));
         if (scheme) {
+            for(char *at=scheme;*at;at++)*at=(char)tolower((unsigned char)*at);
             cs_map_set_owned(result, "scheme", cs_str(vm, scheme));
             free(scheme);
         }
@@ -275,13 +290,25 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
         }
     }
 
-    char* colon = strchr(hostport, ':');
-    if (colon) {
-        *colon = 0;
-        if (*hostport) cs_map_set_owned(result, "host", cs_str(vm, hostport));
-        cs_map_set(result, "port", cs_int((int64_t)atoi(colon + 1)));
-    } else if (*hostport) {
-        cs_map_set_owned(result, "host", cs_str(vm, hostport));
+    char *port_text=NULL;
+    if(*hostport=='[') {
+        char *closing=strchr(hostport+1,']');
+        if(!closing || (closing[1] && closing[1]!=':'))goto invalid_authority;
+        *closing=0;hostport++;
+        if(closing[1]==':')port_text=closing+2;
+    } else {
+        char *colon=strchr(hostport,':');
+        if(colon) {*colon=0;port_text=colon+1;}
+    }
+    if(*hostport)cs_map_set_owned(result,"host",cs_str(vm,hostport));
+    if(port_text) {
+        if(!*port_text)goto invalid_authority;
+        unsigned value=0;
+        for(const unsigned char *at=(const unsigned char*)port_text;*at;at++) {
+            if(*at<'0' || *at>'9' || value>(65535U-(*at-'0'))/10U)goto invalid_authority;
+            value=value*10U+(*at-'0');
+        }
+        cs_map_set(result,"port",cs_int(value));
     }
 
     cs_value scheme_val = cs_map_get(result, "scheme");
@@ -298,271 +325,235 @@ cs_value cs_url_parse(cs_vm* vm, const char* url) {
 
     free(auth);
     return result;
+invalid_authority:
+    free(auth);cs_value_release(result);cs_error(vm,"url_parse() invalid authority or port");return cs_nil();
 }
 
-cs_value cs_url_build(cs_vm* vm, cs_value parts) {
+static int request_append(char **buffer, size_t *capacity, size_t *length, const char *format, ...);
+cs_value cs_url_build(cs_vm *vm, cs_value parts) {
     if (parts.type != CS_T_MAP) return cs_nil();
-
-    cs_value scheme = cs_map_get(parts, "scheme");
-    cs_value user = cs_map_get(parts, "user");
-    cs_value pass = cs_map_get(parts, "pass");
-    cs_value host = cs_map_get(parts, "host");
-    cs_value port = cs_map_get(parts, "port");
-    cs_value path = cs_map_get(parts, "path");
-    cs_value query = cs_map_get(parts, "query");
-    cs_value fragment = cs_map_get(parts, "fragment");
-
-    char buf[2048];
-    size_t w = 0;
-
-    if (scheme.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, "%s://", cs_to_cstr(scheme));
-    if (user.type == CS_T_STR) {
-        w += (size_t)snprintf(buf + w, sizeof(buf) - w, "%s", cs_to_cstr(user));
-        if (pass.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, ":%s", cs_to_cstr(pass));
-        w += (size_t)snprintf(buf + w, sizeof(buf) - w, "@");
+    const char *names[]={"scheme","user","pass","host","port","path","query","fragment"};
+    cs_value values[8];
+    for(size_t i=0;i<8;i++)values[i]=cs_map_get(parts,names[i]);
+    char *buffer=NULL;size_t capacity=0,length=0;int good=1;
+    for(size_t i=0;i<8;i++)if(values[i].type==CS_T_STR &&
+        (!values[i].as.p || ((cs_string*)values[i].as.p)->len!=strlen(cs_to_cstr(values[i]))))good=0;
+    if(!good)cs_error(vm,"url_build() parts contain invalid strings");
+    if(good && values[0].type==CS_T_STR)good=request_append(&buffer,&capacity,&length,"%s://",cs_to_cstr(values[0]));
+    if(good && values[1].type==CS_T_STR) {
+        good=request_append(&buffer,&capacity,&length,"%s",cs_to_cstr(values[1]));
+        if(good && values[2].type==CS_T_STR)good=request_append(&buffer,&capacity,&length,":%s",cs_to_cstr(values[2]));
+        if(good)good=request_append(&buffer,&capacity,&length,"@");
     }
-    if (host.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, "%s", cs_to_cstr(host));
-    if (port.type == CS_T_INT) w += (size_t)snprintf(buf + w, sizeof(buf) - w, ":%lld", (long long)port.as.i);
-    if (path.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, "%s", cs_to_cstr(path));
-    if (query.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, "?%s", cs_to_cstr(query));
-    if (fragment.type == CS_T_STR) w += (size_t)snprintf(buf + w, sizeof(buf) - w, "#%s", cs_to_cstr(fragment));
-
-    cs_value_release(scheme);
-    cs_value_release(user);
-    cs_value_release(pass);
-    cs_value_release(host);
-    cs_value_release(port);
-    cs_value_release(path);
-    cs_value_release(query);
-    cs_value_release(fragment);
-
-    return cs_str(vm, buf);
+    if(good && values[3].type==CS_T_STR) {
+        const char *host=cs_to_cstr(values[3]);
+        good=request_append(&buffer,&capacity,&length,strchr(host,':') && *host!='[' ? "[%s]" : "%s",host);
+    }
+    if(good && values[4].type==CS_T_INT) {
+        if(values[4].as.i<0 || values[4].as.i>65535) {cs_error(vm,"url_build() invalid port");good=0;}
+        else good=request_append(&buffer,&capacity,&length,":%lld",(long long)values[4].as.i);
+    }
+    if(good && values[5].type==CS_T_STR)good=request_append(&buffer,&capacity,&length,"%s",cs_to_cstr(values[5]));
+    if(good && values[6].type==CS_T_STR)good=request_append(&buffer,&capacity,&length,"?%s",cs_to_cstr(values[6]));
+    if(good && values[7].type==CS_T_STR)good=request_append(&buffer,&capacity,&length,"#%s",cs_to_cstr(values[7]));
+    for(size_t i=0;i<8;i++)cs_value_release(values[i]);
+    if(!good) {free(buffer);if(!*cs_vm_last_error(vm))cs_error(vm,"url_build() out of memory");return cs_nil();}
+    return buffer ? cs_str_take(vm,buffer,(uint64_t)length) : cs_str(vm,"");
 }
 
-static int http_send_all(int fd, const char* data, size_t len) {
+static int http_send_all(cs_socket_t fd, const char *data, size_t length) {
     size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(fd, data + sent, len - sent, 0);
+    while (sent < length) {
+        ssize_t n = cs_socket_send(fd, data+sent, length-sent);
         if (n <= 0) return -1;
         sent += (size_t)n;
     }
     return 0;
 }
-
-static int tls_send_all(SSL* ssl, const char* data, size_t len) {
+#ifndef CS_NO_TLS
+static int tls_send_all(SSL *ssl, const char *data, size_t length) {
     size_t sent = 0;
-    while (sent < len) {
-        int n = SSL_write(ssl, data + sent, (int)(len - sent));
+    while (sent < length) {
+        size_t amount = length-sent;
+        if (amount > INT_MAX) amount = INT_MAX;
+        int n = cs_tls_write(ssl, data+sent, (int)amount);
         if (n <= 0) return -1;
         sent += (size_t)n;
     }
     return 0;
 }
-
-// Internal: perform HTTP request
-static int nf_http_request(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+#endif
+static int request_append(char **buffer, size_t *capacity, size_t *length, const char *format, ...) {
+    va_list args, copy;
+    va_start(args, format); va_copy(copy, args);
+    int needed = vsnprintf(NULL, 0, format, copy); va_end(copy);
+    if (needed < 0 || (size_t)needed > SIZE_MAX-*length-1 ||
+        !ensure_buf(buffer, capacity, *length+(size_t)needed+1)) {va_end(args); return 0;}
+    int written = vsnprintf(*buffer+*length, *capacity-*length, format, args);
+    va_end(args);
+    if (written != needed) return 0;
+    *length += (size_t)written; return 1;
+}
+static int request_string(cs_value value) {
+    return value.type == CS_T_STR && value.as.p &&
+           ((cs_string*)value.as.p)->len == strlen(cs_to_cstr(value));
+}
+static int nf_http_request(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (argc < 1 || argv[0].type != CS_T_MAP) {
-        cs_error(vm, "http_request() requires options map");
-        return 1;
+    if (out) *out = cs_nil();
+    if (argc < 1 || argv[0].type != CS_T_MAP) {cs_error(vm,"http_request() requires options map"); return 1;}
+    cs_value url = cs_nil(), method = cs_nil(), parts = cs_nil(), scheme = cs_nil(), host = cs_nil();
+    cs_value port = cs_nil(), path = cs_nil(), query = cs_nil(), headers = cs_nil(), body = cs_nil();
+    cs_value keys = cs_nil(), value = cs_nil(), response = cs_nil();
+    cs_socket_t fd = CS_INVALID_SOCKET;
+#ifndef CS_NO_TLS
+    SSL *ssl = NULL;
+#endif
+    cs_http_parser parser; int parser_ready = 0, result = 1;
+    char *request = NULL; size_t capacity = 0, written = 0;
+    url = cs_map_get(argv[0],"url");
+    if (!request_string(url)) {cs_error(vm,"http_request() requires a URL without embedded NUL bytes"); goto cleanup;}
+    method = cs_map_get(argv[0],"method");
+    const char *method_text = method.type == CS_T_NIL ? "GET" : cs_to_cstr(method);
+    if ((method.type != CS_T_NIL && !request_string(method)) || !http_token(method_text) || !strcmp(method_text,"CONNECT")) {
+        cs_error(vm,"http_request() invalid or unsupported method"); goto cleanup;
     }
-
-    cs_value url_val = cs_map_get(argv[0], "url");
-    if (url_val.type != CS_T_STR) {
-        cs_value_release(url_val);
-        cs_error(vm, "http_request() requires url");
-        return 1;
+    parts = cs_url_parse(vm,cs_to_cstr(url));
+    scheme = cs_map_get(parts,"scheme"); host = cs_map_get(parts,"host"); port = cs_map_get(parts,"port");
+    path = cs_map_get(parts,"path"); query = cs_map_get(parts,"query");
+    const char *scheme_text = scheme.type == CS_T_STR ? cs_to_cstr(scheme) : "http";
+    const char *host_text = host.type == CS_T_STR ? cs_to_cstr(host) : "";
+    const char *path_text = path.type == CS_T_STR ? cs_to_cstr(path) : "/";
+    const char *query_text = query.type == CS_T_STR ? cs_to_cstr(query) : "";
+    int use_tls = !strcmp(scheme_text,"https");
+    if (strcmp(scheme_text,"http") && !use_tls) {cs_error(vm,"http_request() unsupported URL scheme"); goto cleanup;}
+    if (!*host_text || strpbrk(host_text," \t\r\n") || !field_value(host_text) ||
+        strpbrk(path_text," \t\r\n") || !field_value(path_text) ||
+        strpbrk(query_text," \t\r\n") || !field_value(query_text)) {
+        cs_error(vm,"http_request() invalid URL"); goto cleanup;
     }
-
-    cs_value method_val = cs_map_get(argv[0], "method");
-    const char* method = (method_val.type == CS_T_STR) ? cs_to_cstr(method_val) : "GET";
-
-    cs_value parts = cs_url_parse(vm, cs_to_cstr(url_val));
-    cs_value scheme = cs_map_get(parts, "scheme");
-    cs_value host = cs_map_get(parts, "host");
-    cs_value port = cs_map_get(parts, "port");
-    cs_value path = cs_map_get(parts, "path");
-    cs_value query = cs_map_get(parts, "query");
-
-    const char* host_str = (host.type == CS_T_STR) ? cs_to_cstr(host) : "";
-    int port_num = (port.type == CS_T_INT) ? (int)port.as.i : 80;
-    const char* scheme_str = (scheme.type == CS_T_STR) ? cs_to_cstr(scheme) : "http";
-
-    char pathbuf[1024];
-    pathbuf[0] = 0;
-    if (path.type == CS_T_STR) snprintf(pathbuf, sizeof(pathbuf), "%s", cs_to_cstr(path));
-    else snprintf(pathbuf, sizeof(pathbuf), "/");
-    if (query.type == CS_T_STR) {
-        strncat(pathbuf, "?", sizeof(pathbuf) - strlen(pathbuf) - 1);
-        strncat(pathbuf, cs_to_cstr(query), sizeof(pathbuf) - strlen(pathbuf) - 1);
+    int port_number = use_tls ? 443 : 80;
+    if (port.type == CS_T_INT) {
+        if (port.as.i < 1 || port.as.i > 65535) {cs_error(vm,"http_request() invalid port"); goto cleanup;}
+        port_number = (int)port.as.i;
     }
-
-    cs_value headers_val = cs_map_get(argv[0], "headers");
-    cs_value body_val = cs_map_get(argv[0], "body");
-
-    char req[4096];
-    size_t w = 0;
-    w += (size_t)snprintf(req + w, sizeof(req) - w, "%s %s HTTP/1.1\r\n", method, pathbuf);
-    w += (size_t)snprintf(req + w, sizeof(req) - w, "Host: %s\r\n", host_str);
-    w += (size_t)snprintf(req + w, sizeof(req) - w, "Connection: close\r\n");
-    if (body_val.type == CS_T_STR) {
-        w += (size_t)snprintf(req + w, sizeof(req) - w, "Content-Length: %zu\r\n", strlen(cs_to_cstr(body_val)));
-    }
-    if (headers_val.type == CS_T_MAP) {
-        cs_value keys = cs_map_keys(vm, headers_val);
-        if (keys.type == CS_T_LIST) {
-            cs_list_obj* l = (cs_list_obj*)keys.as.p;
-            for (size_t i = 0; i < l->len; i++) {
-                cs_value k = l->items[i];
-                cs_value v = cs_map_get(headers_val, cs_to_cstr(k));
-                if (k.type == CS_T_STR && v.type == CS_T_STR) {
-                    w += (size_t)snprintf(req + w, sizeof(req) - w, "%s: %s\r\n", cs_to_cstr(k), cs_to_cstr(v));
-                }
-                cs_value_release(v);
+#ifdef CS_NO_TLS
+    if (use_tls) {cs_error(vm,"http_request() TLS disabled"); goto cleanup;}
+#endif
+    headers = cs_map_get(argv[0],"headers"); body = cs_map_get(argv[0],"body");
+    if (headers.type != CS_T_NIL && headers.type != CS_T_MAP) {cs_error(vm,"http_request() headers must be a map"); goto cleanup;}
+    if (body.type == CS_T_STR && !body.as.p) goto memory;
+    if (body.type != CS_T_NIL && body.type != CS_T_STR) {cs_error(vm,"http_request() body must be a string"); goto cleanup;}
+    size_t body_length = body.type == CS_T_STR ? (size_t)((cs_string*)body.as.p)->len : 0;
+    if (!request_append(&request,&capacity,&written,"%s %s%s%s HTTP/1.1\r\nConnection: close\r\n",method_text,path_text,
+                        query.type == CS_T_STR ? "?" : "",query_text)) goto memory;
+    if (body.type == CS_T_STR && !request_append(&request,&capacity,&written,"Content-Length: %zu\r\n",body_length)) goto memory;
+    int has_host = 0;
+    if (headers.type == CS_T_MAP) {
+        keys = cs_map_keys(vm,headers);
+        if (keys.type != CS_T_LIST || !keys.as.p) goto memory;
+        cs_list_obj *list = (cs_list_obj*)keys.as.p;
+        for (size_t i=0;i<list->len;i++) {
+            cs_value key = list->items[i];
+            if (!request_string(key) || !http_token(cs_to_cstr(key))) {cs_error(vm,"http_request() invalid header name"); goto cleanup;}
+            value = cs_map_get(headers,cs_to_cstr(key));
+            if (!request_string(value) || !field_value(cs_to_cstr(value))) {cs_error(vm,"http_request() invalid header value"); goto cleanup;}
+            const char *name = cs_to_cstr(key);
+            if (!strcasecmp(name,"content-length") || !strcasecmp(name,"transfer-encoding") || !strcasecmp(name,"connection")) {
+                cs_error(vm,"http_request() manages framing headers"); goto cleanup;
             }
+            if (!strcasecmp(name,"host") && has_host++) {cs_error(vm,"http_request() duplicate Host header"); goto cleanup;}
+            if (!request_append(&request,&capacity,&written,"%s: %s\r\n",name,cs_to_cstr(value))) goto memory;
+            cs_value_release(value); value = cs_nil();
         }
-        cs_value_release(keys);
     }
-    w += (size_t)snprintf(req + w, sizeof(req) - w, "\r\n");
-
-    int use_tls = (strcmp(scheme_str, "https") == 0);
-
-    cs_event_init();
-
-    cs_socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == CS_INVALID_SOCKET) {
-        cs_error(vm, "http_request() failed to create socket");
-        return 1;
+    if (!has_host) {
+        if (port_number == (use_tls ? 443 : 80)) {
+            if (!request_append(&request,&capacity,&written,"Host: %s\r\n",host_text)) goto memory;
+        } else if (!request_append(&request,&capacity,&written,"Host: %s:%d\r\n",host_text,port_number)) goto memory;
     }
-
-    struct sockaddr_in addr;
-    if (cs_resolve_host(host_str, port_num, &addr) != 0) {
-        cs_socket_close(fd);
-        cs_error(vm, "http_request() failed to resolve host");
-        return 1;
-    }
-
-    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) {
-        cs_socket_close(fd);
-        cs_error(vm, "http_request() connect failed");
-        return 1;
-    }
-
-    SSL* ssl = NULL;
+    if (!request_append(&request,&capacity,&written,"\r\n")) goto memory;
+    if (cs_event_init()) {cs_error(vm,"http_request() network initialization failed"); goto cleanup;}
+    fd = socket(AF_INET,SOCK_STREAM,0);
+    if (fd == CS_INVALID_SOCKET) {cs_error(vm,"http_request() failed to create socket"); goto cleanup;}
+    struct sockaddr_in address;
+    if (cs_resolve_host(host_text,port_number,&address)) {cs_error(vm,"http_request() failed to resolve host"); goto cleanup;}
+    if (connect(fd,(struct sockaddr*)&address,sizeof(address))) {cs_error(vm,"http_request() connect failed"); goto cleanup;}
 #ifndef CS_NO_TLS
     if (use_tls) {
-        if (cs_tls_init() != 0) {
-            cs_socket_close(fd);
-            cs_error(vm, "http_request() TLS init failed");
-            return 1;
-        }
-        ssl = cs_tls_new_ssl(fd, host_str);
-        if (!ssl) {
-            cs_socket_close(fd);
-            cs_error(vm, "http_request() failed to create SSL");
-            return 1;
-        }
-        if (SSL_connect(ssl) != 1) {
-            cs_tls_close(ssl);
-            cs_socket_close(fd);
-            cs_error(vm, "http_request() TLS handshake failed");
-            return 1;
-        }
-        if (cs_tls_verify_cert(ssl) != 0) {
-            cs_tls_close(ssl);
-            cs_socket_close(fd);
-            cs_error(vm, "http_request() TLS verify failed");
-            return 1;
-        }
+        if (cs_tls_init() || !(ssl=cs_tls_new_ssl(fd,host_text))) {cs_error(vm,"http_request() TLS initialization failed"); goto cleanup;}
+        if (cs_tls_connect_raw(ssl) != 1) {cs_error(vm,"http_request() TLS handshake failed"); goto cleanup;}
+        if (cs_tls_verify_cert(ssl)) {cs_error(vm,"http_request() TLS verification failed"); goto cleanup;}
     }
+    if (ssl ? tls_send_all(ssl,request,written) : http_send_all(fd,request,written)) {
 #else
-    if (use_tls) {
-        cs_socket_close(fd);
-        cs_error(vm, "http_request() TLS disabled");
-        return 1;
+    if (http_send_all(fd,request,written)) {
+#endif
+        cs_error(vm,"http_request() send failed"); goto cleanup;
     }
-#endif
-
-    int send_ok = 0;
-    if (use_tls && ssl) send_ok = (tls_send_all(ssl, req, w) == 0);
-    else send_ok = (http_send_all(fd, req, w) == 0);
-    if (!send_ok) {
+    if (body_length) {
 #ifndef CS_NO_TLS
-        if (ssl) cs_tls_close(ssl);
+        int error = ssl ? tls_send_all(ssl,cs_to_cstr(body),body_length) : http_send_all(fd,cs_to_cstr(body),body_length);
+#else
+        int error = http_send_all(fd,cs_to_cstr(body),body_length);
 #endif
-        cs_socket_close(fd);
-        cs_error(vm, "http_request() send failed");
-        return 1;
+        if (error) {cs_error(vm,"http_request() body send failed"); goto cleanup;}
     }
-
-    if (body_val.type == CS_T_STR) {
-        const char* body = cs_to_cstr(body_val);
-        size_t body_len = strlen(body);
-        if (body_len > 0) {
-            if (use_tls && ssl) {
-                if (tls_send_all(ssl, body, body_len) != 0) {
+    cs_http_parser_init(&parser,vm); parser_ready = 1;
+    if (parser.state == HTTP_PARSE_ERROR) goto memory;
+    parser.no_body = !strcmp(method_text,"HEAD");
+    char buffer[4096];
+    while (!cs_http_parser_is_done(&parser)) {
+        int received;
 #ifndef CS_NO_TLS
-                    if (ssl) cs_tls_close(ssl);
-#endif
-                    cs_socket_close(fd);
-                    cs_error(vm, "http_request() send body failed");
-                    return 1;
-                }
-            } else {
-                if (http_send_all(fd, body, body_len) != 0) {
-                    cs_socket_close(fd);
-                    cs_error(vm, "http_request() send body failed");
-                    return 1;
-                }
+        if (ssl) {
+            received = cs_tls_read(ssl,buffer,sizeof(buffer));
+            if (received <= 0 && SSL_get_error(ssl,received) != SSL_ERROR_ZERO_RETURN) {
+                cs_error(vm,"http_request() TLS read failed"); goto cleanup;
             }
+        } else
+#endif
+        {
+            received = (int)recv(fd,buffer,sizeof(buffer),0);
+#ifndef _WIN32
+            if (received < 0 && errno == EINTR) continue;
+#else
+            if (received < 0 && WSAGetLastError() == WSAEINTR) continue;
+#endif
+            if (received < 0) {cs_error(vm,"http_request() read failed"); goto cleanup;}
         }
-    }
-
-    cs_http_parser http_parser;
-    cs_http_parser_init(&http_parser, vm);
-
-    char buf[4096];
-    for (;;) {
-        int n = 0;
-        if (use_tls && ssl) {
-            n = SSL_read(ssl, buf, sizeof(buf));
-        } else {
-            n = (int)recv(fd, buf, sizeof(buf), 0);
+        if (!received) {
+            if (cs_http_parser_finish(&parser)) {cs_error(vm,"http_request() truncated response"); goto cleanup;}
+            break;
         }
-        if (n <= 0) break;
-        cs_http_parser_feed(&http_parser, buf, (size_t)n);
-        if (cs_http_parser_is_done(&http_parser)) break;
+        if (cs_http_parser_feed(&parser,buffer,(size_t)received) < 0) {cs_error(vm,"http_request() invalid response"); goto cleanup;}
     }
-
+    response = cs_map(vm);
+    value = cs_str(vm,parser.status_text);
+    if (!response.as.p || !value.as.p || cs_map_set(response,"status",cs_int(parser.status_code)) ||
+        cs_map_set(response,"status_text",value) || cs_map_set(response,"headers",parser.headers)) goto memory;
+    cs_value_release(value); value = cs_nil();
+    char *body_data = parser.body; size_t body_size = parser.body_len;
+    parser.body = NULL; parser.body_len = parser.body_cap = 0;
+    cs_value body_result = cs_str_take(vm,body_data,(uint64_t)body_size);
+    if (!body_result.as.p) goto memory;
+    if (cs_map_set_owned(response,"body",body_result)) goto memory;
+    if (out) {*out=response; response=cs_nil();}
+    result = 0; goto cleanup;
+memory:
+    cs_error(vm,"http_request() out of memory or oversized request");
+cleanup:
 #ifndef CS_NO_TLS
     if (ssl) cs_tls_close(ssl);
 #endif
-    cs_socket_close(fd);
-
-    cs_value resp = cs_map(vm);
-    if (resp.as.p) {
-        cs_map_set(resp, "status", cs_int(http_parser.status_code));
-        cs_map_set_owned(resp, "status_text", cs_str(vm, http_parser.status_text));
-        cs_map_set(resp, "headers", http_parser.headers);
-        cs_map_set_owned(resp, "body", cs_str_take(vm, http_parser.body ? http_parser.body : dup_cstr(""), (uint64_t)http_parser.body_len));
-        http_parser.body = NULL;
-        http_parser.body_len = 0;
-    }
-
-    cs_value_release(url_val);
-    cs_value_release(method_val);
-    cs_value_release(parts);
-    cs_value_release(scheme);
-    cs_value_release(host);
-    cs_value_release(port);
-    cs_value_release(path);
-    cs_value_release(query);
-    cs_value_release(headers_val);
-    cs_value_release(body_val);
-    cs_http_parser_free(&http_parser);
-
-    if (out) *out = resp;
-    return 0;
+    if (fd != CS_INVALID_SOCKET) cs_socket_close(fd);
+    if (parser_ready) cs_http_parser_free(&parser);
+    free(request);
+    cs_value_release(response); cs_value_release(value); cs_value_release(keys);
+    cs_value_release(body); cs_value_release(headers); cs_value_release(query); cs_value_release(path);
+    cs_value_release(port); cs_value_release(host); cs_value_release(scheme); cs_value_release(parts);
+    cs_value_release(method); cs_value_release(url);
+    return result;
 }
 
 static int nf_http_get(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
@@ -615,8 +606,9 @@ static int nf_url_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         if (out) *out = cs_map(vm);
         return 0;
     }
-    if (out) *out = cs_url_parse(vm, cs_to_cstr(argv[0]));
-    return 0;
+    cs_value value=cs_url_parse(vm,cs_to_cstr(argv[0]));
+    if(out)*out=value;else cs_value_release(value);
+    return value.type==CS_T_MAP ? 0 : 1;
 }
 
 static int nf_url_build(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
@@ -625,8 +617,9 @@ static int nf_url_build(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         if (out) *out = cs_str(vm, "");
         return 0;
     }
-    if (out) *out = cs_url_build(vm, argv[0]);
-    return 0;
+    cs_value value=cs_url_build(vm,argv[0]);
+    if(out)*out=value;else cs_value_release(value);
+    return value.type==CS_T_STR && value.as.p ? 0 : 1;
 }
 
 void cs_register_http_stdlib(cs_vm* vm) {
