@@ -51,10 +51,10 @@ test_integration: test_integration.c test_runner.h
 $(CUPIDSCRIPT_LIB):
 	$(MAKE) -C .. script-library
 
-test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c $(CUPIDSCRIPT_LIB)
+test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB)
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -o $@ test_plugins_api.c $(CUPIDSCRIPT_LIB) \
-		$(LIBS) -pthread -lssl -lcrypto -lm -lz
+		-Wl,--gc-sections -o $@ test_plugins_api.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB) \
+		$(LIBS) -pthread -lssl -lcrypto -lmagic -lm -lz
 
 file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/core/utils.h ../src/fs/clipboard.c ../src/fs/clipboard.h ../src/fs/tempfiles.c
 	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \

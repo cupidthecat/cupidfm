@@ -102,3 +102,4 @@ jobs:
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
           python3 tests/test_terminal_smoke.py
           python3 tests/test_scroll_smoke.py
+          python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS ?= -O2 -g
-CUPID_FLAGS = -std=c2x
+CUPID_FLAGS = -std=c2x -Werror=implicit-function-declaration
 CUPID_INCLUDES = -Isrc -Isrc/app -Isrc/core -Isrc/ui -Isrc/fs -Isrc/ds \
  -Ilib/cupidconf -Ilib/cupidgit -Ilib/cupidimage/src -Ilib/cupidscript/src -Ilib/cupidarchive
 CUPID_CPPFLAGS = -D_POSIX_C_SOURCE=200809L $(CUPID_INCLUDES)
