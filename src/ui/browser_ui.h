@@ -22,6 +22,8 @@ void draw_preview_window(WINDOW *window, const char *current_directory, const ch
 void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name,
                               int start_line);
 
+void invalidate_image_preview_overlay(void);
+
 void fix_cursor(CursorAndSlice *cas);
 
 bool preview_can_scroll_down(const char *path, int start, int width, int rows);

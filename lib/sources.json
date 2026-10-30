@@ -16,8 +16,8 @@
   },
   "cupidimage": {
     "repository": "https://github.com/cupidthecat/cupidimage",
-    "commit": "a0118c78582ebe55d6b5d7aaae97079ae074f693",
-    "tree": "113d226bdb43f48ed1fc47bba6b5cbee661b98a7"
+    "commit": "b0232efb7e95fe970ecb54775878b454ca389c49",
+    "tree": "e4feb20dbc25572c5e2d78a5690c6956f52566d3"
   },
   "cupidscript": {
     "repository": "https://github.com/cupidthecat/cupidscript",

@@ -3,6 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -g -std=c2x
 INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
 LIBS =
+CUPIDIMAGE_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-image-lib)
 CUPIDARCHIVE_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-archive-lib)
 CUPIDSCRIPT_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-script-lib)
 INCLUDES += -I../lib/cupidconf -I../lib/cupidgit -I../lib/cupidimage/src -I../lib/cupidscript/src -I../lib/cupidarchive
@@ -10,7 +11,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue
+TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
 
 # Test sources include application code directly; header changes must rebuild them.
 TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
@@ -76,6 +77,12 @@ test_all: test_all.c test_runner.h
 
 $(CUPIDARCHIVE_LIB):
 	$(MAKE) -C .. archive-library
+
+test_image_preview_ui: test_image_preview_ui.c ../src/ui/browser_ui.c ../src/ui/image_preview.c ../src/ui/image_preview.h $(CUPIDIMAGE_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=cupidimage_load_image_file,--wrap=cupidimage_render_kitty_with_options,--wrap=cupidimage_render_sixel_with_options -o $@ $< ../src/ui/image_preview.c $(CUPIDIMAGE_LIB) $(LIBS) -lncursesw -lm -lz
+
+test_image_preview: test_image_preview.c ../src/ui/image_preview.c ../src/ui/image_preview.h $(CUPIDIMAGE_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -Wl,--wrap=malloc,--wrap=realloc,--wrap=cupidimage_load_image_file,--wrap=cupidimage_render_kitty_with_options,--wrap=cupidimage_render_sixel_with_options -o $@ $< $(CUPIDIMAGE_LIB) $(LIBS) -lm -lz
 
 test_input_queue: test_input_queue.c ../src/app/app_input.c ../src/app/app_input.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_input_queue.c ../src/app/app_input.c $(LIBS) -lncursesw
@@ -154,6 +161,8 @@ test: all
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@./test_image_preview
+	@./test_image_preview_ui
 	@./test_input_queue
 	@./test_directory_listing
 	@./test_mime_cache
@@ -216,6 +225,8 @@ test-asan: clean
 	@./test_editor_roundtrip
 	@./test_editor_atomic_save
 	@./test_config_keys
+	@./test_image_preview
+	@./test_image_preview_ui
 	@./test_input_queue
 	@./test_directory_listing
 	@./test_mime_cache

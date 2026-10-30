@@ -25,3 +25,11 @@ Use clang-format 18 with the repository's `.clang-format`. It sets four-space in
 ```sh
 git ls-files -z -- '*.c' '*.h' ':(exclude)lib/**' | xargs -0 -r clang-format-18 -i
 ```
+
+## Image previews
+
+The UI-thread image cache retains four thumbnails with a shared 16 MiB pixel budget and 16 MiB encoded-output budget. Each encoded result is capped at 8 MiB. The decoder's temporary input/full-image allocations are separate from these retained budgets. Cache keys include the path, file identity, size, mode, modification/change timestamps, and viewport bounds. Current/previous-second file changes bypass metadata-only hits. A file changed during decoding is not reused.
+
+Thumbnails use premultiplied-alpha interpolation and a maximum dimension of 2,048 pixels. Kitty uses the preview's pixel dimensions and a dedicated image ID. Sixel/Kitty payloads can be replayed when revisiting an unchanged image. ANSI maps the image to character cells with the cell aspect ratio applied. Resize, window movement, input-driven redraws, editor transitions, and plugin modal UI invalidate the display placement without discarding reusable pixels/output. Failed decodes and allocation errors are retried.
+
+The application Makefile watches nested library C files and headers. `python3 tests/test_library_dependencies.py` checks that edits to a nested CupidImage source or header invalidate the archive. New source pins include CupidImage's reorganized codec tree; keep its upstream formatter version from `.clang-format-version` when editing it. First-party CupidFM sources use clang-format 18.

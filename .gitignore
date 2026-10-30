@@ -44,3 +44,6 @@ __pycache__/
 /lib/*/bin*/
 /lib/*/obj*/
 *.a
+
+/tests/test_image_preview
+/tests/test_image_preview_ui
