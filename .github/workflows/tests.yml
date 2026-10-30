@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3
+      - name: Verify committed library source trees
+        run: python3 tools/verify_library_sources.py
       - name: Build application
         run: make
       - name: Run terminal startup and shutdown

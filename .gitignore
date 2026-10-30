@@ -39,3 +39,8 @@ log.txt
 
 __pycache__/
 *.py[cod]
+
+# Library build outputs are generated locally, never source snapshots.
+/lib/*/bin*/
+/lib/*/obj*/
+*.a
