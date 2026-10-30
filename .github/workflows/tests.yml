@@ -16,6 +16,8 @@ jobs:
         run: python3 tools/verify_library_sources.py
       - name: Build application
         run: make
+      - name: Check nested library rebuild dependencies
+        run: python3 tests/test_library_dependencies.py
       - name: Run terminal startup and shutdown
         run: python3 tests/test_terminal_smoke.py
       - name: Preserve queued scrolling through slow plugin work
@@ -70,6 +72,11 @@ jobs:
           rm tests/test_archive_preview
           make -C tests test_archive_preview CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           python3 tests/test_archive_preview.py
+      - name: Check image preview caching and redraws with sanitizers
+        run: |
+          make -B -C tests test_image_preview test_image_preview_ui CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_image_preview
+          ./tests/test_image_preview_ui
       - name: Check queued scrolling input with sanitizers
         run: |
           make -B -C tests test_input_queue CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
@@ -95,3 +102,4 @@ jobs:
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
           python3 tests/test_terminal_smoke.py
           python3 tests/test_scroll_smoke.py
+          python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

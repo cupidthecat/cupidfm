@@ -148,9 +148,60 @@ static bool test_exec_rejects_missing_working_directory(void) {
     return true;
 }
 
+extern FileAttr mk_attr(const char *name, bool directory, ino_t inode);
+
+static bool test_mime_information_and_entries_are_owned(void) {
+    char directory[] = "/tmp/cupidfm-plugin-mime-XXXXXX";
+    ASSERT_NOT_NULL(mkdtemp(directory), "Temporary directory should be created");
+    char path[512];
+    snprintf(path, sizeof(path), "%s/payload.txt", directory);
+    FILE *file = fopen(path, "w");
+    ASSERT_NOT_NULL(file, "Text fixture should open");
+    ASSERT_TRUE(fputs("Plain text for plugin MIME regression.\n", file) >= 0,
+                "Fixture should be written");
+    fclose(file);
+    cs_vm *vm = cs_vm_new();
+    ASSERT_NOT_NULL(vm, "VM should allocate");
+    PluginManager manager = {0};
+    snprintf(manager.cwd, sizeof(manager.cwd), "%s", directory);
+    cs_value argument = cs_str(vm, "payload.txt"), info = cs_nil(), entries = cs_nil();
+    ASSERT_EQ(nf_fm_info(vm, &manager, 1, &argument, &info), 0, "File information should succeed");
+    cs_value mime = cs_map_get(info, "mime");
+    ASSERT_EQ(mime.type, CS_T_STR, "File information should contain a MIME string");
+    ASSERT_STR_EQ(cs_to_cstr(mime), "text/plain",
+                  "File MIME should survive returning from the native API");
+    cs_value_release(mime);
+    cs_value_release(info);
+    cs_value_release(argument);
+    Vector view = Vector_new(1);
+    ASSERT_NOT_NULL(view.el, "View should allocate");
+    view.el[0] = mk_attr("payload.txt", false, 0);
+    ASSERT_NOT_NULL(view.el[0], "Entry should allocate");
+    Vector_set_len_no_free(&view, 1);
+    manager.view = &view;
+    ASSERT_EQ(nf_fm_entries(vm, &manager, 0, NULL, &entries), 0, "Entry listing should succeed");
+    cs_value entry = cs_list_get(entries, 0);
+    mime = cs_map_get(entry, "mime");
+    ASSERT_EQ(mime.type, CS_T_STR, "Entry should contain a MIME string");
+    ASSERT_STR_EQ(cs_to_cstr(mime), "text/plain",
+                  "Entry MIME must be copied before the temporary buffer expires");
+    cs_value_release(mime);
+    cs_value_release(entry);
+    cs_value_release(entries);
+    free_attr(view.el[0]);
+    Vector_set_len_no_free(&view, 0);
+    Vector_bye(&view);
+    cs_vm_free(vm);
+    mime_cache_clear();
+    ASSERT_EQ(unlink(path), 0, "Fixture should be removed");
+    ASSERT_EQ(rmdir(directory), 0, "Temporary directory should be removed");
+    return true;
+}
+
 int main(void) {
     printf("=== Plugin API Tests ===\n\n");
 
+    RUN_TEST(test_mime_information_and_entries_are_owned);
     RUN_TEST(test_clear_selected_paths_preserves_plugin_state);
     RUN_TEST(test_exec_closes_partial_pipe_failure);
     RUN_TEST(test_exec_reports_fork_failure_without_leaking);

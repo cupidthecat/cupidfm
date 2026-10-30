@@ -8,6 +8,7 @@ make test
 make test-libs
 python3 tests/test_terminal_smoke.py
 python3 tests/test_scroll_smoke.py
+python3 tests/test_library_dependencies.py
 ```
 
 Application tests cover containers and paths, file commands and history, editor loading and atomic saves, configuration keys, plugin execution, MIME invalidation, text/archive previews, and allocation failures. Search tests include 257 matching entries. The scrolling test queues 100 movements through a 200 ms plugin stall and resize, then checks the final cursor and command.
@@ -33,3 +34,7 @@ python3 tests/benchmark_terminal.py --runs 3 > /tmp/cupidfm-benchmark.json
 ```
 
 Use `--baseline /path/to/another/cupidfm` to compare builds with the same workload. Text preview regressions separately enforce bounded reads and verify checkpoint reuse near line 320,000, including syntax state, upward scrolling, reloads, and edits.
+
+Image regressions cover thumbnail/output reuse, file edits with restored modification times, resize/movement, backend changes, missing files, premultiplied alpha, bounded memory, allocation failures, and retry behavior. `tests/benchmark_image_preview.py` measures protocol output/CPU through a PTY; the performance guide records the workload and scope.
+
+Plugin API tests call `fm.info` and `fm.entries` on a real text fixture and verify that returned MIME strings retain their contents. Application builds treat implicit function declarations as errors. The full sanitizer job also runs all three image protocol workloads through a PTY.

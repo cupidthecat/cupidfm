@@ -29,7 +29,7 @@ With the default configuration, arrows navigate, Tab switches panes, F1 exits, a
 
 - Directory browsing, search, file operations, and an editor.
 - Text previews with syntax highlighting and bounded line indexing.
-- Image rendering through Kitty graphics, Sixel, or ANSI modes supported by the terminal.
+- Image rendering through Kitty graphics, Sixel, or ANSI modes, with viewport-sized uploads and cached previews.
 - TAR, ZIP, compressed-file, and multi-file/solid 7z previews through CupidArchive.
 - Git working-tree status compared with the index through CupidGit.
 - CupidScript plugins with file manager and editor APIs.

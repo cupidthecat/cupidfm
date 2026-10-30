@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS ?= -O2 -g
-CUPID_FLAGS = -std=c2x
+CUPID_FLAGS = -std=c2x -Werror=implicit-function-declaration
 CUPID_INCLUDES = -Isrc -Isrc/app -Isrc/core -Isrc/ui -Isrc/fs -Isrc/ds \
  -Ilib/cupidconf -Ilib/cupidgit -Ilib/cupidimage/src -Ilib/cupidscript/src -Ilib/cupidarchive
 CUPID_CPPFLAGS = -D_POSIX_C_SOURCE=200809L $(CUPID_INCLUDES)
@@ -16,7 +16,7 @@ CUPID_LIBS = $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT
  -lssl -lcrypto -lncursesw -lmagic -lz -lbz2 -llzma -lm -pthread
 SRC := $(shell find src -name '*.c') lib/cupidconf/cupidconf.c
 OBJ := $(patsubst %.c,$(BUILD_DIR)/app/%.o,$(SRC))
-LIB_FILES = $(wildcard lib/$(1)/Makefile lib/$(1)/*.c lib/$(1)/*.h lib/$(1)/src/*.c lib/$(1)/src/*.h)
+LIB_FILES = $(wildcard lib/$(1)/Makefile lib/$(1)/*.c lib/$(1)/*.h) $(shell find lib/$(1)/src -type f \( -name '*.c' -o -name '*.h' \) 2>/dev/null)
 
 all: cupidfm
 libraries: $(CUPIDARCHIVE_LIB) $(CUPIDSCRIPT_LIB) $(CUPIDIMAGE_LIB) $(CUPIDGIT_LIB)
@@ -50,6 +50,8 @@ test-libs:
 
 print-archive-lib:
 	@printf '%s\n' '$(abspath $(CUPIDARCHIVE_LIB))'
+print-image-lib:
+	@printf '%s\n' '$(abspath $(CUPIDIMAGE_LIB))'
 print-script-lib:
 	@printf '%s\n' '$(abspath $(CUPIDSCRIPT_LIB))'
 clean:
@@ -58,4 +60,4 @@ clean:
 	$(MAKE) -C tests clean
 
 -include $(OBJ:.o=.d)
-.PHONY: all libraries script-library cupidfm test test-libs print-script-lib print-archive-lib archive-library clean
+.PHONY: all libraries script-library cupidfm test test-libs print-script-lib print-image-lib print-archive-lib archive-library clean

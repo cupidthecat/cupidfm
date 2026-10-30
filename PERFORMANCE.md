@@ -63,3 +63,26 @@ python3 tests/benchmark_terminal.py --runs 3 > /tmp/cupidfm-benchmark.json
 ```
 
 Pass `--baseline /path/to/another/cupidfm` to compare two builds with the same generated workload.
+
+## Image previews
+
+Image previews cache viewport-sized thumbnails and encoded output. Kitty uploads fit the pane instead of sending full-resolution pixels. Metadata, viewport, placement, and explicit redraws invalidate reuse. Recent file changes bypass metadata-only cache hits. The cache retains at most 16 MiB of pixels and 16 MiB of encoded output across four entries; decoder working memory is separate.
+
+The image benchmark uses a 30-by-100 PTY, an isolated default configuration, two generated 2,048-by-1,536 BMPs, and three runs per protocol. It waits 0.35 seconds after the first protocol output, selects the next file, returns to the first at 0.70 seconds, then exits at 1.10 seconds. Files leave the recent-change window before measurement. The PTY is drained and protocol features are simulated through environment variables; the benchmark does not emulate a terminal renderer.
+
+```sh
+make -j
+python3 tests/benchmark_image_preview.py --runs 3 > /tmp/cupidfm-image-benchmark.json
+```
+
+Pass `--baseline /path/to/cupidfm` for a paired comparison. The recorded baseline is `14396a5d9745dc10fc790746f36db3a4092d8372`. Measurements report process CPU, output bytes, and time to the first protocol bytes. They do not measure displayed-image completion, GPU latency, or frame rate.
+
+| Protocol | Baseline first output | Updated first output | Baseline CPU | Updated CPU | Baseline output | Updated output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| KITTY | 162.1 ms | 30.5 ms | 961.8 ms | 60.8 ms | 50.47 MB | 1.42 MB |
+| ANSI | 20.9 ms | 23.2 ms | 72.1 ms | 39.5 ms | 0.05 MB | 0.21 MB |
+| SIXEL | 88.9 ms | 80.3 ms | 344.4 ms | 163.4 ms | 1.48 MB | 1.48 MB |
+
+Values are medians from three optimized runs on the same WSL host. The updated build includes CupidImage's merged decoder/conformance update and the output-equivalent Sixel optimization. ANSI now fills the correct character-cell aspect ratio, so its output is larger. Its first output is about 2 ms later in this workload while total CPU work is lower. Kitty sends fewer pixels, and returning to an unchanged Sixel image reuses its encoded output.
+
+A separate Sixel encoder comparison is described in the [upstream performance notes](lib/cupidimage/docs/terminal-performance.md). Its output-equivalence tests preserve colors and dithering, including allocation-failure fallback.

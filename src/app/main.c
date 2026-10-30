@@ -456,6 +456,8 @@ int main(int argc, char **argv) {
     clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
     int ch;
     while ((ch = app_input_next_key()) != kb.key_exit) {
+        if (ch != ERR)
+            invalidate_image_preview_overlay();
 
         if (state.plugins) {
             plugins_update_context(&state, active_window);

@@ -16,6 +16,7 @@
 #include "search.h"
 
 void redraw_all_windows(AppState *state) {
+    invalidate_image_preview_overlay();
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
     resize_term(w.ws_row, w.ws_col);
@@ -93,6 +94,7 @@ void redraw_all_windows(AppState *state) {
 
 void redraw_frame_after_edit(AppState *state, WINDOW *dirwin_local, WINDOW *previewwin_local,
                              WINDOW *mainwin_local, WINDOW *notifwin_local) {
+    invalidate_image_preview_overlay();
     if (!state)
         return;
     if (bannerwin) {

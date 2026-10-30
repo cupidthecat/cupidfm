@@ -33,6 +33,7 @@
 #include "cs_vm.h"
 #include "globals.h"
 #include "main.h" // show_notification globals
+#include "mime.h"
 #include "search.h"
 
 static void pm_notify(const char *msg) {
@@ -2401,11 +2402,11 @@ static int nf_fm_entries(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs
             (void)lstat(full, &st);
         }
 
+        char mime_buffer[512];
         const char *mime = "unknown";
         if (is_dir) {
             mime = "inode/directory";
         } else if (mc && full[0]) {
-            char mime_buffer[512];
             const char *m =
                 mime_file_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                                  mime_buffer, sizeof(mime_buffer));

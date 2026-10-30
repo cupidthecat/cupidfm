@@ -11,6 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "browser_ui.h"
 #include "cs_value.h"
 #include "cs_vm.h"
 #include "globals.h"
@@ -43,6 +44,7 @@ static void banner_tick_for_modal(struct timespec *last_banner_update, int total
 
 cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg,
                                   const char *initial) {
+    invalidate_image_preview_overlay();
     (void)msg;
     // Returns cs_str(...) or cs_nil() if cancelled.
     int max_y, max_x;
@@ -129,6 +131,7 @@ cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg,
 }
 
 bool plugin_modal_confirm(const char *title, const char *msg) {
+    invalidate_image_preview_overlay();
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
     int popup_height = 7;
@@ -190,6 +193,7 @@ bool plugin_modal_confirm(const char *title, const char *msg) {
 }
 
 int plugin_modal_menu(const char *title, char **items, size_t count) {
+    invalidate_image_preview_overlay();
     if (!items || count == 0)
         return -1;
 
