@@ -369,7 +369,15 @@ static int files(Cursor *c,SevenZReader *reader) {
     int id,result=-1;
     while((id=byte(c))>0) {
         uint64_t length;
-        if(number(c,&length) || length>c->size-c->pos || length>reader->base.limits->max_extra)goto fail;
+        uint64_t property_limit=reader->base.limits->max_extra;
+        bool per_file=id==NAME || id==EMPTY_STREAM || id==EMPTY_FILE ||
+                      id==ATTRIBUTES || id==MTIME || id==18 || id==19;
+        /* Known file-table arrays contain metadata for all records. The
+         * per-entry budget scales by count; the header cap still applies. */
+        if(per_file && count>1 && property_limit && property_limit<HEADER_LIMIT) {
+            property_limit=count>HEADER_LIMIT/property_limit ? HEADER_LIMIT : property_limit*count;
+        }
+        if(number(c,&length) || length>c->size-c->pos || length>property_limit)goto fail;
         const uint8_t *p=take(c,(size_t)length);if(!p)goto fail;
         if(id==NAME) {
             if(have_names || !length || p[0])goto fail;

@@ -2021,8 +2021,9 @@ static ast* parse_match_pattern(parser* P) {
         next(P);
         return n;
     }
-    if (P->tok.type == TK_STR) {
-        ast* n = make_quoted_str_lit_from_tok(P, P->tok.start, P->tok.len);
+    if (P->tok.type == TK_STR || P->tok.type == TK_RAW_STR) {
+        ast* n = node(P, N_LIT_STR);
+        n->as.lit_str.s = cs_strndup2(P->tok.start, P->tok.len);
         next(P);
         return n;
     }

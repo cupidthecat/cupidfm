@@ -171,6 +171,17 @@ class Extraction(unittest.TestCase):
                        {"stream_counts":(0,1)},{"names":("alpha","dir","empty","beta")}):
             path.write_bytes(archive(**kwargs));self.assertNotEqual(self.extract(path),0,kwargs)
 
+    def test_7z_large_file_tables_use_per_entry_metadata_budget(self):
+        from sevenz_fixture import empty_archive, number
+        path=self.base/"many-empty.7z";path.write_bytes(empty_archive(10000))
+        result=subprocess.run([str(DRIVER),"inspect",str(path),str(self.dest)],capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0)
+        lines=result.stdout.splitlines();self.assertEqual(len(lines),10000)
+        self.assertTrue(lines[0].startswith("entry-00000\t0\t"));self.assertTrue(lines[-1].startswith("entry-09999\t0\t"))
+        # Unrecognized global properties retain the unscaled metadata limit.
+        path.write_bytes(empty_archive(1,b"\x63"+number(70000)+b"x"*70000))
+        self.assertNotEqual(self.extract(path),0)
+
     def test_7z_checksums_and_filename_bounds(self):
         import struct,zlib
         original=(Path(__file__).resolve().parent/"fixtures/copy.7z").read_bytes()

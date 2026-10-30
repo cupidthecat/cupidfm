@@ -1415,7 +1415,7 @@ static int strbuf_reserve(cs_strbuf_obj* b, size_t need) {
 }
 
 static int strbuf_append_bytes(cs_strbuf_obj* b, const char* s, size_t n) {
-    if (!b || !s) return 0;
+    if (!b || !s || n > SIZE_MAX - b->len - 1) return 0;
     if (!strbuf_reserve(b, b->len + n)) return 0;
     memcpy(b->data + b->len, s, n);
     b->len += n;
@@ -2181,7 +2181,8 @@ static int hex_val_char(char c) {
     return -1;
 }
 
-static char* unescape_string_token(const char* tok, size_t n) {
+static char* unescape_string_token(const char* tok, size_t n, size_t *length) {
+    *length = 0;
     // tok includes quotes/backticks; minimal unescape
     if (n < 2) return cs_strdup2("");
     if (tok[0] == '`' && tok[n - 1] == '`') {
@@ -2190,6 +2191,7 @@ static char* unescape_string_token(const char* tok, size_t n) {
         if (!out) return NULL;
         if (out_len) memcpy(out, tok + 1, out_len);
         out[out_len] = 0;
+        *length = out_len;
         return out;
     }
     if (tok[0] != '"' || tok[n-1] != '"') return cs_strdup2("");
@@ -2201,6 +2203,7 @@ static char* unescape_string_token(const char* tok, size_t n) {
         if (c == '\\' && i + 1 < n - 1) {
             char x = tok[++i];
             switch (x) {
+                case '0': out[w++] = 0; break;
                 case 'n': out[w++] = '\n'; break;
                 case 't': out[w++] = '\t'; break;
                 case 'r': out[w++] = '\r'; break;
@@ -2227,6 +2230,7 @@ static char* unescape_string_token(const char* tok, size_t n) {
         }
     }
     out[w] = 0;
+    *length = w;
     return out;
 }
 
@@ -2453,9 +2457,11 @@ static int match_pattern(cs_vm* vm, cs_env* match_env, ast* pat, cs_value mv, in
         }
         case N_LIT_STR: {
             size_t n = strlen(pat->as.lit_str.s);
-            char* un = unescape_string_token(pat->as.lit_str.s, n);
+            size_t length = 0;
+            char* un = unescape_string_token(pat->as.lit_str.s, n, &length);
             if (!un) { vm_set_err(vm, "out of memory", pat->source_name, pat->line, pat->col); *ok = 0; return 0; }
-            cs_value pv = cs_str_take(vm, un, (uint64_t)-1);
+            cs_value pv = cs_str_take(vm, un, (uint64_t)length);
+            if (!pv.as.p) {vm_set_err(vm,"out of memory",pat->source_name,pat->line,pat->col);*ok=0;return 0;}
             int matched = vm_value_equals(mv, pv);
             cs_value_release(pv);
             return matched;
@@ -2688,7 +2694,7 @@ static cs_value eval_binop(cs_vm* vm, ast* e, cs_value a, cs_value b, int* ok) {
         else if (a.type == CS_T_BOOL) eq = (a.as.b == b.as.b);
         else if (a.type == CS_T_INT) eq = (a.as.i == b.as.i);
         else if (a.type == CS_T_FLOAT) eq = (a.as.f == b.as.f);
-        else if (a.type == CS_T_STR) eq = (strcmp(as_str(a)->data, as_str(b)->data) == 0);
+        else if (a.type == CS_T_STR) eq = cs_value_key_equals(a, b);
         else if (a.type == CS_T_BYTES) {
             cs_bytes_obj* ba = as_bytes(a);
             cs_bytes_obj* bb = as_bytes(b);
@@ -2712,7 +2718,10 @@ static cs_value eval_binop(cs_vm* vm, ast* e, cs_value a, cs_value b, int* ok) {
             return cs_bool(r);
         }
         if (a.type == CS_T_STR && b.type == CS_T_STR) {
-            int c = strcmp(as_str(a)->data, as_str(b)->data);
+            cs_string *left = as_str(a), *right = as_str(b);
+            size_t common = left->len < right->len ? left->len : right->len;
+            int c = memcmp(left->data, right->data, common);
+            if (!c) c = (left->len > right->len) - (left->len < right->len);
             int r = 0;
             if (op == TK_LT) r = (c < 0);
             if (op == TK_LE) r = (c <= 0);
@@ -3325,67 +3334,52 @@ static cs_value eval_expr(cs_vm* vm, cs_env* env, ast* e, int* ok) {
 
         case N_LIT_STR: {
             size_t n = strlen(e->as.lit_str.s);
-            char* un = unescape_string_token(e->as.lit_str.s, n);
+            size_t length = 0;
+            char* un = unescape_string_token(e->as.lit_str.s, n, &length);
             if (!un) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; return cs_nil(); }
-            return cs_str_take(vm, un, (uint64_t)-1);
+            cs_value value = cs_str_take(vm,un,(uint64_t)length);
+            if (!value.as.p) {vm_set_err(vm,"out of memory",e->source_name,e->line,e->col);*ok=0;return cs_nil();}
+            return value;
         }
 
         case N_STR_INTERP: {
             if (e->as.str_interp.count == 1) {
-                cs_value v = eval_expr(vm, env, e->as.str_interp.parts[0], ok);
-                if (!*ok) return cs_nil();
-                if (v.type == CS_T_STR) return v;
-                char tmp[128];
-                const char* s = interp_repr(v, tmp, sizeof(tmp));
-                cs_value_release(v);
-                return cs_str(vm, s);
+                cs_value value = eval_expr(vm,env,e->as.str_interp.parts[0],ok);
+                if (!*ok) {cs_value_release(value);return cs_nil();}
+                if (value.type == CS_T_STR) return value;
+                char temporary[128];
+                const char *text = interp_repr(value,temporary,sizeof(temporary));
+                cs_value result = cs_str(vm,text);
+                cs_value_release(value);
+                return result;
             }
-
-            // Use cached strbuf to avoid repeated allocations
-            cs_strbuf_obj* b = vm->interp_cache;
-            if (!b) {
-                b = strbuf_new();
-                if (!b) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; return cs_nil(); }
-                vm->interp_cache = b;
-            } else {
-                // Clear cached strbuf for reuse
-                b->len = 0;
-                if (b->data) b->data[0] = 0;
+            /* Detach the active buffer while evaluating parts. Nested calls can
+             * use a separate cached buffer without overwriting this prefix. */
+            cs_strbuf_obj *buffer = vm->interp_cache;
+            vm->interp_cache = NULL;
+            if (!buffer) buffer = strbuf_new();
+            if (!buffer) {vm_set_err(vm,"out of memory",e->source_name,e->line,e->col);*ok=0;return cs_nil();}
+            buffer->len = 0; buffer->data[0] = 0;
+            cs_value result = cs_nil();
+            for (size_t i=0;i<e->as.str_interp.count;i++) {
+                cs_value value = eval_expr(vm,env,e->as.str_interp.parts[i],ok);
+                if (!*ok) {cs_value_release(value);goto interpolation_done;}
+                char temporary[128];
+                const char *text = interp_repr(value,temporary,sizeof(temporary));
+                size_t length = value.type == CS_T_STR ? ((cs_string*)value.as.p)->len : strlen(text);
+                int appended = strbuf_append_bytes(buffer,text,length);
+                cs_value_release(value);
+                if (!appended) {vm_set_err(vm,"out of memory",e->source_name,e->line,e->col);*ok=0;goto interpolation_done;}
             }
-
-            for (size_t i = 0; i < e->as.str_interp.count; i++) {
-                cs_value v = eval_expr(vm, env, e->as.str_interp.parts[i], ok);
-                if (!*ok) return cs_nil();
-
-                if (v.type == CS_T_STR) {
-                    cs_string* s = (cs_string*)v.as.p;
-                    if (s && !strbuf_append_bytes(b, s->data, s->len)) {
-                        cs_value_release(v);
-                        vm_set_err(vm, "out of memory", e->source_name, e->line, e->col);
-                        *ok = 0;
-                        return cs_nil();
-                    }
-                } else {
-                    char tmp[128];
-                    const char* s = interp_repr(v, tmp, sizeof(tmp));
-                    size_t n = strlen(s);
-                    if (!strbuf_append_bytes(b, s, n)) {
-                        cs_value_release(v);
-                        vm_set_err(vm, "out of memory", e->source_name, e->line, e->col);
-                        *ok = 0;
-                        return cs_nil();
-                    }
-                }
-                cs_value_release(v);
-            }
-
-            char* out = (char*)malloc(b->len + 1);
-            if (!out) { vm_set_err(vm, "out of memory", e->source_name, e->line, e->col); *ok = 0; return cs_nil(); }
-            memcpy(out, b->data, b->len);
-            out[b->len] = 0;
-            cs_value rv = cs_str_take(vm, out, (uint64_t)b->len);
-            // Keep b alive in vm->interp_cache for next interpolation
-            return rv;
+            char *text = (char*)malloc(buffer->len+1);
+            if (!text) {vm_set_err(vm,"out of memory",e->source_name,e->line,e->col);*ok=0;goto interpolation_done;}
+            memcpy(text,buffer->data,buffer->len);text[buffer->len]=0;
+            result=cs_str_take(vm,text,(uint64_t)buffer->len);
+            if (!result.as.p) {vm_set_err(vm,"out of memory",e->source_name,e->line,e->col);*ok=0;result=cs_nil();}
+interpolation_done:
+            if (vm->interp_cache) strbuf_decref(vm->interp_cache);
+            vm->interp_cache=buffer;
+            return result;
         }
 
         case N_PLACEHOLDER:

@@ -1,7 +1,7 @@
 {
   "cupidarchive": {
     "repository": "https://github.com/cupidthecat/cupidarchive",
-    "commit": "f73eedd3b54dcda33484f7aca41abc7dc4089788"
+    "commit": "f861fb4abcc98a61bf1855729b9135d253fe8565"
   },
   "cupidconf": {
     "repository": "https://github.com/cupidthecat/cupidconf",
@@ -17,6 +17,6 @@
   },
   "cupidscript": {
     "repository": "https://github.com/cupidthecat/cupidscript",
-    "commit": "f3c7c3689e069a0aaa9203877026af68ac168c69"
+    "commit": "8e6c8c0c08f03655bbccff0c64837360252f0449"
   }
 }

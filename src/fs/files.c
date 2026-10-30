@@ -1738,6 +1738,7 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,
 #endif
 
         FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
+        if (!file_attr) break;
 
         if (file_attr != NULL) { // Only add if not NULL
           // Query git status for this file
@@ -1788,6 +1789,7 @@ void append_files_to_vec(Vector *v, const char *name) {
 #endif
 
         FileAttr file_attr = mk_attr(entry->d_name, is_dir, entry->d_ino);
+        if (!file_attr) break;
 
         if (file_attr != NULL) { // Only add if not NULL
           // Query git status for this file
