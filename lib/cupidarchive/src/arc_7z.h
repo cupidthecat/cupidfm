@@ -25,4 +25,3 @@ int arc_7z_skip_data(ArcReader *reader);
 void arc_7z_close(ArcReader *reader);
 
 #endif // ARC_7Z_H
-

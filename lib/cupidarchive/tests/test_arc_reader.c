@@ -1,12 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
-#include "test_runner.h"
 #include "../cupidarchive.h"
-#include <unistd.h>
+#include "test_runner.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <errno.h>
-
+#include <unistd.h>
 
 // Test opening archive from path (requires actual file)
 bool test_arc_open_path_nonexistent() {
@@ -19,13 +18,13 @@ bool test_arc_open_path_nonexistent() {
 bool test_arc_entry_free() {
     ArcEntry entry;
     memset(&entry, 0, sizeof(entry));
-    
+
     // Test with allocated fields
     entry.path = strdup("test/path.txt");
     entry.link_target = strdup("target");
-    
+
     arc_entry_free(&entry);
-    
+
     // Verify fields are cleared (implementation may or may not set to NULL)
     ASSERT_TRUE(entry.path == NULL || entry.path[0] == '\0', "Path should be freed");
     return true;
@@ -35,7 +34,7 @@ bool test_arc_entry_free() {
 bool test_arc_entry_free_null() {
     ArcEntry entry;
     memset(&entry, 0, sizeof(entry));
-    
+
     // Should not crash with NULL fields
     arc_entry_free(&entry);
     return true;
@@ -64,14 +63,13 @@ bool test_arc_close_null() {
 
 int main() {
     printf("=== ArcReader Tests ===\n\n");
-    
+
     RUN_TEST(test_arc_open_path_nonexistent);
     RUN_TEST(test_arc_entry_free);
     RUN_TEST(test_arc_entry_free_null);
     RUN_TEST(test_arc_next_null_reader);
     RUN_TEST(test_arc_next_null_entry);
     RUN_TEST(test_arc_close_null);
-    
+
     PRINT_SUMMARY();
 }
-

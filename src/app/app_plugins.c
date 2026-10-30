@@ -9,7 +9,8 @@
 #include "search.h"
 
 void plugins_update_context(AppState *state, int active_window) {
-    if (!state || !state->plugins) return;
+    if (!state || !state->plugins)
+        return;
     // A plugin may have requested a reload that replaced the file attributes.
     sync_selection_from_active(state, &state->dir_window_cas);
     Vector *view = active_files(state);

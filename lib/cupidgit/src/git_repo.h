@@ -2,6 +2,7 @@
 #define GIT_REPO_INTERNAL_H
 #include "../cupidgit.h"
 #include <sys/stat.h>
+
 struct GitRepository {
     char *repo_root;
     char *git_dir;
@@ -10,6 +11,7 @@ struct GitRepository {
     bool index_present;
     bool valid;
 };
+
 char *find_git_directory(const char *path);
 bool is_bare_repository(const char *git_dir);
 #endif

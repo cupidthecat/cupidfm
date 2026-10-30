@@ -39,4 +39,3 @@ typedef struct {
 } AppState;
 
 #endif // APP_STATE_H
-

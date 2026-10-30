@@ -13,9 +13,9 @@ let last_col = 0;
 // Called when the plugin loads
 fn on_load() {
     fm.console("Cursor Tracker plugin loaded");
-    fm.console("Press Ctrl+M in the editor to see cursor movement statistics");
+    fm.console("Press Ctrl+K in the editor to see cursor movement statistics");
     
-    // Bind Ctrl+M to show statistics
+    // Bind Ctrl+K to show statistics
     fm.bind("^K", "show_cursor_stats");
 }
 

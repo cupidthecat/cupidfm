@@ -1,12 +1,13 @@
 // File: cil.c
 // -----------------------
-#include <stdarg.h>   // for va_list, va_start, va_end
-#include <stdbool.h>  // for bool, true, false
-#include <stddef.h>   // for NULL
-#include <stdio.h>    // for printf, vprintf, fgets, stdin
-#include <string.h>   // for strcspn
+#include <stdarg.h>  // for va_list, va_start, va_end
+#include <stdbool.h> // for bool, true, false
+#include <stddef.h>  // for NULL
+#include <stdio.h>   // for printf, vprintf, fgets, stdin
+#include <string.h>  // for strcspn
 // Local includes
 #include "cli.h"
+
 /**
  * Function to read a line from the command line
  *
@@ -19,6 +20,7 @@ bool cli_readline(char buf[static CLI_LINESZ]) {
     buf[strcspn(buf, "\n")] = '\0';
     return true;
 }
+
 /**
  * Function to print a line to the command line
  *
@@ -35,4 +37,3 @@ void cli_println(const char *format, ...) {
 
     printf("\n");
 }
-

@@ -34,34 +34,34 @@
 
 // Syntax highlighting rule set for a language
 typedef struct {
-    char *language;       // Language name (e.g., "c", "python")
-    char **keywords;      // Array of keyword strings (control flow)
+    char *language;  // Language name (e.g., "c", "python")
+    char **keywords; // Array of keyword strings (control flow)
     size_t keyword_count;
-    char **types;         // Array of type keywords
+    char **types; // Array of type keywords
     size_t type_count;
-    char **statements;    // Array of statement keywords (storage class, qualifiers)
+    char **statements; // Array of statement keywords (storage class, qualifiers)
     size_t statement_count;
-    char **constants;     // Array of constant keywords (true, false, NULL, etc.)
+    char **constants; // Array of constant keywords (true, false, NULL, etc.)
     size_t constant_count;
-    char **preprocessor;  // Array of preprocessor directive names
+    char **preprocessor; // Array of preprocessor directive names
     size_t preprocessor_count;
-    
+
     // Comment delimiters
-    char *line_comment;   // e.g., "//" for C
-    char *block_comment_start;  // e.g., "/*"
-    char *block_comment_end;    // e.g., "*/"
-    
+    char *line_comment;        // e.g., "//" for C
+    char *block_comment_start; // e.g., "/*"
+    char *block_comment_end;   // e.g., "*/"
+
     // String delimiters
-    char string_delim;    // e.g., '"' for double-quoted strings
-    char char_delim;      // e.g., '\'' for character literals
-    
+    char string_delim; // e.g., '"' for double-quoted strings
+    char char_delim;   // e.g., '\'' for character literals
+
     // Preprocessor
     char preprocessor_char; // e.g., '#' for C preprocessor
-    
+
     // File extensions
-    char **extensions;    // Array of file extensions (e.g., ".c", ".h")
+    char **extensions; // Array of file extensions (e.g., ".c", ".h")
     size_t extension_count;
-    
+
     // Custom colors (RGB 0-255, -1 if not set)
     int color_keyword[3];      // RGB for keywords
     int color_type[3];         // RGB for types
@@ -71,8 +71,8 @@ typedef struct {
     int color_preprocessor[3]; // RGB for preprocessor
     int color_operator[3];     // RGB for operators
     int color_function[3];     // RGB for function calls
-    
-    bool loaded;          // Whether this syntax definition is loaded
+
+    bool loaded; // Whether this syntax definition is loaded
 } SyntaxDef;
 
 // Initialize syntax highlighting system and load all syntax definitions
@@ -88,14 +88,15 @@ SyntaxDef *syntax_get_for_file(const char *filename);
 // lines: array of all lines in the file (can be NULL for single-line mode)
 // num_lines: total number of lines in the file (0 for single-line mode)
 // line_index: index of current line being highlighted (0 for single-line mode)
-void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax, 
-                          int *in_block_comment, int y, int x, int max_width,
-                          char **lines, int num_lines, int line_index);
+void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax, int *in_block_comment,
+                           int y, int x, int max_width, char **lines, int num_lines,
+                           int line_index);
 
 // Get initial block comment state by scanning backwards from current_line
 int syntax_scan_line_state(const char *line, const SyntaxDef *syntax, int in_block_comment);
 
-int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax);
+int get_initial_block_comment_state(char **lines, int num_lines, int current_line,
+                                    SyntaxDef *syntax);
 
 // Initialize ncurses color pairs for syntax highlighting
 void syntax_init_colors(void);

@@ -15,7 +15,7 @@ typedef struct {
     uint16_t flags;
     uint16_t extended_flags;
     unsigned char sha1[GIT_SHA1_SIZE];
-    char *path;  // Relative to repo root
+    char *path; // Relative to repo root
 } GitIndexEntry;
 
 // Simple hash map for index entries
@@ -34,6 +34,6 @@ bool git_index_refresh(GitRepository *repo);
 void git_index_free(IndexMap *map);
 
 // Lookup entry by path
-GitIndexEntry* git_index_lookup(IndexMap *map, const char *path);
+GitIndexEntry *git_index_lookup(IndexMap *map, const char *path);
 
 #endif // GIT_INDEX_H

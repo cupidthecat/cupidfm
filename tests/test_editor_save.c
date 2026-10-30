@@ -8,6 +8,7 @@
 volatile sig_atomic_t is_editing = 1;
 
 static TextBuffer buffer;
+
 static void setup(void) {
     buffer = (TextBuffer){.num_lines = 2, .capacity = 2};
     buffer.lines = calloc(2, sizeof(char *));
@@ -20,8 +21,10 @@ static void setup(void) {
     g_editor_cursor_col = 0;
     g_editor_dirty = false;
 }
+
 static void teardown(void) {
-    for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
+    for (int i = 0; i < buffer.num_lines; ++i)
+        free(buffer.lines[i]);
     free(buffer.lines);
     free(buffer.eols);
     g_editor_buffer = NULL;
@@ -30,12 +33,22 @@ static void teardown(void) {
 char g_editor_path[MAX_PATH_LENGTH];
 static int save_notifications;
 static char opened_path[MAX_PATH_LENGTH * 2];
-void plugins_request_reload(PluginManager *pm) { (void)pm; }
-void plugins_request_select(PluginManager *pm, const char *name) { (void)pm; (void)name; }
+
+void plugins_request_reload(PluginManager *pm) {
+    (void)pm;
+}
+
+void plugins_request_select(PluginManager *pm, const char *name) {
+    (void)pm;
+    (void)name;
+}
 
 void plugins_notify_editor_save(PluginManager *pm, const char *path) {
-    (void)pm; (void)path; ++save_notifications;
+    (void)pm;
+    (void)path;
+    ++save_notifications;
 }
+
 int main(void) {
     setup();
     strcpy(g_editor_path, "/original.txt");
@@ -49,21 +62,27 @@ int main(void) {
     oversized[sizeof(oversized) - 1] = 0;
     assert(!editor_resolve_save_as(oversized, opened_path));
     strcpy(g_editor_path, "/dev/full");
-    g_editor_dirty = true; g_editor_dirty_clear_requested = false;
+    g_editor_dirty = true;
+    g_editor_dirty_clear_requested = false;
     assert(!editor_save_current((PluginManager *)&buffer));
     assert(g_editor_dirty && !g_editor_dirty_clear_requested && !save_notifications);
     char path[] = "/tmp/cupidfm-save-XXXXXX";
-    int fd = mkstemp(path); assert(fd >= 0); close(fd);
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    close(fd);
     strcpy(g_editor_path, path);
     assert(editor_save_current((PluginManager *)&buffer));
     assert(!g_editor_dirty && g_editor_dirty_clear_requested && save_notifications == 1);
-    FILE *f = fopen(path, "r"); assert(f);
-    char result[64] = {0}; assert(fread(result, 1, sizeof(result) - 1, f) == 8);
+    FILE *f = fopen(path, "r");
+    assert(f);
+    char result[64] = {0};
+    assert(fread(result, 1, sizeof(result) - 1, f) == 8);
     assert(strcmp(result, "abc\ndef\n") == 0);
     fclose(f);
     g_editor_dirty = true;
     assert(editor_save_as(NULL, g_editor_path));
     assert(strcmp(g_editor_path, path) == 0 && !g_editor_dirty);
-    unlink(path); teardown();
+    unlink(path);
+    teardown();
     puts("Editor save checks passed");
 }

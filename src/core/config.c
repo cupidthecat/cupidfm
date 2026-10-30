@@ -1,13 +1,13 @@
 // config.c
 #include "config.h"
 #include "cupidconf.h"
-#include <strings.h>
-#include <string.h>
+#include <ctype.h>
+#include <errno.h>
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <ncurses.h>
-#include <errno.h>
+#include <string.h>
+#include <strings.h>
 
 /**
  * Parses the key value from the configuration file.
@@ -27,38 +27,38 @@ void load_default_keybindings(KeyBindings *kb) {
     kb->key_exit = KEY_F(1);
 
     // File operations
-    kb->key_edit = 5;    // Ctrl+E
-    kb->key_copy = 3;    // Ctrl+C
-    kb->key_paste = 22;  // Ctrl+V
-    kb->key_cut = 24;    // Ctrl+X
-    kb->key_delete = 4;  // Ctrl+D
-    kb->key_rename = 18; // Ctrl+R
-    kb->key_new = 14;    // Ctrl+N
-    kb->key_save = 19;   // Ctrl+S
-    kb->key_select_all = 1; // Ctrl+A (Select all in current view)
-    kb->key_new_dir = 'N'; // Shift+N
-    kb->key_search = 6;  // Ctrl+F
-    kb->key_info = 20;   // Ctrl+T (Quick file info)
-    kb->key_undo = 26;   // Ctrl+Z (Undo last file op)
-    kb->key_redo = 25;   // Ctrl+Y (Redo last file op)
+    kb->key_edit = 5;         // Ctrl+E
+    kb->key_copy = 3;         // Ctrl+C
+    kb->key_paste = 22;       // Ctrl+V
+    kb->key_cut = 24;         // Ctrl+X
+    kb->key_delete = 4;       // Ctrl+D
+    kb->key_rename = 18;      // Ctrl+R
+    kb->key_new = 14;         // Ctrl+N
+    kb->key_save = 19;        // Ctrl+S
+    kb->key_select_all = 1;   // Ctrl+A (Select all in current view)
+    kb->key_new_dir = 'N';    // Shift+N
+    kb->key_search = 6;       // Ctrl+F
+    kb->key_info = 20;        // Ctrl+T (Quick file info)
+    kb->key_undo = 26;        // Ctrl+Z (Undo last file op)
+    kb->key_redo = 25;        // Ctrl+Y (Redo last file op)
     kb->key_permissions = 16; // Ctrl+P (Edit permissions)
-    kb->key_console = 15; // Ctrl+O (Open console)
-    kb->key_help = 'H';  // Help menu (accepts both 'h' and 'H' in main.c)
+    kb->key_console = 15;     // Ctrl+O (Open console)
+    kb->key_help = 'H';       // Help menu (accepts both 'h' and 'H' in main.c)
 
     // Editing keys
     kb->edit_up = KEY_UP;
     kb->edit_down = KEY_DOWN;
     kb->edit_left = KEY_LEFT;
     kb->edit_right = KEY_RIGHT;
-    kb->edit_save = 19;  // Ctrl+S
-    kb->edit_quit = 17;  // Ctrl+Q
+    kb->edit_save = 19; // Ctrl+S
+    kb->edit_quit = 17; // Ctrl+Q
     kb->edit_backspace = KEY_BACKSPACE;
-    kb->edit_copy = 3;   // Ctrl+C
-    kb->edit_cut = 24;   // Ctrl+X
-    kb->edit_paste = 22; // Ctrl+V
+    kb->edit_copy = 3;       // Ctrl+C
+    kb->edit_cut = 24;       // Ctrl+X
+    kb->edit_paste = 22;     // Ctrl+V
     kb->edit_select_all = 1; // Ctrl+A
-    kb->edit_undo = 26;  // Ctrl+Z
-    kb->edit_redo = 25;  // Ctrl+Y
+    kb->edit_undo = 26;      // Ctrl+Z
+    kb->edit_redo = 25;      // Ctrl+Y
     kb->edit_uppercase = 21; // Ctrl+U
 
     // Default label width
@@ -66,7 +66,8 @@ void load_default_keybindings(KeyBindings *kb) {
 }
 
 static void keycode_to_config_string(int keycode, char *buf, size_t buf_size) {
-    if (!buf || buf_size == 0) return;
+    if (!buf || buf_size == 0)
+        return;
 
     // Function keys: KEY_F(1) is typically 265.
     if (keycode >= KEY_F(1) && keycode <= KEY_F(63)) {
@@ -82,12 +83,23 @@ static void keycode_to_config_string(int keycode, char *buf, size_t buf_size) {
 
     // Common ncurses named keys we support in parse_key().
     switch (keycode) {
-        case KEY_UP:        snprintf(buf, buf_size, "KEY_UP"); return;
-        case KEY_DOWN:      snprintf(buf, buf_size, "KEY_DOWN"); return;
-        case KEY_LEFT:      snprintf(buf, buf_size, "KEY_LEFT"); return;
-        case KEY_RIGHT:     snprintf(buf, buf_size, "KEY_RIGHT"); return;
-        case KEY_BACKSPACE: snprintf(buf, buf_size, "KEY_BACKSPACE"); return;
-        default: break;
+        case KEY_UP:
+            snprintf(buf, buf_size, "KEY_UP");
+            return;
+        case KEY_DOWN:
+            snprintf(buf, buf_size, "KEY_DOWN");
+            return;
+        case KEY_LEFT:
+            snprintf(buf, buf_size, "KEY_LEFT");
+            return;
+        case KEY_RIGHT:
+            snprintf(buf, buf_size, "KEY_RIGHT");
+            return;
+        case KEY_BACKSPACE:
+            snprintf(buf, buf_size, "KEY_BACKSPACE");
+            return;
+        default:
+            break;
     }
 
     if (keycode == '\t') {
@@ -119,13 +131,16 @@ static void write_kv_line(FILE *fp, const char *key, int keycode, const char *co
     }
 }
 
-bool write_default_config_file(const char *filepath, const KeyBindings *kb, char *error_buffer, size_t buffer_size) {
-    if (!filepath || !*filepath || !kb) return false;
+bool write_default_config_file(const char *filepath, const KeyBindings *kb, char *error_buffer,
+                               size_t buffer_size) {
+    if (!filepath || !*filepath || !kb)
+        return false;
 
     FILE *fp = fopen(filepath, "w");
     if (!fp) {
         if (error_buffer && buffer_size > 0) {
-            snprintf(error_buffer, buffer_size, "Failed to open config for writing: %s\n", filepath);
+            snprintf(error_buffer, buffer_size, "Failed to open config for writing: %s\n",
+                     filepath);
         }
         return false;
     }
@@ -188,24 +203,23 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     return ok;
 }
 
-int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, size_t buffer_size) {
+int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer,
+                     size_t buffer_size) {
     // Clear error_buffer
     if (error_buffer && buffer_size > 0) {
         error_buffer[0] = '\0';
     }
-    
+
     // 1) Detect missing vs unreadable config file. We only auto-generate a config on missing file.
     FILE *probe = fopen(filepath, "r");
     if (!probe) {
         if (errno == ENOENT) {
             snprintf(error_buffer, buffer_size,
-                     "Configuration file not found: %s\nUsing defaults.\n",
-                     filepath);
+                     "Configuration file not found: %s\nUsing defaults.\n", filepath);
             return 1; // Missing file
         }
         snprintf(error_buffer, buffer_size,
-                 "Unable to read configuration file: %s\nUsing defaults.\n",
-                 filepath);
+                 "Unable to read configuration file: %s\nUsing defaults.\n", filepath);
         return 2; // Unreadable for some other reason
     }
     fclose(probe);
@@ -214,8 +228,7 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
     cupidconf_t *conf = cupidconf_load(filepath);
     if (!conf) {
         snprintf(error_buffer, buffer_size,
-                 "Failed to load configuration file: %s\nUsing defaults.\n",
-                 filepath);
+                 "Failed to load configuration file: %s\nUsing defaults.\n", filepath);
         return 3;
     }
 
@@ -223,24 +236,24 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
     //    We read them as strings, then parse them with parse_key.
     struct {
         const char *cfg_key_name; // name in the config file
-        int        *kb_field;     // pointer to the KeyBindings field
+        int *kb_field;            // pointer to the KeyBindings field
     } table[] = {
-        {"key_up",      &kb->key_up},
-        {"key_down",    &kb->key_down},
-        {"key_left",    &kb->key_left},
-        {"key_right",   &kb->key_right},
-        {"key_tab",     &kb->key_tab},
-        {"key_exit",    &kb->key_exit},
-        {"key_edit",    &kb->key_edit},
-        {"key_copy",    &kb->key_copy},
-        {"key_paste",   &kb->key_paste},
-        {"key_cut",     &kb->key_cut},
-        {"key_delete",  &kb->key_delete},
-        {"key_rename",  &kb->key_rename},
-        {"key_new",     &kb->key_new},
-        {"key_save",    &kb->key_save},
+        {"key_up", &kb->key_up},
+        {"key_down", &kb->key_down},
+        {"key_left", &kb->key_left},
+        {"key_right", &kb->key_right},
+        {"key_tab", &kb->key_tab},
+        {"key_exit", &kb->key_exit},
+        {"key_edit", &kb->key_edit},
+        {"key_copy", &kb->key_copy},
+        {"key_paste", &kb->key_paste},
+        {"key_cut", &kb->key_cut},
+        {"key_delete", &kb->key_delete},
+        {"key_rename", &kb->key_rename},
+        {"key_new", &kb->key_new},
+        {"key_save", &kb->key_save},
         {"key_new_dir", &kb->key_new_dir},
-        {"key_search",  &kb->key_search},
+        {"key_search", &kb->key_search},
         {"key_select_all", &kb->key_select_all},
         {"key_info", &kb->key_info},
         {"key_undo", &kb->key_undo},
@@ -249,19 +262,19 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         {"key_console", &kb->key_console},
         {"key_help", &kb->key_help},
 
-        {"edit_up",        &kb->edit_up},
-        {"edit_down",      &kb->edit_down},
-        {"edit_left",      &kb->edit_left},
-        {"edit_right",     &kb->edit_right},
-        {"edit_save",      &kb->edit_save},
-        {"edit_quit",      &kb->edit_quit},
+        {"edit_up", &kb->edit_up},
+        {"edit_down", &kb->edit_down},
+        {"edit_left", &kb->edit_left},
+        {"edit_right", &kb->edit_right},
+        {"edit_save", &kb->edit_save},
+        {"edit_quit", &kb->edit_quit},
         {"edit_backspace", &kb->edit_backspace},
-        {"edit_copy",      &kb->edit_copy},
-        {"edit_cut",       &kb->edit_cut},
-        {"edit_paste",     &kb->edit_paste},
+        {"edit_copy", &kb->edit_copy},
+        {"edit_cut", &kb->edit_cut},
+        {"edit_paste", &kb->edit_paste},
         {"edit_select_all", &kb->edit_select_all},
-        {"edit_undo",      &kb->edit_undo},
-        {"edit_redo",      &kb->edit_redo},
+        {"edit_undo", &kb->edit_undo},
+        {"edit_redo", &kb->edit_redo},
         {"edit_uppercase", &kb->edit_uppercase},
         {NULL, NULL} // sentinel
     };
@@ -281,10 +294,8 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
             // If you track line numbers or want an error
             errors++;
             if (error_buffer && (strlen(error_buffer) + 128 < buffer_size)) {
-                snprintf(error_buffer + strlen(error_buffer),
-                         buffer_size - strlen(error_buffer),
-                         "Invalid value for %s: %s\n",
-                         table[i].cfg_key_name, val);
+                snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
+                         "Invalid value for %s: %s\n", table[i].cfg_key_name, val);
             }
             continue;
         }
@@ -307,8 +318,7 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
         } else {
             errors++;
             if (error_buffer && (strlen(error_buffer) + 128 < buffer_size)) {
-                snprintf(error_buffer + strlen(error_buffer),
-                         buffer_size - strlen(error_buffer),
+                snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
                          "Invalid label_width: %s\n", label_val);
             }
         }
@@ -333,10 +343,14 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer, 
  */
 static int parse_key(const char *val) {
     // Check for special ncurses keys
-    if (strcasecmp(val, "KEY_UP") == 0)        return KEY_UP;
-    if (strcasecmp(val, "KEY_DOWN") == 0)      return KEY_DOWN;
-    if (strcasecmp(val, "KEY_LEFT") == 0)      return KEY_LEFT;
-    if (strcasecmp(val, "KEY_RIGHT") == 0)     return KEY_RIGHT;
+    if (strcasecmp(val, "KEY_UP") == 0)
+        return KEY_UP;
+    if (strcasecmp(val, "KEY_DOWN") == 0)
+        return KEY_DOWN;
+    if (strcasecmp(val, "KEY_LEFT") == 0)
+        return KEY_LEFT;
+    if (strcasecmp(val, "KEY_RIGHT") == 0)
+        return KEY_RIGHT;
 
     if (strncasecmp(val, "KEY_F(", 6) == 0) {
         char *end;
@@ -347,9 +361,7 @@ static int parse_key(const char *val) {
         return -1;
     }
 
-    if (strcasecmp(val, "KEY_BACKSPACE") == 0 ||
-        strcasecmp(val, "Backspace") == 0)
-    {
+    if (strcasecmp(val, "KEY_BACKSPACE") == 0 || strcasecmp(val, "Backspace") == 0) {
         return KEY_BACKSPACE;
     }
 
@@ -366,14 +378,16 @@ static int parse_key(const char *val) {
     if (val[0] == '^' && val[1] != '\0' && val[2] == '\0') {
         char c = toupper((unsigned char)val[1]);
         if (c >= 'A' && c <= 'Z') {
-            return c - 'A' + 1;  // ASCII control code
+            return c - 'A' + 1; // ASCII control code
         }
         return -1; // Invalid
     }
 
     // Support "Tab" and "Space"
-    if (strcasecmp(val, "Tab") == 0) return '\t';
-    if (strcasecmp(val, "Space") == 0) return ' ';
+    if (strcasecmp(val, "Tab") == 0)
+        return '\t';
+    if (strcasecmp(val, "Space") == 0)
+        return ' ';
 
     // Handle Shift-modified keys (e.g., "Shift+A" -> 'A')
     if (strncasecmp(val, "Shift+", 6) == 0) {
@@ -392,17 +406,28 @@ static int parse_key(const char *val) {
         }
 
         // Handle common Shift-symbol keys
-        if (strcmp(val + 6, "Minus") == 0) return '_';
-        if (strcmp(val + 6, "Equals") == 0) return '+';
-        if (strcmp(val + 6, "LeftBracket") == 0) return '{';
-        if (strcmp(val + 6, "RightBracket") == 0) return '}';
-        if (strcmp(val + 6, "Semicolon") == 0) return ':';
-        if (strcmp(val + 6, "Apostrophe") == 0) return '"';
-        if (strcmp(val + 6, "Comma") == 0) return '<';
-        if (strcmp(val + 6, "Period") == 0) return '>';
-        if (strcmp(val + 6, "Slash") == 0) return '?';
-        if (strcmp(val + 6, "Backslash") == 0) return '|';
-        if (strcmp(val + 6, "Grave") == 0) return '~';
+        if (strcmp(val + 6, "Minus") == 0)
+            return '_';
+        if (strcmp(val + 6, "Equals") == 0)
+            return '+';
+        if (strcmp(val + 6, "LeftBracket") == 0)
+            return '{';
+        if (strcmp(val + 6, "RightBracket") == 0)
+            return '}';
+        if (strcmp(val + 6, "Semicolon") == 0)
+            return ':';
+        if (strcmp(val + 6, "Apostrophe") == 0)
+            return '"';
+        if (strcmp(val + 6, "Comma") == 0)
+            return '<';
+        if (strcmp(val + 6, "Period") == 0)
+            return '>';
+        if (strcmp(val + 6, "Slash") == 0)
+            return '?';
+        if (strcmp(val + 6, "Backslash") == 0)
+            return '|';
+        if (strcmp(val + 6, "Grave") == 0)
+            return '~';
 
         return -1; // Invalid Shift-modified key
     }

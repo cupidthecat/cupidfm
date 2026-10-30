@@ -2,8 +2,8 @@
 #ifndef UNDO_H
 #define UNDO_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum {
     UNDO_OP_NONE = 0,
@@ -36,7 +36,8 @@ void undo_state_clear(UndoState *st);
 
 // Replace current undo op and clear redo. Takes ownership by duplicating strings.
 bool undo_state_set_single(UndoState *st, UndoOpKind kind, const char *src, const char *dst);
-bool undo_state_set_multi(UndoState *st, UndoOpKind kind, const char *const *src, const char *const *dst, size_t n);
+bool undo_state_set_multi(UndoState *st, UndoOpKind kind, const char *const *src,
+                          const char *const *dst, size_t n);
 // Takes ownership of items/src/dst strings as provided (no additional strdup).
 bool undo_state_set_owned(UndoState *st, UndoOpKind kind, UndoItem *items, size_t n);
 

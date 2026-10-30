@@ -2,10 +2,10 @@
 #ifndef PLUGINS_H
 #define PLUGINS_H
 
-#include <stdbool.h>
-#include <stddef.h> // size_t
 #include "globals.h" // MAX_PATH_LENGTH
 #include "vector.h"
+#include <stdbool.h>
+#include <stddef.h> // size_t
 
 typedef struct PluginManager PluginManager;
 
@@ -17,7 +17,7 @@ typedef struct {
     bool select_all_active;
     bool search_active;
     const char *search_query;
-    int active_pane; // 1=directory, 2=preview
+    int active_pane;    // 1=directory, 2=preview
     const Vector *view; // current visible listing (state->files or state->search_files)
 } PluginsContext;
 
@@ -35,8 +35,8 @@ typedef enum {
 
 typedef struct {
     PluginFileOpKind kind;
-    size_t count;     // number of paths (for copy/move/delete/rename)
-    char **paths;     // owned by caller; free with plugins_fileop_free()
+    size_t count;               // number of paths (for copy/move/delete/rename)
+    char **paths;               // owned by caller; free with plugins_fileop_free()
     char arg1[MAX_PATH_LENGTH]; // dst_dir (copy/move) | new_name (rename) | name/path (mkdir/touch)
 } PluginFileOp;
 
@@ -88,6 +88,7 @@ void plugins_request_select(PluginManager *pm, const char *name);
 void plugins_notify_editor_open(PluginManager *pm, const char *path);
 void plugins_notify_editor_change(PluginManager *pm, int line, int col, const char *text);
 void plugins_notify_editor_save(PluginManager *pm, const char *path);
-void plugins_notify_editor_cursor_move(PluginManager *pm, int old_line, int old_col, int new_line, int new_col);
+void plugins_notify_editor_cursor_move(PluginManager *pm, int old_line, int old_col, int new_line,
+                                       int new_col);
 
 #endif // PLUGINS_H

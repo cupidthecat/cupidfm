@@ -25,16 +25,10 @@ void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas);
 void sync_selection_from_active(AppState *state, CursorAndSlice *cas);
 
 SIZE find_loaded_index_by_name(Vector *files, const char *name);
-SIZE find_index_by_name_lazy(Vector *files,
-                            const char *dir,
-                            CursorAndSlice *cas,
-                            LazyLoadState *lazy_load,
-                            const char *name);
+SIZE find_index_by_name_lazy(Vector *files, const char *dir, CursorAndSlice *cas,
+                             LazyLoadState *lazy_load, const char *name);
 
-bool prompt_fuzzy_search(AppState *state,
-                         CursorAndSlice *cas,
-                         WINDOW *win,
-                         WINDOW *dir_window,
+bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WINDOW *dir_window,
                          WINDOW *preview_window);
 
 #endif // SEARCH_H

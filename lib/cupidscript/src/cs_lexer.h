@@ -12,8 +12,8 @@ typedef enum {
     TK_FLOAT,
     TK_STR,
     TK_RAW_STR,
-    TK_STR_PART,    // raw string chunk inside interpolated string
-    TK_STR_END,     // end of interpolated string
+    TK_STR_PART,     // raw string chunk inside interpolated string
+    TK_STR_END,      // end of interpolated string
     TK_INTERP_START, // ${
     TK_INTERP_END,   // }
 
@@ -55,42 +55,56 @@ typedef enum {
     TK_NIL,
 
     // punctuation
-    TK_LPAREN, TK_RPAREN,
-    TK_LBRACKET, TK_RBRACKET,
-    TK_LBRACE, TK_RBRACE,
+    TK_LPAREN,
+    TK_RPAREN,
+    TK_LBRACKET,
+    TK_RBRACKET,
+    TK_LBRACE,
+    TK_RBRACE,
     TK_HASH_LBRACE, // #{
     TK_COMMA,
     TK_SEMI,
     TK_DOT,
     TK_COLON,
-    TK_WALRUS,      // :=
+    TK_WALRUS, // :=
     TK_QMARK,
-    TK_QQ,          // ??
-    TK_QDOT,        // ?.
-    TK_DOTDOTDOT,   // ...
+    TK_QQ,        // ??
+    TK_QDOT,      // ?.
+    TK_DOTDOTDOT, // ...
 
     // operators
-    TK_ASSIGN,     // =
-    TK_PLUSEQ, TK_MINUSEQ, TK_STAREQ, TK_SLASHEQ,
-    TK_PLUS, TK_MINUS, TK_STAR, TK_SLASH, TK_PERCENT,
+    TK_ASSIGN, // =
+    TK_PLUSEQ,
+    TK_MINUSEQ,
+    TK_STAREQ,
+    TK_SLASHEQ,
+    TK_PLUS,
+    TK_MINUS,
+    TK_STAR,
+    TK_SLASH,
+    TK_PERCENT,
     TK_BANG,
-    TK_EQ, TK_NE,
-    TK_LT, TK_LE,
-    TK_GT, TK_GE,
-    TK_ANDAND, TK_OROR,
-    TK_AMP,        // &
-    TK_BAR,        // |
-    TK_CARET,      // ^
-    TK_ARROW,      // =>
-    TK_PIPE,       // |>
+    TK_EQ,
+    TK_NE,
+    TK_LT,
+    TK_LE,
+    TK_GT,
+    TK_GE,
+    TK_ANDAND,
+    TK_OROR,
+    TK_AMP,         // &
+    TK_BAR,         // |
+    TK_CARET,       // ^
+    TK_ARROW,       // =>
+    TK_PIPE,        // |>
     TK_PLACEHOLDER, // _
-    TK_RANGE,      // ..
-    TK_RANGE_INC   // ..=
+    TK_RANGE,       // ..
+    TK_RANGE_INC    // ..=
 } token_type;
 
 typedef struct {
     token_type type;
-    const char* start;
+    const char *start;
     size_t len;
     long long int_val;
     double float_val;
@@ -99,16 +113,16 @@ typedef struct {
 } token;
 
 typedef struct {
-    const char* src;
+    const char *src;
     size_t pos;
     int line;
     int col;
     token current;
-    int mode;          // 0=normal, 1=string, 2=interp, 3=string_end, 4=interp_start
-    int interp_depth;  // brace depth inside ${...}
+    int mode;         // 0=normal, 1=string, 2=interp, 3=string_end, 4=interp_start
+    int interp_depth; // brace depth inside ${...}
 } lexer;
 
-void  lex_init(lexer* L, const char* src);
-token lex_next(lexer* L);
+void lex_init(lexer *L, const char *src);
+token lex_next(lexer *L);
 
 #endif

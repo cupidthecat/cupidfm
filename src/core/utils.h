@@ -1,27 +1,29 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <stdbool.h>
-#include <ncurses.h>
-#include "vector.h"
 #include "vecstack.h"
+#include "vector.h"
+#include <ncurses.h>
+#include <stdbool.h>
 #define SIZE int
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
-__attribute__((noreturn))
-void die(int r, const char *format, ...);
+__attribute__((noreturn)) void die(int r, const char *format, ...);
 bool is_directory(const char *path, const char *filename);
 
 void create_file(const char *filename);
 void display_files(const char *directory);
 void preview_file(const char *filename);
-void change_directory(const char *new_directory, const char ***files, int *num_files, int *selected_entry, int *start_entry, int *end_entry);
+void change_directory(const char *new_directory, const char ***files, int *num_files,
+                      int *selected_entry, int *start_entry, int *end_entry);
 void path_join(char *result, const char *base, const char *extra);
 void reload_directory(Vector *files, const char *current_directory);
-void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files);
-void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas, size_t *files_loaded, size_t total_files);
+void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded,
+                           size_t *total_files);
+void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas,
+                               size_t *files_loaded, size_t total_files);
 
 // short cut utils
 bool copy_to_clipboard(const char *path);
@@ -53,6 +55,7 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len);
 bool confirm_delete(const char *path, bool *should_delete);
 bool rename_item(WINDOW *notifwin, const char *old_path, char *out_new_path, size_t out_len);
 bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, size_t out_len);
-bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_path, size_t out_len);
+bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_path,
+                          size_t out_len);
 bool change_permissions(WINDOW *win, const char *path);
 #endif // UTILS_H

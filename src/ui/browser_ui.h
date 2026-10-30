@@ -3,7 +3,7 @@
 
 #include <ncurses.h>
 
-#include "utils.h"  // SIZE, MIN/MAX, path_join, etc.
+#include "utils.h" // SIZE, MIN/MAX, path_join, etc.
 #include "vector.h"
 
 typedef struct {
@@ -13,19 +13,13 @@ typedef struct {
     SIZE num_files;
 } CursorAndSlice;
 
-void draw_directory_window(WINDOW *window,
-                           const char *directory,
-                           Vector *files_vector,
+void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas);
 
-void draw_preview_window(WINDOW *window,
-                         const char *current_directory,
-                         const char *selected_entry,
+void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry,
                          int start_line);
 
-void draw_preview_window_path(WINDOW *window,
-                              const char *full_path,
-                              const char *display_name,
+void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name,
                               int start_line);
 
 void fix_cursor(CursorAndSlice *cas);

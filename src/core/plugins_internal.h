@@ -2,10 +2,10 @@
 #ifndef PLUGINS_INTERNAL_H
 #define PLUGINS_INTERNAL_H
 
-#include "plugins.h"
 #include "cs_value.h"
 #include "cs_vm.h"
 #include "globals.h"
+#include "plugins.h"
 #include "vector.h"
 
 // Plugin structure
@@ -99,12 +99,9 @@ struct PluginManager {
 
     // Async prompt UI (modal)
     bool ui_pending;
-    enum {
-        UI_KIND_NONE = 0,
-        UI_KIND_PROMPT,
-        UI_KIND_CONFIRM,
-        UI_KIND_MENU
-    } ui_kind;
+
+    enum { UI_KIND_NONE = 0, UI_KIND_PROMPT, UI_KIND_CONFIRM, UI_KIND_MENU } ui_kind;
+
     char ui_title[128];
     char ui_msg[512];
     char ui_initial[256];
@@ -117,7 +114,8 @@ struct PluginManager {
 };
 
 // Modal UI functions (from plugin_ui.c)
-cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg, const char *initial);
+cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg,
+                                  const char *initial);
 bool plugin_modal_confirm(const char *title, const char *msg);
 int plugin_modal_menu(const char *title, char **items, size_t count);
 void plugin_menu_items_free(char **items, size_t count);

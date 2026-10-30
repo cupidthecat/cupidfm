@@ -1,8 +1,8 @@
 #ifndef CUPIDSCRIPT_H
 #define CUPIDSCRIPT_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,121 +30,124 @@ typedef enum {
 
 typedef struct {
     cs_type type;
+
     union {
-        int      b;
-        int64_t  i;
-        double   f;
-        void*    p;   // string*, func*, native*
+        int b;
+        int64_t i;
+        double f;
+        void *p; // string*, func*, native*
     } as;
 } cs_value;
 
-typedef int (*cs_native_fn)(cs_vm* vm, void* userdata, int argc, const cs_value* argv, cs_value* out);
+typedef int (*cs_native_fn)(cs_vm *vm, void *userdata, int argc, const cs_value *argv,
+                            cs_value *out);
 
 // VM lifecycle
-cs_vm* cs_vm_new(void);
-void   cs_vm_free(cs_vm* vm);
+cs_vm *cs_vm_new(void);
+void cs_vm_free(cs_vm *vm);
 
 // Error handling helpers (exposed for CLI tooling and CupidFM integration)
 // Returns the last error message as a C string. If there is no error, returns "".
-const char* cs_vm_last_error(cs_vm* vm);
+const char *cs_vm_last_error(cs_vm *vm);
 // Set a VM-local error message (allocates its own storage).
-void        cs_error(cs_vm* vm, const char* msg);
+void cs_error(cs_vm *vm, const char *msg);
 
 // Running code
-int cs_vm_run_file(cs_vm* vm, const char* path);
-int cs_vm_run_string(cs_vm* vm, const char* code, const char* virtual_name);
+int cs_vm_run_file(cs_vm *vm, const char *path);
+int cs_vm_run_string(cs_vm *vm, const char *code, const char *virtual_name);
 // Module loader: executes a file once and returns its exports map.
 // Path should generally be absolute or already resolved by the host.
-int cs_vm_require_module(cs_vm* vm, const char* path, cs_value* exports_out);
+int cs_vm_require_module(cs_vm *vm, const char *path, cs_value *exports_out);
 // Collect cycles through lists, maps, sets, and tuples. Returns objects collected.
-size_t cs_vm_collect_cycles(cs_vm* vm);
+size_t cs_vm_collect_cycles(cs_vm *vm);
 
 // GC auto-collect configuration
-void cs_vm_set_gc_threshold(cs_vm* vm, size_t threshold);     // collect when tracked >= threshold
-void cs_vm_set_gc_alloc_trigger(cs_vm* vm, size_t interval); // collect every N allocations
+void cs_vm_set_gc_threshold(cs_vm *vm, size_t threshold);    // collect when tracked >= threshold
+void cs_vm_set_gc_alloc_trigger(cs_vm *vm, size_t interval); // collect every N allocations
 
 // Calling functions defined in script
-int cs_call(cs_vm* vm, const char* func_name, int argc, const cs_value* argv, cs_value* out);
-int cs_call_value(cs_vm* vm, cs_value callee, int argc, const cs_value* argv, cs_value* out);
+int cs_call(cs_vm *vm, const char *func_name, int argc, const cs_value *argv, cs_value *out);
+int cs_call_value(cs_vm *vm, cs_value callee, int argc, const cs_value *argv, cs_value *out);
 
 // Register native functions (for CupidFM to expose API)
-void cs_register_native(cs_vm* vm, const char* name, cs_native_fn fn, void* userdata);
+void cs_register_native(cs_vm *vm, const char *name, cs_native_fn fn, void *userdata);
 // Register global values (constants, etc.)
-void cs_register_global(cs_vm* vm, const char* name, cs_value value);
+void cs_register_global(cs_vm *vm, const char *name, cs_value value);
 
 // Error text (valid until next VM call that sets it)
-const char* cs_last_error(const cs_vm* vm);
+const char *cs_last_error(const cs_vm *vm);
 
 // Helpers for building values
 cs_value cs_nil(void);
 cs_value cs_bool(int v);
 cs_value cs_int(int64_t v);
 cs_value cs_float(double v);
-cs_value cs_str(cs_vm* vm, const char* s); // returns an owned, reference-counted string
-cs_value cs_str_take(cs_vm* vm, char* owned, uint64_t len); // takes ownership of malloc'd string
-cs_value cs_list(cs_vm* vm);
-cs_value cs_map(cs_vm* vm);
-cs_value cs_set(cs_vm* vm);
-cs_value cs_strbuf(cs_vm* vm);
-cs_value cs_bytes(cs_vm* vm, const uint8_t* data, size_t len);
-cs_value cs_bytes_take(cs_vm* vm, uint8_t* owned, size_t len);
+cs_value cs_str(cs_vm *vm, const char *s); // returns an owned, reference-counted string
+cs_value cs_str_take(cs_vm *vm, char *owned, uint64_t len); // takes ownership of malloc'd string
+cs_value cs_list(cs_vm *vm);
+cs_value cs_map(cs_vm *vm);
+cs_value cs_set(cs_vm *vm);
+cs_value cs_strbuf(cs_vm *vm);
+cs_value cs_bytes(cs_vm *vm, const uint8_t *data, size_t len);
+cs_value cs_bytes_take(cs_vm *vm, uint8_t *owned, size_t len);
 
 // Tuple builders for hosts; script field assignment remains immutable.
 // Setters return 0 on success, -1 for invalid input, full tuples, or allocation failure.
 // Named setters update an existing field or name the first unnamed slot.
 // Getters return retained values; release them with cs_value_release.
-cs_value cs_tuple(cs_vm* vm, size_t field_count); // Create empty tuple
+cs_value cs_tuple(cs_vm *vm, size_t field_count); // Create empty tuple
 int cs_tuple_set_positional(cs_value tuple_val, size_t index, cs_value value);
-int cs_tuple_set_named(cs_value tuple_val, const char* name, cs_value value);
+int cs_tuple_set_named(cs_value tuple_val, const char *name, cs_value value);
 cs_value cs_tuple_get_positional(cs_value tuple_val, size_t index);
-cs_value cs_tuple_get_named(cs_value tuple_val, const char* name);
+cs_value cs_tuple_get_named(cs_value tuple_val, const char *name);
 size_t cs_tuple_len(cs_value tuple_val);
-const char* cs_tuple_field_name(cs_value tuple_val, size_t index); // Get field name at index (NULL if positional)
+const char *cs_tuple_field_name(cs_value tuple_val,
+                                size_t index); // Get field name at index (NULL if positional)
 
 // Value lifetime helpers (useful for hosts storing callbacks/values)
 cs_value cs_value_copy(cs_value v);
-void     cs_value_release(cs_value v);
+void cs_value_release(cs_value v);
 
 // Introspection helpers (optional)
-cs_type  cs_typeof(cs_value v);
-const char* cs_type_name(cs_type t);
+cs_type cs_typeof(cs_value v);
+const char *cs_type_name(cs_type t);
 
 // Borrow the string buffer; valid while the corresponding value remains alive.
-const char* cs_to_cstr(cs_value v);
+const char *cs_to_cstr(cs_value v);
 
 // Capture current call stack (for error objects)
-cs_value cs_capture_stack_trace(cs_vm* vm);
+cs_value cs_capture_stack_trace(cs_vm *vm);
 
 // C API for list operations (for hosts to manipulate lists)
 size_t cs_list_len(cs_value list_val);
-cs_value cs_list_get(cs_value list_val, size_t index);  // returns cs_nil() if out of bounds
-int cs_list_set(cs_value list_val, size_t index, cs_value value);  // returns 0 on success
-int cs_list_push(cs_value list_val, cs_value value);  // returns 0 on success
-cs_value cs_list_pop(cs_value list_val);  // returns cs_nil() if empty
+cs_value cs_list_get(cs_value list_val, size_t index); // returns cs_nil() if out of bounds
+int cs_list_set(cs_value list_val, size_t index, cs_value value); // returns 0 on success
+int cs_list_push(cs_value list_val, cs_value value);              // returns 0 on success
+cs_value cs_list_pop(cs_value list_val);                          // returns cs_nil() if empty
 
 // C API for map operations (for hosts to manipulate maps)
 size_t cs_map_len(cs_value map_val);
-cs_value cs_map_get(cs_value map_val, const char* key);  // returns cs_nil() if missing
-int cs_map_set(cs_value map_val, const char* key, cs_value value);  // returns 0 on success
-int cs_map_has(cs_value map_val, const char* key);  // returns 1 if key exists
-int cs_map_del(cs_value map_val, const char* key);  // returns 0 on success
-cs_value cs_map_keys(cs_vm* vm, cs_value map_val);  // returns list of keys
+cs_value cs_map_get(cs_value map_val, const char *key);            // returns cs_nil() if missing
+int cs_map_set(cs_value map_val, const char *key, cs_value value); // returns 0 on success
+int cs_map_has(cs_value map_val, const char *key);                 // returns 1 if key exists
+int cs_map_del(cs_value map_val, const char *key);                 // returns 0 on success
+cs_value cs_map_keys(cs_vm *vm, cs_value map_val);                 // returns list of keys
 
 // Generalized key variants (use any value as key)
-cs_value cs_map_get_value(cs_value map_val, cs_value key);  // returns cs_nil() if missing
-int cs_map_set_value(cs_value map_val, cs_value key, cs_value value);  // returns 0 on success
-int cs_map_has_value(cs_value map_val, cs_value key);  // returns 1 if key exists
-int cs_map_del_value(cs_value map_val, cs_value key);  // returns 0 on success
+cs_value cs_map_get_value(cs_value map_val, cs_value key);            // returns cs_nil() if missing
+int cs_map_set_value(cs_value map_val, cs_value key, cs_value value); // returns 0 on success
+int cs_map_has_value(cs_value map_val, cs_value key);                 // returns 1 if key exists
+int cs_map_del_value(cs_value map_val, cs_value key);                 // returns 0 on success
 
 // Safety controls (prevents runaway scripts from hanging host)
 // Set instruction limit (0 = unlimited). Script aborts if exceeded.
-void cs_vm_set_instruction_limit(cs_vm* vm, uint64_t limit);
+void cs_vm_set_instruction_limit(cs_vm *vm, uint64_t limit);
 // Set execution timeout in milliseconds (0 = unlimited). Script aborts if exceeded.
-void cs_vm_set_timeout(cs_vm* vm, uint64_t timeout_ms);
+void cs_vm_set_timeout(cs_vm *vm, uint64_t timeout_ms);
 // Request immediate interruption of running script (thread-safe signal).
-void cs_vm_interrupt(cs_vm* vm);
+void cs_vm_interrupt(cs_vm *vm);
 // Get current instruction count (useful for profiling).
-uint64_t cs_vm_get_instruction_count(cs_vm* vm);
+uint64_t cs_vm_get_instruction_count(cs_vm *vm);
 
 #ifdef __cplusplus
 }

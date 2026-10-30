@@ -1,11 +1,11 @@
 #include "arc_filter.h"
+#include <bzlib.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <stdbool.h>
-#include <limits.h>
 #include <zlib.h>
-#include <bzlib.h>
 
 // Forward declarations
 static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n);
@@ -54,15 +54,22 @@ static ssize_t filter_error(int *error, int code) {
 
 static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
     struct GzipFilterData *data = stream->user_data;
-    if (!n) return 0;
-    if (data->error) { errno = data->error; return -1; }
-    if (data->eof) return 0;
+    if (!n)
+        return 0;
+    if (data->error) {
+        errno = data->error;
+        return -1;
+    }
+    if (data->eof)
+        return 0;
     if (!data->initialized) {
         int result = inflateInit2(&data->zs, 16 + MAX_WBITS);
-        if (result != Z_OK) return filter_error(&data->error, result == Z_MEM_ERROR ? ENOMEM : EINVAL);
+        if (result != Z_OK)
+            return filter_error(&data->error, result == Z_MEM_ERROR ? ENOMEM : EINVAL);
         data->initialized = true;
     }
-    if (n > UINT_MAX) n = UINT_MAX;
+    if (n > UINT_MAX)
+        n = UINT_MAX;
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
         if (remaining <= 0) {
@@ -71,41 +78,55 @@ static ssize_t gzip_read(ArcStream *stream, void *buf, size_t n) {
             stream->byte_limit = 0;
             ssize_t result = gzip_read(stream, &extra, 1);
             stream->byte_limit = limit;
-            if (result > 0) return filter_error(&data->error, EOVERFLOW);
+            if (result > 0)
+                return filter_error(&data->error, EOVERFLOW);
             return result;
         }
-        if (n > (uint64_t)remaining) n = (size_t)remaining;
+        if (n > (uint64_t)remaining)
+            n = (size_t)remaining;
     }
     data->zs.next_out = buf;
     data->zs.avail_out = (uInt)n;
     while (data->zs.avail_out) {
         if (!data->zs.avail_in && !data->input_eof) {
             ssize_t read = arc_stream_read(data->underlying, data->in_buf, data->in_buf_size);
-            if (read < 0) return filter_error(&data->error, errno);
+            if (read < 0)
+                return filter_error(&data->error, errno);
             data->input_eof = read == 0;
             data->zs.next_in = data->in_buf;
             data->zs.avail_in = (uInt)read;
         }
         if (data->member_end) {
-            if (!data->zs.avail_in && data->input_eof) { data->eof = true; break; }
+            if (!data->zs.avail_in && data->input_eof) {
+                data->eof = true;
+                break;
+            }
             Bytef *input = data->zs.next_in, *output = data->zs.next_out;
             uInt available = data->zs.avail_in, space = data->zs.avail_out;
             int result = inflateReset2(&data->zs, 16 + MAX_WBITS);
-            if (result != Z_OK) return filter_error(&data->error, result == Z_MEM_ERROR ? ENOMEM : EINVAL);
-            data->zs.next_in = input; data->zs.avail_in = available;
-            data->zs.next_out = output; data->zs.avail_out = space;
+            if (result != Z_OK)
+                return filter_error(&data->error, result == Z_MEM_ERROR ? ENOMEM : EINVAL);
+            data->zs.next_in = input;
+            data->zs.avail_in = available;
+            data->zs.next_out = output;
+            data->zs.avail_out = space;
             data->member_end = false;
         }
         uInt input_before = data->zs.avail_in, output_before = data->zs.avail_out;
         int result = inflate(&data->zs, Z_NO_FLUSH);
-        if (result == Z_STREAM_END) { data->member_end = true; continue; }
+        if (result == Z_STREAM_END) {
+            data->member_end = true;
+            continue;
+        }
         if (result != Z_OK && result != Z_BUF_ERROR)
             return filter_error(&data->error, result == Z_MEM_ERROR ? ENOMEM : EINVAL);
         if (input_before == data->zs.avail_in && output_before == data->zs.avail_out &&
-            (data->input_eof || data->zs.avail_in)) return filter_error(&data->error, EINVAL);
+            (data->input_eof || data->zs.avail_in))
+            return filter_error(&data->error, EINVAL);
     }
     size_t size = n - data->zs.avail_out;
-    if (size > (uint64_t)(INT64_MAX - stream->bytes_read)) return filter_error(&data->error, EOVERFLOW);
+    if (size > (uint64_t)(INT64_MAX - stream->bytes_read))
+        return filter_error(&data->error, EOVERFLOW);
     stream->bytes_read += (int64_t)size;
     return (ssize_t)size;
 }
@@ -138,18 +159,18 @@ ArcStream *arc_filter_gzip(ArcStream *underlying, int64_t byte_limit) {
     if (!underlying) {
         return NULL;
     }
-    
+
     ArcStream *stream = calloc(1, sizeof(ArcStream));
     if (!stream) {
         return NULL;
     }
-    
+
     struct GzipFilterData *data = calloc(1, sizeof(struct GzipFilterData));
     if (!data) {
         free(stream);
         return NULL;
     }
-    
+
     data->underlying = underlying;
     data->in_buf_size = 64 * 1024; // 64KB input buffer
     data->in_buf = malloc(data->in_buf_size);
@@ -158,15 +179,15 @@ ArcStream *arc_filter_gzip(ArcStream *underlying, int64_t byte_limit) {
         free(stream);
         return NULL;
     }
-    
+
     data->eof = false;
     data->initialized = false;
-    
+
     stream->vtable = &gzip_vtable;
     stream->byte_limit = byte_limit;
     stream->bytes_read = 0;
     stream->user_data = data;
-    
+
     return stream;
 }
 
@@ -185,15 +206,22 @@ struct Bzip2FilterData {
 
 static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
     struct Bzip2FilterData *data = stream->user_data;
-    if (!n) return 0;
-    if (data->error) { errno = data->error; return -1; }
-    if (data->eof) return 0;
+    if (!n)
+        return 0;
+    if (data->error) {
+        errno = data->error;
+        return -1;
+    }
+    if (data->eof)
+        return 0;
     if (!data->initialized) {
         int result = BZ2_bzDecompressInit(&data->bzs, 0, 0);
-        if (result != BZ_OK) return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
+        if (result != BZ_OK)
+            return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
         data->initialized = true;
     }
-    if (n > UINT_MAX) n = UINT_MAX;
+    if (n > UINT_MAX)
+        n = UINT_MAX;
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
         if (remaining <= 0) {
@@ -202,44 +230,59 @@ static ssize_t bzip2_read(ArcStream *stream, void *buf, size_t n) {
             stream->byte_limit = 0;
             ssize_t result = bzip2_read(stream, &extra, 1);
             stream->byte_limit = limit;
-            if (result > 0) return filter_error(&data->error, EOVERFLOW);
+            if (result > 0)
+                return filter_error(&data->error, EOVERFLOW);
             return result;
         }
-        if (n > (uint64_t)remaining) n = (size_t)remaining;
+        if (n > (uint64_t)remaining)
+            n = (size_t)remaining;
     }
     data->bzs.next_out = buf;
     data->bzs.avail_out = (unsigned)n;
     while (data->bzs.avail_out) {
         if (!data->bzs.avail_in && !data->input_eof) {
             ssize_t read = arc_stream_read(data->underlying, data->in_buf, data->in_buf_size);
-            if (read < 0) return filter_error(&data->error, errno);
+            if (read < 0)
+                return filter_error(&data->error, errno);
             data->input_eof = read == 0;
             data->bzs.next_in = (char *)data->in_buf;
             data->bzs.avail_in = (unsigned)read;
         }
         if (data->member_end) {
-            if (!data->bzs.avail_in && data->input_eof) { data->eof = true; break; }
+            if (!data->bzs.avail_in && data->input_eof) {
+                data->eof = true;
+                break;
+            }
             char *input = data->bzs.next_in, *output = data->bzs.next_out;
             unsigned available = data->bzs.avail_in, space = data->bzs.avail_out;
             BZ2_bzDecompressEnd(&data->bzs);
             data->initialized = false;
             memset(&data->bzs, 0, sizeof(data->bzs));
             int result = BZ2_bzDecompressInit(&data->bzs, 0, 0);
-            if (result != BZ_OK) return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
+            if (result != BZ_OK)
+                return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
             data->initialized = true;
-            data->bzs.next_in = input; data->bzs.avail_in = available;
-            data->bzs.next_out = output; data->bzs.avail_out = space;
+            data->bzs.next_in = input;
+            data->bzs.avail_in = available;
+            data->bzs.next_out = output;
+            data->bzs.avail_out = space;
             data->member_end = false;
         }
         unsigned input_before = data->bzs.avail_in, output_before = data->bzs.avail_out;
         int result = BZ2_bzDecompress(&data->bzs);
-        if (result == BZ_STREAM_END) { data->member_end = true; continue; }
-        if (result != BZ_OK) return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
+        if (result == BZ_STREAM_END) {
+            data->member_end = true;
+            continue;
+        }
+        if (result != BZ_OK)
+            return filter_error(&data->error, result == BZ_MEM_ERROR ? ENOMEM : EINVAL);
         if (input_before == data->bzs.avail_in && output_before == data->bzs.avail_out &&
-            (data->input_eof || data->bzs.avail_in)) return filter_error(&data->error, EINVAL);
+            (data->input_eof || data->bzs.avail_in))
+            return filter_error(&data->error, EINVAL);
     }
     size_t size = n - data->bzs.avail_out;
-    if (size > (uint64_t)(INT64_MAX - stream->bytes_read)) return filter_error(&data->error, EOVERFLOW);
+    if (size > (uint64_t)(INT64_MAX - stream->bytes_read))
+        return filter_error(&data->error, EOVERFLOW);
     stream->bytes_read += (int64_t)size;
     return (ssize_t)size;
 }
@@ -272,18 +315,18 @@ ArcStream *arc_filter_bzip2(ArcStream *underlying, int64_t byte_limit) {
     if (!underlying) {
         return NULL;
     }
-    
+
     ArcStream *stream = calloc(1, sizeof(ArcStream));
     if (!stream) {
         return NULL;
     }
-    
+
     struct Bzip2FilterData *data = calloc(1, sizeof(struct Bzip2FilterData));
     if (!data) {
         free(stream);
         return NULL;
     }
-    
+
     data->underlying = underlying;
     data->in_buf_size = 64 * 1024; // 64KB input buffer
     data->in_buf = malloc(data->in_buf_size);
@@ -292,15 +335,15 @@ ArcStream *arc_filter_bzip2(ArcStream *underlying, int64_t byte_limit) {
         free(stream);
         return NULL;
     }
-    
+
     data->eof = false;
     data->initialized = false;
-    
+
     stream->vtable = &bzip2_vtable;
     stream->byte_limit = byte_limit;
     stream->bytes_read = 0;
     stream->user_data = data;
-    
+
     return stream;
 }
 
@@ -329,31 +372,39 @@ struct DeflateFilterData {
 /* ZIP callers bound this input to the declared compressed size. An early
    end marker must not hide bytes counted as compressed payload. */
 static int deflate_finish(struct DeflateFilterData *data) {
-    if (data->zs.avail_in) { errno = EINVAL; return -1; }
+    if (data->zs.avail_in) {
+        errno = EINVAL;
+        return -1;
+    }
     uint8_t extra;
     ssize_t n = arc_stream_read(data->underlying, &extra, 1);
-    if (n < 0) return -1;
-    if (n) { errno = EINVAL; return -1; }
+    if (n < 0)
+        return -1;
+    if (n) {
+        errno = EINVAL;
+        return -1;
+    }
     data->eof = true;
     return 0;
 }
 
 static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
     struct DeflateFilterData *data = (struct DeflateFilterData *)stream->user_data;
-    
+
     if (!data->initialized) {
         memset(&data->zs, 0, sizeof(data->zs));
         // Use -MAX_WBITS for raw deflate (no gzip wrapper)
         if (inflateInit2(&data->zs, -MAX_WBITS) != Z_OK) {
-            errno = ENOMEM; return -1;
+            errno = ENOMEM;
+            return -1;
         }
         data->initialized = true;
     }
-    
+
     if (data->eof) {
         return 0;
     }
-    
+
     // Enforce byte limit
     if (stream->byte_limit > 0) {
         int64_t remaining = stream->byte_limit - stream->bytes_read;
@@ -363,18 +414,22 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
             stream->byte_limit = 0;
             ssize_t result = deflate_read(stream, &extra, 1);
             stream->byte_limit = limit;
-            if (result > 0) { errno = EOVERFLOW; return -1; }
+            if (result > 0) {
+                errno = EOVERFLOW;
+                return -1;
+            }
             return result;
         }
         if ((int64_t)n > remaining) {
             n = (size_t)remaining;
         }
     }
-    
+
     data->zs.next_out = (Bytef *)buf;
-    if (n > UINT_MAX) n = UINT_MAX;
+    if (n > UINT_MAX)
+        n = UINT_MAX;
     data->zs.avail_out = (uInt)n;
-    
+
     while (data->zs.avail_out > 0 && !data->eof) {
         // Read more input if needed
         if (data->zs.avail_in == 0) {
@@ -389,7 +444,8 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
                 while (data->zs.avail_out > 0) {
                     int ret = inflate(&data->zs, Z_FINISH);
                     if (ret == Z_STREAM_END) {
-                        if (deflate_finish(data)) return -1;
+                        if (deflate_finish(data))
+                            return -1;
                         break;
                     }
                     if (ret == Z_BUF_ERROR) {
@@ -408,7 +464,8 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
                     }
                     if (ret != Z_OK) {
                         // Other error (Z_DATA_ERROR, Z_MEM_ERROR, etc.)
-                        errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
+                        errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL;
+                        return -1;
                     }
                     // Z_OK means we made progress, continue
                     size_t output_after = n - data->zs.avail_out;
@@ -419,11 +476,12 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
             data->zs.next_in = data->in_buf;
             data->zs.avail_in = (uInt)in_read;
         }
-        
+
         size_t output_before = n - data->zs.avail_out;
         int ret = inflate(&data->zs, Z_NO_FLUSH);
         if (ret == Z_STREAM_END) {
-            if (deflate_finish(data)) return -1;
+            if (deflate_finish(data))
+                return -1;
             break;
         }
         if (ret == Z_BUF_ERROR) {
@@ -439,10 +497,11 @@ static ssize_t deflate_read(ArcStream *stream, void *buf, size_t n) {
         }
         if (ret != Z_OK) {
             // Other error
-            errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL; return -1;
+            errno = ret == Z_MEM_ERROR ? ENOMEM : EINVAL;
+            return -1;
         }
     }
-    
+
     size_t decompressed = n - data->zs.avail_out;
     stream->bytes_read += decompressed;
     return (ssize_t)decompressed;
@@ -476,18 +535,18 @@ ArcStream *arc_filter_deflate(ArcStream *underlying, int64_t byte_limit) {
     if (!underlying) {
         return NULL;
     }
-    
+
     ArcStream *stream = calloc(1, sizeof(ArcStream));
     if (!stream) {
         return NULL;
     }
-    
+
     struct DeflateFilterData *data = calloc(1, sizeof(struct DeflateFilterData));
     if (!data) {
         free(stream);
         return NULL;
     }
-    
+
     data->underlying = underlying;
     data->in_buf_size = 64 * 1024; // 64KB input buffer
     data->in_buf = malloc(data->in_buf_size);
@@ -496,15 +555,14 @@ ArcStream *arc_filter_deflate(ArcStream *underlying, int64_t byte_limit) {
         free(stream);
         return NULL;
     }
-    
+
     data->eof = false;
     data->initialized = false;
-    
+
     stream->vtable = &deflate_vtable;
     stream->byte_limit = byte_limit;
     stream->bytes_read = 0;
     stream->user_data = data;
-    
+
     return stream;
 }
-

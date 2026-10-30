@@ -1,14 +1,15 @@
 // File: src/vector.c
 // -----------------------
+#include <errno.h>
 #include <stddef.h> // for size_t
 #include <stdint.h>
-#include <errno.h>
 #include <stdlib.h> // for malloc, free, realloc
 #include <utils.h>  // for MAX
 
 #include "vector.h" // for Vector
 
 #define IMPL _PRIVATE_dont_access_PRIVATE_
+
 /**
  * Function to create a new Vector
  *
@@ -25,16 +26,15 @@ Vector Vector_new(size_t cap) {
         Vector v = {NULL, {.cap = 0, .len = 0}};
         return v;
     }
-    Vector v = {
-        el,
-        {
-            .cap = cap,
-            .len = 0,
-        }
-    };
+    Vector v = {el,
+                {
+                    .cap = cap,
+                    .len = 0,
+                }};
     v.el[0] = NULL;
     return v;
 }
+
 /**
  * Function to free the memory allocated for a Vector
  *
@@ -48,6 +48,7 @@ void Vector_bye(Vector *v) {
     }
     free(v->el);
 }
+
 /**
  * Function to add an element to the Vector
  *
@@ -61,11 +62,14 @@ bool Vector_add(Vector *v, size_t add) {
         return false;
     }
     size_t required = v->IMPL.len + add;
-    if (v->el && required <= v->IMPL.cap) return true;
+    if (v->el && required <= v->IMPL.cap)
+        return true;
     size_t capacity = v->IMPL.cap > maximum / 2 ? maximum : v->IMPL.cap * 2;
-    if (capacity < required) capacity = required;
+    if (capacity < required)
+        capacity = required;
     void **elements = realloc(v->el, (capacity + 1) * sizeof(void *));
-    if (!elements) return false;
+    if (!elements)
+        return false;
     v->el = elements;
     v->IMPL.cap = capacity;
     v->el[v->IMPL.len] = NULL;
@@ -79,10 +83,12 @@ bool Vector_add(Vector *v, size_t add) {
  * @param len the new length of the Vector
  */
 void Vector_set_len_no_free(Vector *v, size_t len) {
-    if (!v || !v->el || len > v->IMPL.cap) return;
+    if (!v || !v->el || len > v->IMPL.cap)
+        return;
     v->IMPL.len = len;
     v->el[len] = NULL;
 }
+
 /**
  * Function to set the length of the Vector and free the memory of the removed elements
  *
@@ -100,6 +106,7 @@ void Vector_set_len(Vector *v, size_t len) {
 
     Vector_set_len_no_free(v, len);
 }
+
 /**
  * Function to get the length of the Vector
  *
@@ -109,6 +116,7 @@ void Vector_set_len(Vector *v, size_t len) {
 size_t Vector_len(Vector v) {
     return v.IMPL.len;
 }
+
 /**
  * Function to get the element at a specific index in the Vector
  *
@@ -125,6 +133,7 @@ void Vector_min_cap(Vector *v) {
     v->el = new_el;
     v->IMPL.cap = new_cap;
 }
+
 /**
  * Function to get the element at a specific index in the Vector
  *

@@ -6,7 +6,7 @@
 
 /**
  * ZIP format implementation.
- * 
+ *
  * Supports:
  * - Central Directory parsing (fast listing)
  * - Local-header recovery on seekable input when the central directory is absent
@@ -14,12 +14,12 @@
  * - Store (0) and Deflate (8) compression
  * - Directory detection (name ending with /)
  * - Encryption flag detection
- * 
+ *
  * ZIP64 Features:
  * - Automatically detects ZIP64 archives via EOCD64 locator
  * - Parses ZIP64 Extended Information Extra Field (0x0001)
  * - Uses 64-bit sizes and offsets when standard fields are 0xFFFFFFFF
- * 
+ *
  * Streaming Mode:
  * - Reads local headers when the central directory is absent
  * - Recovers Store/Deflate descriptors with 32- or 64-bit sizes, with or without signatures
@@ -48,4 +48,3 @@ int arc_zip_skip_data(ArcReader *reader);
 void arc_zip_close(ArcReader *reader);
 
 #endif // ARC_ZIP_H
-

@@ -242,9 +242,8 @@ CupidScript includes cutting-edge features found in modern scripting languages:
 - **Defer statements** - Execute code when leaving scope
   ```cs
   fn process() {
-    let f = open_file("data.txt");
-    defer close_file(f);  // always called before returning
-    // ... work with file ...
+    defer print("finished");  // runs before this scope returns
+    print("working");
   }
   ```
 - **Const bindings** - Immutable variable declarations
@@ -468,21 +467,21 @@ CupidScript provides built-in support for structured data formats:
 #### JSON
 ```cs
 let data = {"name": "Frank", "age": 30};
-let json_str = json_encode(data);
-let parsed = json_decode(json_str);
+let json_str = json_stringify(data);
+let parsed = json_parse(json_str);
 ```
 
-#### CSV (RFC 4180 Compliant)
+#### CSV
 ```cs
 let csv_data = csv_parse("name,age\nFrank,30\nAlice,25");
-let csv_str = csv_format([{"name": "Frank", "age": 30}]);
+let csv_str = csv_stringify([["name", "age"], ["Frank", "30"]]);
 ```
 
-#### YAML (RFC 9512 / YAML 1.2.2 Compliant)
+#### YAML
 ```cs
 let yaml_str = "name: Frank\nage: 30";
 let data = yaml_parse(yaml_str);
-let yaml = yaml_format(data);
+let yaml = yaml_stringify(data);
 ```
 
 #### XML
@@ -547,10 +546,12 @@ event_loop_stop();
 
 ### Network I/O
 
+The HTTP helpers are blocking and verify TLS peer names. They support content-length, chunked, and connection-close bodies. See the [HTTP/TLS reference](https://github.com/cupidthecat/cupidscript/wiki/HTTP-and-TLS) for limits and local tests. Socket operations use the event loop.
+
 ```cs
-// HTTP requests (async)
+// HTTP calls block; await accepts the returned response value.
 let response = await http_get("https://api.github.com/users/octocat");
-let data = json_decode(response);
+let data = json_parse(response.body);
 
 // TCP sockets
 let sock = await tcp_connect("example.com", 80);
@@ -723,11 +724,7 @@ fn on_editor_open(path) {
 ```
 
 **Full Example Plugin:**
-See [`editor_open_logger.cs`](file://wsl.localhost/Ubuntu/home/frank/.cupidfm/plugins/editor_open_logger.cs) for a complete example that:
-- Logs all files opened in the editor
-- Tracks statistics by file type
-- Provides helpful tips based on file extension
-- Binds Ctrl+E to show editing statistics
+See [`editor_path_watcher.cs`](plugins/examples/editor_path_watcher.cs) for an example that logs file changes, shows the current path with Ctrl+P, and copies it with Ctrl+Y.
 
 **Note:** This callback fires once when the editor window opens, not on subsequent edits or saves within the same editing session.
 
@@ -760,7 +757,7 @@ fn on_editor_change(line, col, text) {
 }
 ```
 
-**See:** [`editor_change_demo.cs`](file:///\\wsl.localhost\Ubuntu\home\frank\cupidfm\plugins\examples\editor_change_demo.cs)
+**See:** [`editor_change_demo.cs`](plugins/examples/editor_change_demo.cs)
 
 ---
 
@@ -861,11 +858,7 @@ fn on_editor_cursor_move(old_line, old_col, new_line, new_col) {
 ```
 
 **Full Example Plugin:**
-See [`cursor_tracker.cs`](file:///\\wsl.localhost\Ubuntu\home\frank\.cupidfm\plugins\cursor_tracker.cs) for a complete example that:
-- Tracks all cursor movements
-- Calculates movement statistics
-- Displays analytics via Ctrl+M keybinding
-- Demonstrates practical use of the API
+See [`cursor_demo.cs`](plugins/examples/cursor_demo.cs) for movement counters and cursor statistics bound to Ctrl+K.
 
 **Note:** This callback fires for all cursor movements including arrow keys, mouse clicks, page up/down, home/end, and any other navigation commands. It will not fire if the cursor position doesn't actually change.
 
@@ -909,11 +902,7 @@ fn on_key(key) {
 ```
 
 **Full Example Plugin:**
-See [`editor_path_watcher.cs`](file://wsl.localhost/Ubuntu/home/frank/.cupidfm/plugins/editor_path_watcher.cs) for a complete example that:
-- Binds Ctrl+P to show current editor file path
-- Binds Ctrl+Shift+P to copy path to clipboard
-- Tracks when files change in the editor
-- Extracts and displays filename separately from full path
+See [`editor_path_watcher.cs`](plugins/examples/editor_path_watcher.cs) for Ctrl+P path display, Ctrl+Y clipboard copying, and file-change tracking.
 
 
 ---

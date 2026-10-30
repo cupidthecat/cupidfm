@@ -41,6 +41,6 @@ GitStatus git_query_file_status(const char *filepath) {
     return git_file_status(g_repo, filepath);
 }
 
-const char* git_status_to_emoji(GitStatus status) {
+const char *git_status_to_emoji(GitStatus status) {
     return git_status_emoji(status);
 }
