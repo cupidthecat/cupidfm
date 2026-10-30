@@ -36,7 +36,6 @@
 #include "vector.h"
 #include <curses.h>
 
-
 // Forward declaration
 struct PluginManager;
 
@@ -55,14 +54,13 @@ bool FileAttr_is_dir(FileAttr fa);
 GitStatus FileAttr_get_git_status(FileAttr fa);
 void free_attr(FileAttr fa);
 void append_files_to_vec(Vector *v, const char *name);
-void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files,
-                              size_t *files_loaded);
+void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files, size_t *files_loaded);
 size_t count_directory_files(const char *name);
 void display_file_info(WINDOW *window, const char *file_path, int max_x);
 bool is_supported_file_type(const char *filename);
 bool is_archive_file(const char *filename);
-void display_archive_preview(WINDOW *window, const char *file_path,
-                             int start_line, int max_y, int max_x);
+void display_archive_preview(WINDOW *window, const char *file_path, int start_line, int max_y,
+                             int max_x);
 void format_dir_size_pending_animation(char *buffer, size_t len, bool reset);
 // Returns the best-known in-progress byte total for a directory size job, or 0
 // if none.
@@ -89,19 +87,17 @@ bool editor_set_cursor(int line, int col);
 
 // Returns the current selection bounds (1-indexed). Returns false if no
 // selection.
-bool editor_get_selection(int *start_line, int *start_col, int *end_line,
-                          int *end_col);
+bool editor_get_selection(int *start_line, int *start_col, int *end_line, int *end_col);
 
 // Inserts text at the current cursor position. Returns false on failure.
 bool editor_insert_text(const char *text);
 
 // Replaces text in the specified range (1-indexed). Returns false on failure.
-bool editor_replace_text(int start_line, int start_col, int end_line,
-                         int end_col, const char *text);
+bool editor_replace_text(int start_line, int start_col, int end_line, int end_col,
+                         const char *text);
 
 // Deletes text in the specified range (1-indexed). Returns false on failure.
-bool editor_delete_range(int start_line, int start_col, int end_line,
-                         int end_col);
+bool editor_delete_range(int start_line, int start_col, int end_line, int end_col);
 
 // Saves the current editor buffer to disk. Returns false if not editing, no
 // file path, or on write error. On success, clears the editor dirty state and
@@ -130,8 +126,7 @@ bool editor_set_readonly(bool readonly);
  * Now the compiler knows what KeyBindings is
  * because config.h is included above.
  */
-void edit_file_in_terminal(WINDOW *window, const char *file_path,
-                           WINDOW *notifwin, KeyBindings *kb,
+void edit_file_in_terminal(WINDOW *window, const char *file_path, WINDOW *notifwin, KeyBindings *kb,
                            struct PluginManager *pm);
 
 char *format_file_size(char *buffer, size_t size);

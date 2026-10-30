@@ -3,6 +3,7 @@
 #include "../src/fs/files.c"
 #include <assert.h>
 #include <locale.h>
+
 int main(int argc, char **argv) {
     assert(argc >= 4 && argc <= 6);
     assert(setlocale(LC_ALL, "C.UTF-8"));
@@ -21,11 +22,16 @@ int main(int argc, char **argv) {
         int count = mvwinnstr(window, row, 0, text + used, 500);
         assert(count >= 0);
         used += (size_t)count;
-        text[used++] = '\n'; text[used] = 0;
+        text[used++] = '\n';
+        text[used] = 0;
     }
     int ok = strstr(text, argv[2]) && strstr(text, argv[3]) && (argc < 6 || !strstr(text, argv[5]));
-    if (!ok) fprintf(stderr, "Preview missing [%s] or [%s]:\n%s", argv[2], argv[3], text);
-    delwin(window); endwin(); delscreen(screen);
-    fclose(input); fclose(output);
+    if (!ok)
+        fprintf(stderr, "Preview missing [%s] or [%s]:\n%s", argv[2], argv[3], text);
+    delwin(window);
+    endwin();
+    delscreen(screen);
+    fclose(input);
+    fclose(output);
     return ok ? 0 : 1;
 }

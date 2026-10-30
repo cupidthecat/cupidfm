@@ -9,7 +9,7 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It in
 On Ubuntu or Debian:
 
 ```sh
-sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev \
+sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev openssl \
     zlib1g-dev libbz2-dev liblzma-dev xclip python3
 make -j
 ./cupidfm

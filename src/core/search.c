@@ -6,8 +6,8 @@
 #include "search.h"
 
 #include <ctype.h>
-#include <regex.h>
 #include <pthread.h>
+#include <regex.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -25,7 +25,8 @@ typedef struct {
 } FuzzyHit;
 
 SIZE find_loaded_index_by_name(Vector *files, const char *name) {
-    if (!files || !name || !*name) return (SIZE)-1;
+    if (!files || !name || !*name)
+        return (SIZE)-1;
     SIZE count = (SIZE)Vector_len(*files);
     for (SIZE i = 0; i < count; i++) {
         FileAttr fa = (FileAttr)files->el[i];
@@ -37,35 +38,37 @@ SIZE find_loaded_index_by_name(Vector *files, const char *name) {
     return (SIZE)-1;
 }
 
-SIZE find_index_by_name_lazy(Vector *files,
-                            const char *dir,
-                            CursorAndSlice *cas,
-                            LazyLoadState *lazy_load,
-                            const char *name)
-{
-    if (!files || !dir || !cas || !lazy_load || !name || !*name) return (SIZE)-1;
+SIZE find_index_by_name_lazy(Vector *files, const char *dir, CursorAndSlice *cas,
+                             LazyLoadState *lazy_load, const char *name) {
+    if (!files || !dir || !cas || !lazy_load || !name || !*name)
+        return (SIZE)-1;
 
     for (int safety = 0; safety < 512; safety++) {
         SIZE idx = find_loaded_index_by_name(files, name);
-        if (idx != (SIZE)-1) return idx;
+        if (idx != (SIZE)-1)
+            return idx;
 
         size_t before = Vector_len(*files);
         cas->num_files = before;
-        if (before == 0) return (SIZE)-1;
+        if (before == 0)
+            return (SIZE)-1;
 
         cas->cursor = (SIZE)(before - 1);
-        load_more_files_if_needed(files, dir, cas, &lazy_load->files_loaded, lazy_load->total_files);
+        load_more_files_if_needed(files, dir, cas, &lazy_load->files_loaded,
+                                  lazy_load->total_files);
 
         size_t after = Vector_len(*files);
         cas->num_files = after;
-        if (after == before) break;
+        if (after == before)
+            break;
     }
 
     return (SIZE)-1;
 }
 
 static int cupidfuzzy_score(const char *pattern, const char *text) {
-    if (!pattern || !*pattern || !text) return -1;
+    if (!pattern || !*pattern || !text)
+        return -1;
     const char *scan = text;
     const char *segment_start = text;
     int score = 0;
@@ -83,7 +86,8 @@ static int cupidfuzzy_score(const char *pattern, const char *text) {
             }
             scan++;
         }
-        if (!matched) return -1;
+        if (!matched)
+            return -1;
     }
 
     return score;
@@ -92,26 +96,34 @@ static int cupidfuzzy_score(const char *pattern, const char *text) {
 static int fuzzyhit_cmp(const void *a, const void *b) {
     const FuzzyHit *aa = (const FuzzyHit *)a;
     const FuzzyHit *bb = (const FuzzyHit *)b;
-    if (aa->score != bb->score) return (aa->score < bb->score) ? -1 : 1;
+    if (aa->score != bb->score)
+        return (aa->score < bb->score) ? -1 : 1;
 
     const char *an = FileAttr_get_name(aa->entry);
     const char *bn = FileAttr_get_name(bb->entry);
-    if (!an && !bn) return 0;
-    if (!an) return 1;
-    if (!bn) return -1;
+    if (!an && !bn)
+        return 0;
+    if (!an)
+        return 1;
+    if (!bn)
+        return -1;
     return strcasecmp(an, bn);
 }
 
 static bool ci_substr(const char *haystack, const char *needle) {
-    if (!haystack || !needle) return false;
+    if (!haystack || !needle)
+        return false;
     size_t nlen = strlen(needle);
-    if (nlen == 0) return true;
+    if (nlen == 0)
+        return true;
     for (const char *h = haystack; *h; h++) {
         size_t i = 0;
-        while (needle[i] && h[i] && tolower((unsigned char)h[i]) == tolower((unsigned char)needle[i])) {
+        while (needle[i] && h[i] &&
+               tolower((unsigned char)h[i]) == tolower((unsigned char)needle[i])) {
             i++;
         }
-        if (i == nlen) return true;
+        if (i == nlen)
+            return true;
     }
     return false;
 }
@@ -121,7 +133,8 @@ Vector *active_files(AppState *state) {
 }
 
 void search_clear(AppState *state) {
-    if (!state) return;
+    if (!state)
+        return;
     state->select_all_active = false;
     g_select_all_highlight = false;
     state->search_active = false;
@@ -132,23 +145,29 @@ void search_clear(AppState *state) {
 }
 
 size_t search_rebuild(AppState *state, const char *query) {
-    if (!state || !state->search_files.el) return 0;
+    if (!state || !state->search_files.el)
+        return 0;
     Vector_set_len_no_free(&state->search_files, 0);
 
-    if (!query || !*query) return 0;
+    if (!query || !*query)
+        return 0;
 
     size_t total = Vector_len(state->files);
-    if (total == 0) return 0;
+    if (total == 0)
+        return 0;
     /* A query can match every loaded entry; reserve the complete upper bound. */
-    if (!Vector_add(&state->search_files, total)) return 0;
+    if (!Vector_add(&state->search_files, total))
+        return 0;
 
     if (state->search_mode == SEARCH_MODE_EXACT) {
         size_t count = 0;
         for (size_t i = 0; i < total; i++) {
             FileAttr fa = (FileAttr)state->files.el[i];
             const char *name = FileAttr_get_name(fa);
-            if (!name) continue;
-            if (!ci_substr(name, query)) continue;
+            if (!name)
+                continue;
+            if (!ci_substr(name, query))
+                continue;
             state->search_files.el[count++] = fa;
         }
         Vector_set_len_no_free(&state->search_files, count);
@@ -164,8 +183,10 @@ size_t search_rebuild(AppState *state, const char *query) {
         for (size_t i = 0; i < total; i++) {
             FileAttr fa = (FileAttr)state->files.el[i];
             const char *name = FileAttr_get_name(fa);
-            if (!name) continue;
-            if (regexec(&re, name, 0, NULL, 0) != 0) continue;
+            if (!name)
+                continue;
+            if (regexec(&re, name, 0, NULL, 0) != 0)
+                continue;
             state->search_files.el[count++] = fa;
         }
         Vector_set_len_no_free(&state->search_files, count);
@@ -174,16 +195,19 @@ size_t search_rebuild(AppState *state, const char *query) {
     }
 
     FuzzyHit *hits = malloc(total * sizeof(*hits));
-    if (!hits) return 0;
+    if (!hits)
+        return 0;
 
     size_t count = 0;
     for (size_t i = 0; i < total; i++) {
         FileAttr fa = (FileAttr)state->files.el[i];
         const char *name = FileAttr_get_name(fa);
-        if (!name) continue;
+        if (!name)
+            continue;
 
         int score = cupidfuzzy_score(query, name);
-        if (score < 0) continue;
+        if (score < 0)
+            continue;
 
         hits[count].score = score;
         hits[count].entry = fa;
@@ -207,7 +231,8 @@ size_t search_rebuild(AppState *state, const char *query) {
 }
 
 void search_before_reload(AppState *state, char saved_query[MAX_PATH_LENGTH]) {
-    if (!state) return;
+    if (!state)
+        return;
     state->select_all_active = false;
     g_select_all_highlight = false;
     if (saved_query) {
@@ -221,7 +246,8 @@ void search_before_reload(AppState *state, char saved_query[MAX_PATH_LENGTH]) {
 }
 
 void search_after_reload(AppState *state, CursorAndSlice *cas, const char *saved_query) {
-    if (!state || !cas) return;
+    if (!state || !cas)
+        return;
     if (saved_query && *saved_query) {
         strncpy(state->search_query, saved_query, sizeof(state->search_query) - 1);
         state->search_query[sizeof(state->search_query) - 1] = '\0';
@@ -234,10 +260,14 @@ void search_after_reload(AppState *state, CursorAndSlice *cas, const char *saved
 }
 
 void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas) {
-    if (!state || !cas) return;
-    if (!state->search_active) return;
-    if (state->lazy_load.total_files == 0) return;
-    if (state->lazy_load.files_loaded >= state->lazy_load.total_files) return;
+    if (!state || !cas)
+        return;
+    if (!state->search_active)
+        return;
+    if (state->lazy_load.total_files == 0)
+        return;
+    if (state->lazy_load.files_loaded >= state->lazy_load.total_files)
+        return;
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -253,15 +283,13 @@ void maybe_load_more_for_search(AppState *state, CursorAndSlice *cas) {
     tmp.cursor = tmp.start;
     tmp.num_files = (SIZE)Vector_len(state->files);
 
-    load_more_files_if_needed(&state->files,
-                              state->current_directory,
-                              &tmp,
-                              &state->lazy_load.files_loaded,
-                              state->lazy_load.total_files);
+    load_more_files_if_needed(&state->files, state->current_directory, &tmp,
+                              &state->lazy_load.files_loaded, state->lazy_load.total_files);
 }
 
 void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
-    if (!state || !cas) return;
+    if (!state || !cas)
+        return;
     Vector *files = active_files(state);
     cas->num_files = (SIZE)Vector_len(*files);
     const char *name = "";
@@ -269,10 +297,12 @@ void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
         cas->cursor = 0;
         cas->start = 0;
     } else {
-        if (cas->cursor >= (SIZE)cas->num_files) cas->cursor = (SIZE)cas->num_files - 1;
+        if (cas->cursor >= (SIZE)cas->num_files)
+            cas->cursor = (SIZE)cas->num_files - 1;
         fix_cursor(cas);
         const char *current = FileAttr_get_name((FileAttr)files->el[cas->cursor]);
-        if (current) name = current;
+        if (current)
+            name = current;
     }
     bool changed = strncmp(state->selected_name, name, sizeof(state->selected_name)) != 0;
     strncpy(state->selected_name, name, sizeof(state->selected_name) - 1);
@@ -284,13 +314,10 @@ void sync_selection_from_active(AppState *state, CursorAndSlice *cas) {
     }
 }
 
-bool prompt_fuzzy_search(AppState *state,
-                         CursorAndSlice *cas,
-                         WINDOW *win,
-                         WINDOW *dir_window,
-                         WINDOW *preview_window)
-{
-    if (!state || !cas || !win) return false;
+bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WINDOW *dir_window,
+                         WINDOW *preview_window) {
+    if (!state || !cas || !win)
+        return false;
 
     char saved_selection[MAX_PATH_LENGTH] = {0};
     if (state->selected_entry && *state->selected_entry) {
@@ -309,10 +336,9 @@ bool prompt_fuzzy_search(AppState *state,
     wtimeout(win, 10);
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) +
-                              (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     state->search_query[0] = '\0';
     if (query[0]) {
@@ -351,11 +377,14 @@ bool prompt_fuzzy_search(AppState *state,
             if (state->search_active && state->search_query[0]) {
                 search_rebuild(state, state->search_query);
                 sync_selection_from_active(state, cas);
-                draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
+                draw_directory_window(dir_window, state->current_directory, active_files(state),
+                                      cas);
                 if (state->preview_override_active) {
-                    draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+                    draw_preview_window_path(preview_window, state->preview_override_path, NULL,
+                                             state->preview_start_line);
                 } else {
-                    draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+                    draw_preview_window(preview_window, state->current_directory,
+                                        state->selected_entry, state->preview_start_line);
                 }
                 wrefresh(dir_window);
                 wrefresh(preview_window);
@@ -377,10 +406,12 @@ bool prompt_fuzzy_search(AppState *state,
             if (state->search_active && Vector_len(state->search_files) > 0) {
                 int step = (ch == KEY_PPAGE) ? MAX(1, cas->num_lines - 2) : 1;
                 SIZE len = (SIZE)Vector_len(state->search_files);
-                if (len <= 0) break;
+                if (len <= 0)
+                    break;
 
                 SIZE next = cas->cursor - step;
-                while (next < 0) next += len;
+                while (next < 0)
+                    next += len;
                 cas->cursor = next;
                 fix_cursor(cas);
                 sync_selection_from_active(state, cas);
@@ -390,7 +421,8 @@ bool prompt_fuzzy_search(AppState *state,
             if (state->search_active && Vector_len(state->search_files) > 0) {
                 int step = (ch == KEY_NPAGE) ? MAX(1, cas->num_lines - 2) : 1;
                 SIZE len = (SIZE)Vector_len(state->search_files);
-                if (len <= 0) break;
+                if (len <= 0)
+                    break;
 
                 cas->cursor = (cas->cursor + step) % len;
                 fix_cursor(cas);
@@ -432,9 +464,11 @@ bool prompt_fuzzy_search(AppState *state,
 
         draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
         if (state->preview_override_active) {
-            draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+            draw_preview_window_path(preview_window, state->preview_override_path, NULL,
+                                     state->preview_start_line);
         } else {
-            draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+            draw_preview_window(preview_window, state->current_directory, state->selected_entry,
+                                state->preview_start_line);
         }
         wrefresh(dir_window);
         wrefresh(preview_window);
@@ -450,11 +484,8 @@ bool prompt_fuzzy_search(AppState *state,
         cas->cursor = 0;
         cas->start = 0;
         if (saved_selection[0]) {
-            SIZE idx = find_index_by_name_lazy(&state->files,
-                                               state->current_directory,
-                                               cas,
-                                               &state->lazy_load,
-                                               saved_selection);
+            SIZE idx = find_index_by_name_lazy(&state->files, state->current_directory, cas,
+                                               &state->lazy_load, saved_selection);
             if (idx != (SIZE)-1) {
                 cas->cursor = idx;
             }
@@ -462,9 +493,11 @@ bool prompt_fuzzy_search(AppState *state,
         sync_selection_from_active(state, cas);
         draw_directory_window(dir_window, state->current_directory, &state->files, cas);
         if (state->preview_override_active) {
-            draw_preview_window_path(preview_window, state->preview_override_path, NULL, state->preview_start_line);
+            draw_preview_window_path(preview_window, state->preview_override_path, NULL,
+                                     state->preview_start_line);
         } else {
-            draw_preview_window(preview_window, state->current_directory, state->selected_entry, state->preview_start_line);
+            draw_preview_window(preview_window, state->current_directory, state->selected_entry,
+                                state->preview_start_line);
         }
         wrefresh(dir_window);
         wrefresh(preview_window);

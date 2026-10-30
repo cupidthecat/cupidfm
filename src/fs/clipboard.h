@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 bool clipboard_set_from_file(const char *path);
+
 typedef struct {
     char **paths;
     size_t count;

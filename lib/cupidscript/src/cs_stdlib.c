@@ -1,39 +1,39 @@
-#include "cs_vm.h"
+#include "cs_http.h"
 #include "cs_net.h"
 #include "cs_tls.h"
-#include "cs_http.h"
+#include "cs_vm.h"
+#include <ctype.h>
+#include <errno.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <time.h>
-#include <math.h>
-#include <errno.h>
 #if !defined(_WIN32)
 #include <regex.h>
 #endif
 #if defined(_WIN32)
-#include <windows.h>
 #include <direct.h>
 #include <sys/stat.h>
+#include <windows.h>
 #else
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <dirent.h>
-#include <unistd.h>
 #include <fnmatch.h>
-#include <sys/inotify.h>
 #include <poll.h>
+#include <sys/inotify.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <zlib.h>
 #endif
 
 #if defined(_WIN32)
-#define CS_POPEN  _popen
+#define CS_POPEN _popen
 #define CS_PCLOSE _pclose
 #else
-#define CS_POPEN  popen
+#define CS_POPEN popen
 #define CS_PCLOSE pclose
 #endif
 
@@ -41,7 +41,8 @@
 static int64_t wall_clock_ms(void) {
 #if !defined(_WIN32)
     struct timeval tv;
-    if (gettimeofday(&tv, NULL) != 0) return 0;
+    if (gettimeofday(&tv, NULL) != 0)
+        return 0;
     return (int64_t)tv.tv_sec * 1000 + (int64_t)(tv.tv_usec / 1000);
 #else
     FILETIME ft;
@@ -50,12 +51,13 @@ static int64_t wall_clock_ms(void) {
     uli.LowPart = ft.dwLowDateTime;
     uli.HighPart = ft.dwHighDateTime;
     const uint64_t EPOCH_100NS = 116444736000000000ULL; // 1601->1970
-    if (uli.QuadPart < EPOCH_100NS) return 0;
+    if (uli.QuadPart < EPOCH_100NS)
+        return 0;
     return (int64_t)((uli.QuadPart - EPOCH_100NS) / 10000ULL);
 #endif
 }
 
-static int tm_local_from_time(time_t sec, struct tm* out) {
+static int tm_local_from_time(time_t sec, struct tm *out) {
 #if defined(_WIN32)
     return localtime_s(out, &sec) == 0;
 #else
@@ -63,7 +65,7 @@ static int tm_local_from_time(time_t sec, struct tm* out) {
 #endif
 }
 
-static int tm_utc_from_time(time_t sec, struct tm* out) {
+static int tm_utc_from_time(time_t sec, struct tm *out) {
 #if defined(_WIN32)
     return gmtime_s(out, &sec) == 0;
 #else
@@ -71,9 +73,12 @@ static int tm_utc_from_time(time_t sec, struct tm* out) {
 #endif
 }
 
-static cs_value datetime_map_from_tm(cs_vm* vm, const struct tm* t, int ms, int is_utc) {
+static cs_value datetime_map_from_tm(cs_vm *vm, const struct tm *t, int ms, int is_utc) {
     cs_value m = cs_map(vm);
-    if (!m.as.p) { cs_error(vm, "out of memory"); return cs_nil(); }
+    if (!m.as.p) {
+        cs_error(vm, "out of memory");
+        return cs_nil();
+    }
     cs_map_set(m, "year", cs_int((int64_t)t->tm_year + 1900));
     cs_map_set(m, "month", cs_int((int64_t)t->tm_mon + 1));
     cs_map_set(m, "day", cs_int((int64_t)t->tm_mday));
@@ -88,81 +93,130 @@ static cs_value datetime_map_from_tm(cs_vm* vm, const struct tm* t, int ms, int 
     return m;
 }
 
-static int nf_unix_ms(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_unix_ms(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     *out = cs_int((int64_t)wall_clock_ms());
     return 0;
 }
 
-static int nf_unix_s(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_unix_s(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     *out = cs_int((int64_t)time(NULL));
     return 0;
 }
 
-static int nf_datetime_now(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_datetime_now(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     int64_t ms = wall_clock_ms();
     time_t sec = (time_t)(ms / 1000);
     int rem = (int)(ms % 1000);
-    if (rem < 0) { rem += 1000; sec -= 1; }
+    if (rem < 0) {
+        rem += 1000;
+        sec -= 1;
+    }
     struct tm t;
-    if (!tm_local_from_time(sec, &t)) { *out = cs_nil(); return 0; }
+    if (!tm_local_from_time(sec, &t)) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = datetime_map_from_tm(vm, &t, rem, 0);
     return 0;
 }
 
-static int nf_datetime_utc(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_datetime_utc(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     int64_t ms = wall_clock_ms();
     time_t sec = (time_t)(ms / 1000);
     int rem = (int)(ms % 1000);
-    if (rem < 0) { rem += 1000; sec -= 1; }
+    if (rem < 0) {
+        rem += 1000;
+        sec -= 1;
+    }
     struct tm t;
-    if (!tm_utc_from_time(sec, &t)) { *out = cs_nil(); return 0; }
+    if (!tm_utc_from_time(sec, &t)) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = datetime_map_from_tm(vm, &t, rem, 1);
     return 0;
 }
 
-static int nf_datetime_from_unix_ms(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_datetime_from_unix_ms(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                    cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || (argv[0].type != CS_T_INT && argv[0].type != CS_T_FLOAT)) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || (argv[0].type != CS_T_INT && argv[0].type != CS_T_FLOAT)) {
+        *out = cs_nil();
+        return 0;
+    }
     int64_t ms = (argv[0].type == CS_T_INT) ? argv[0].as.i : (int64_t)argv[0].as.f;
     time_t sec = (time_t)(ms / 1000);
     int rem = (int)(ms % 1000);
-    if (rem < 0) { rem += 1000; sec -= 1; }
+    if (rem < 0) {
+        rem += 1000;
+        sec -= 1;
+    }
     struct tm t;
-    if (!tm_local_from_time(sec, &t)) { *out = cs_nil(); return 0; }
+    if (!tm_local_from_time(sec, &t)) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = datetime_map_from_tm(vm, &t, rem, 0);
     return 0;
 }
 
-static int nf_datetime_from_unix_ms_utc(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_datetime_from_unix_ms_utc(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                        cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || (argv[0].type != CS_T_INT && argv[0].type != CS_T_FLOAT)) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || (argv[0].type != CS_T_INT && argv[0].type != CS_T_FLOAT)) {
+        *out = cs_nil();
+        return 0;
+    }
     int64_t ms = (argv[0].type == CS_T_INT) ? argv[0].as.i : (int64_t)argv[0].as.f;
     time_t sec = (time_t)(ms / 1000);
     int rem = (int)(ms % 1000);
-    if (rem < 0) { rem += 1000; sec -= 1; }
+    if (rem < 0) {
+        rem += 1000;
+        sec -= 1;
+    }
     struct tm t;
-    if (!tm_utc_from_time(sec, &t)) { *out = cs_nil(); return 0; }
+    if (!tm_utc_from_time(sec, &t)) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = datetime_map_from_tm(vm, &t, rem, 1);
     return 0;
 }
 
 // Forward declarations
-static int nf_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out);
-static int nf_format_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out);
+static int nf_error(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out);
+static int nf_format_error(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out);
 
-static int cs_value_equals(const cs_value* a, const cs_value* b) {
+static int cs_value_equals(const cs_value *a, const cs_value *b) {
     if (a->type != b->type) {
-        if ((a->type == CS_T_INT && b->type == CS_T_FLOAT) || (a->type == CS_T_FLOAT && b->type == CS_T_INT)) {
+        if ((a->type == CS_T_INT && b->type == CS_T_FLOAT) ||
+            (a->type == CS_T_FLOAT && b->type == CS_T_INT)) {
             double av = (a->type == CS_T_INT) ? (double)a->as.i : a->as.f;
             double bv = (b->type == CS_T_INT) ? (double)b->as.i : b->as.f;
             return av == bv;
@@ -180,24 +234,30 @@ static int cs_value_equals(const cs_value* a, const cs_value* b) {
         case CS_T_FLOAT:
             return a->as.f == b->as.f;
         case CS_T_STR: {
-            cs_string* sa = (cs_string*)a->as.p;
-            cs_string* sb = (cs_string*)b->as.p;
-            if (!sa || !sb) return sa == sb;
-            if (sa->len != sb->len) return 0;
+            cs_string *sa = (cs_string *)a->as.p;
+            cs_string *sb = (cs_string *)b->as.p;
+            if (!sa || !sb)
+                return sa == sb;
+            if (sa->len != sb->len)
+                return 0;
             return memcmp(sa->data, sb->data, sa->len) == 0;
         }
         case CS_T_BYTES: {
-            cs_bytes_obj* ba = (cs_bytes_obj*)a->as.p;
-            cs_bytes_obj* bb = (cs_bytes_obj*)b->as.p;
-            if (!ba || !bb) return ba == bb;
-            if (ba->len != bb->len) return 0;
+            cs_bytes_obj *ba = (cs_bytes_obj *)a->as.p;
+            cs_bytes_obj *bb = (cs_bytes_obj *)b->as.p;
+            if (!ba || !bb)
+                return ba == bb;
+            if (ba->len != bb->len)
+                return 0;
             return memcmp(ba->data, bb->data, ba->len) == 0;
         }
         case CS_T_LIST: {
-            cs_list_obj* la = (cs_list_obj*)a->as.p;
-            cs_list_obj* lb = (cs_list_obj*)b->as.p;
-            if (!la || !lb) return la == lb;
-            if (la->len != lb->len) return 0;
+            cs_list_obj *la = (cs_list_obj *)a->as.p;
+            cs_list_obj *lb = (cs_list_obj *)b->as.p;
+            if (!la || !lb)
+                return la == lb;
+            if (la->len != lb->len)
+                return 0;
             for (size_t i = 0; i < la->len; i++) {
                 if (!cs_value_equals(&la->items[i], &lb->items[i]))
                     return 0;
@@ -205,29 +265,35 @@ static int cs_value_equals(const cs_value* a, const cs_value* b) {
             return 1;
         }
         case CS_T_MAP: {
-            cs_map_obj* ma = (cs_map_obj*)a->as.p;
-            cs_map_obj* mb = (cs_map_obj*)b->as.p;
-            if (!ma || !mb) return ma == mb;
-            
+            cs_map_obj *ma = (cs_map_obj *)a->as.p;
+            cs_map_obj *mb = (cs_map_obj *)b->as.p;
+            if (!ma || !mb)
+                return ma == mb;
+
             // Count number of entries in each map
             size_t count_a = 0;
             for (size_t i = 0; i < ma->cap; i++) {
-                if (ma->entries[i].in_use) count_a++;
+                if (ma->entries[i].in_use)
+                    count_a++;
             }
             size_t count_b = 0;
             for (size_t i = 0; i < mb->cap; i++) {
-                if (mb->entries[i].in_use) count_b++;
+                if (mb->entries[i].in_use)
+                    count_b++;
             }
-            if (count_a != count_b) return 0;
-            
+            if (count_a != count_b)
+                return 0;
+
             // Check that every key-value pair in 'a' exists in 'b'
             for (size_t i = 0; i < ma->cap; i++) {
-                if (!ma->entries[i].in_use) continue;
-                
+                if (!ma->entries[i].in_use)
+                    continue;
+
                 // Find this key in map b
                 int found = 0;
                 for (size_t j = 0; j < mb->cap; j++) {
-                    if (!mb->entries[j].in_use) continue;
+                    if (!mb->entries[j].in_use)
+                        continue;
                     if (cs_value_key_equals(ma->entries[i].key, mb->entries[j].key)) {
                         // Found the key, now compare values
                         if (!cs_value_equals(&ma->entries[i].val, &mb->entries[j].val))
@@ -236,15 +302,18 @@ static int cs_value_equals(const cs_value* a, const cs_value* b) {
                         break;
                     }
                 }
-                if (!found) return 0;
+                if (!found)
+                    return 0;
             }
             return 1;
         }
         case CS_T_TUPLE: {
-            cs_tuple_obj* ta = (cs_tuple_obj*)a->as.p;
-            cs_tuple_obj* tb = (cs_tuple_obj*)b->as.p;
-            if (!ta || !tb) return ta == tb;
-            if (ta->len != tb->len) return 0;
+            cs_tuple_obj *ta = (cs_tuple_obj *)a->as.p;
+            cs_tuple_obj *tb = (cs_tuple_obj *)b->as.p;
+            if (!ta || !tb)
+                return ta == tb;
+            if (ta->len != tb->len)
+                return 0;
             for (size_t i = 0; i < ta->len; i++) {
                 if (!cs_value_equals(&ta->fields[i].value, &tb->fields[i].value))
                     return 0;
@@ -256,50 +325,63 @@ static int cs_value_equals(const cs_value* a, const cs_value* b) {
     }
 }
 
-static char* cs_strdup2_local(const char* s) {
+static char *cs_strdup2_local(const char *s) {
     size_t n = strlen(s ? s : "");
-    char* p = (char*)malloc(n + 1);
-    if (!p) return NULL;
-    if (n) memcpy(p, s, n);
+    char *p = (char *)malloc(n + 1);
+    if (!p)
+        return NULL;
+    if (n)
+        memcpy(p, s, n);
     p[n] = 0;
     return p;
 }
 
-static int is_abs_path(const char* p) {
-    if (!p || !*p) return 0;
-    if (p[0] == '/' || p[0] == '\\') return 1;
-    if (isalpha((unsigned char)p[0]) && p[1] == ':') return 1; // Windows drive
+static int is_abs_path(const char *p) {
+    if (!p || !*p)
+        return 0;
+    if (p[0] == '/' || p[0] == '\\')
+        return 1;
+    if (isalpha((unsigned char)p[0]) && p[1] == ':')
+        return 1; // Windows drive
     return 0;
 }
 
-static char* path_join_alloc(const char* a, const char* b) {
-    if (!a || !*a) return cs_strdup2_local(b ? b : "");
-    if (!b || !*b) return cs_strdup2_local(a);
+static char *path_join_alloc(const char *a, const char *b) {
+    if (!a || !*a)
+        return cs_strdup2_local(b ? b : "");
+    if (!b || !*b)
+        return cs_strdup2_local(a);
 
     size_t na = strlen(a), nb = strlen(b);
     int need_sep = 1;
     if (na > 0) {
         char last = a[na - 1];
-        if (last == '/' || last == '\\') need_sep = 0;
+        if (last == '/' || last == '\\')
+            need_sep = 0;
     }
-    if (b[0] == '/' || b[0] == '\\') need_sep = 0;
+    if (b[0] == '/' || b[0] == '\\')
+        need_sep = 0;
 
-    char* out = (char*)malloc(na + (need_sep ? 1 : 0) + nb + 1);
-    if (!out) return NULL;
+    char *out = (char *)malloc(na + (need_sep ? 1 : 0) + nb + 1);
+    if (!out)
+        return NULL;
     memcpy(out, a, na);
     size_t w = na;
-    if (need_sep) out[w++] = '/';
+    if (need_sep)
+        out[w++] = '/';
     memcpy(out + w, b, nb + 1);
     return out;
 }
 
-static const char* vm_current_dir(const cs_vm* vm) {
-    if (!vm || vm->dir_count == 0) return ".";
+static const char *vm_current_dir(const cs_vm *vm) {
+    if (!vm || vm->dir_count == 0)
+        return ".";
     return vm->dir_stack[vm->dir_count - 1];
 }
 
-static char* resolve_path_alloc(cs_vm* vm, const char* p) {
-    if (is_abs_path(p)) return cs_strdup2_local(p);
+static char *resolve_path_alloc(cs_vm *vm, const char *p) {
+    if (is_abs_path(p))
+        return cs_strdup2_local(p);
     return path_join_alloc(vm_current_dir(vm), p);
 }
 
@@ -311,14 +393,16 @@ static char* resolve_path_alloc(cs_vm* vm, const char* p) {
 #define CS_STAT_FN stat
 #endif
 
-static int fs_stat(const char* path, CS_STAT_STRUCT* st) {
-    if (!path || !st) return 0;
+static int fs_stat(const char *path, CS_STAT_STRUCT *st) {
+    if (!path || !st)
+        return 0;
     return CS_STAT_FN(path, st) == 0;
 }
 
-static int fs_is_dir(const char* path) {
+static int fs_is_dir(const char *path) {
     CS_STAT_STRUCT st;
-    if (!fs_stat(path, &st)) return 0;
+    if (!fs_stat(path, &st))
+        return 0;
 #if defined(_WIN32)
     return (st.st_mode & _S_IFDIR) != 0;
 #else
@@ -326,9 +410,10 @@ static int fs_is_dir(const char* path) {
 #endif
 }
 
-static int fs_is_file(const char* path) {
+static int fs_is_file(const char *path) {
     CS_STAT_STRUCT st;
-    if (!fs_stat(path, &st)) return 0;
+    if (!fs_stat(path, &st))
+        return 0;
 #if defined(_WIN32)
     return (st.st_mode & _S_IFREG) != 0;
 #else
@@ -336,16 +421,22 @@ static int fs_is_file(const char* path) {
 #endif
 }
 
-static int vm_set_current_dir(cs_vm* vm, const char* path) {
-    if (!vm || !path) return 0;
-    char* dup = cs_strdup2_local(path);
-    if (!dup) return 0;
+static int vm_set_current_dir(cs_vm *vm, const char *path) {
+    if (!vm || !path)
+        return 0;
+    char *dup = cs_strdup2_local(path);
+    if (!dup)
+        return 0;
 
     if (vm->dir_count == 0) {
         if (vm->dir_cap == 0) {
             vm->dir_cap = 4;
-            vm->dir_stack = (char**)malloc(sizeof(char*) * vm->dir_cap);
-            if (!vm->dir_stack) { free(dup); vm->dir_cap = 0; return 0; }
+            vm->dir_stack = (char **)malloc(sizeof(char *) * vm->dir_cap);
+            if (!vm->dir_stack) {
+                free(dup);
+                vm->dir_cap = 0;
+                return 0;
+            }
         }
         vm->dir_stack[0] = dup;
         vm->dir_count = 1;
@@ -357,12 +448,15 @@ static int vm_set_current_dir(cs_vm* vm, const char* path) {
     return 1;
 }
 
-static const char* value_repr(cs_value v, char* buf, size_t buf_sz) {
-    if (!buf || buf_sz == 0) return "";
+static const char *value_repr(cs_value v, char *buf, size_t buf_sz) {
+    if (!buf || buf_sz == 0)
+        return "";
     buf[0] = 0;
     switch (v.type) {
-        case CS_T_NIL:  return "nil";
-        case CS_T_BOOL: return v.as.b ? "true" : "false";
+        case CS_T_NIL:
+            return "nil";
+        case CS_T_BOOL:
+            return v.as.b ? "true" : "false";
         case CS_T_INT:
             snprintf(buf, buf_sz, "%lld", (long long)v.as.i);
             return buf;
@@ -370,110 +464,142 @@ static const char* value_repr(cs_value v, char* buf, size_t buf_sz) {
             snprintf(buf, buf_sz, "%g", v.as.f);
             return buf;
         case CS_T_STR:
-            return ((cs_string*)v.as.p)->data;
+            return ((cs_string *)v.as.p)->data;
         case CS_T_LIST: {
-            cs_list_obj* l = (cs_list_obj*)v.as.p;
+            cs_list_obj *l = (cs_list_obj *)v.as.p;
             snprintf(buf, buf_sz, "<list len=%lld>", (long long)(l ? l->len : 0));
             return buf;
         }
         case CS_T_MAP: {
-            cs_map_obj* m = (cs_map_obj*)v.as.p;
+            cs_map_obj *m = (cs_map_obj *)v.as.p;
             snprintf(buf, buf_sz, "<map len=%lld>", (long long)(m ? m->len : 0));
             return buf;
         }
         case CS_T_SET: {
-            cs_map_obj* m = (cs_map_obj*)v.as.p;
+            cs_map_obj *m = (cs_map_obj *)v.as.p;
             snprintf(buf, buf_sz, "<set len=%lld>", (long long)(m ? m->len : 0));
             return buf;
         }
         case CS_T_STRBUF: {
-            cs_strbuf_obj* b = (cs_strbuf_obj*)v.as.p;
+            cs_strbuf_obj *b = (cs_strbuf_obj *)v.as.p;
             snprintf(buf, buf_sz, "<strbuf len=%lld>", (long long)(b ? b->len : 0));
             return buf;
         }
         case CS_T_RANGE: {
-            cs_range_obj* r = (cs_range_obj*)v.as.p;
-            if (!r) return "<range>";
-            snprintf(buf, buf_sz, "<range %lld..%s%lld>",
-                (long long)r->start,
-                r->inclusive ? "=" : "",
-                (long long)r->end);
+            cs_range_obj *r = (cs_range_obj *)v.as.p;
+            if (!r)
+                return "<range>";
+            snprintf(buf, buf_sz, "<range %lld..%s%lld>", (long long)r->start,
+                     r->inclusive ? "=" : "", (long long)r->end);
             return buf;
         }
         case CS_T_TUPLE: {
-            cs_tuple_obj* t = (cs_tuple_obj*)v.as.p;
+            cs_tuple_obj *t = (cs_tuple_obj *)v.as.p;
             snprintf(buf, buf_sz, "<tuple len=%lld>", (long long)(t ? t->len : 0));
             return buf;
         }
-        case CS_T_FUNC:   return "<function>";
-        case CS_T_NATIVE: return "<native>";
-        case CS_T_PROMISE: return "<promise>";
-        default:          return "<obj>";
+        case CS_T_FUNC:
+            return "<function>";
+        case CS_T_NATIVE:
+            return "<native>";
+        case CS_T_PROMISE:
+            return "<promise>";
+        default:
+            return "<obj>";
     }
 }
 
-static int nf_print(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
+static int nf_print(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
     for (int i = 0; i < argc; i++) {
         char tmp[64];
         switch (argv[i].type) {
-            case CS_T_NIL:  fputs("nil", stdout); break;
-            case CS_T_BOOL: fputs(argv[i].as.b ? "true" : "false", stdout); break;
-            case CS_T_INT:  fprintf(stdout, "%lld", (long long)argv[i].as.i); break;
-            case CS_T_FLOAT: fprintf(stdout, "%g", argv[i].as.f); break;
-            case CS_T_STR:  fputs(((cs_string*)argv[i].as.p)->data, stdout); break;
-            default:        fputs(value_repr(argv[i], tmp, sizeof(tmp)), stdout); break;
+            case CS_T_NIL:
+                fputs("nil", stdout);
+                break;
+            case CS_T_BOOL:
+                fputs(argv[i].as.b ? "true" : "false", stdout);
+                break;
+            case CS_T_INT:
+                fprintf(stdout, "%lld", (long long)argv[i].as.i);
+                break;
+            case CS_T_FLOAT:
+                fprintf(stdout, "%g", argv[i].as.f);
+                break;
+            case CS_T_STR:
+                fputs(((cs_string *)argv[i].as.p)->data, stdout);
+                break;
+            default:
+                fputs(value_repr(argv[i], tmp, sizeof(tmp)), stdout);
+                break;
         }
-        if (i + 1 < argc) fputc(' ', stdout);
+        if (i + 1 < argc)
+            fputc(' ', stdout);
     }
     fputc('\n', stdout);
-    if (out) *out = cs_nil();
+    if (out)
+        *out = cs_nil();
     return 0;
 }
 
-static int nf_typeof(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_typeof(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (argc != 1) { if (out) *out = cs_nil(); return 0; }
-    const char* tn = cs_type_name(argv[0].type);
+    if (argc != 1) {
+        if (out)
+            *out = cs_nil();
+        return 0;
+    }
+    const char *tn = cs_type_name(argv[0].type);
     *out = cs_str(vm, tn);
     return 0;
 }
 
-static int nf_getenv(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_getenv(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* key = ((cs_string*)argv[0].as.p)->data;
-    const char* v = getenv(key);
-    if (!v) { *out = cs_nil(); return 0; }
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *key = ((cs_string *)argv[0].as.p)->data;
+    const char *v = getenv(key);
+    if (!v) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_str(vm, v);
     return 0;
 }
 
 static int truthy_local(cs_value v) {
-    if (v.type == CS_T_NIL) return 0;
-    if (v.type == CS_T_BOOL) return v.as.b != 0;
+    if (v.type == CS_T_NIL)
+        return 0;
+    if (v.type == CS_T_BOOL)
+        return v.as.b != 0;
     return 1;
 }
 
-static int nf_assert(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_assert(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc < 1) return 0;
+    if (out)
+        *out = cs_nil();
+    if (argc < 1)
+        return 0;
     if (!truthy_local(argv[0])) {
         // Create error object for assertion failure
-        const char* msg = (argc >= 2 && argv[1].type == CS_T_STR) ? 
-                         cs_to_cstr(argv[1]) : "assertion failed";
-        
+        const char *msg =
+            (argc >= 2 && argv[1].type == CS_T_STR) ? cs_to_cstr(argv[1]) : "assertion failed";
+
         cs_value err_args[2];
         err_args[0] = cs_str(vm, msg);
         err_args[1] = cs_str(vm, "ASSERTION");
-        
+
         cs_value err;
         nf_error(vm, NULL, 2, err_args, &err);
-        
+
         cs_value_release(err_args[0]);
         cs_value_release(err_args[1]);
-        
+
         // Format and throw the error
         cs_value formatted;
         nf_format_error(vm, NULL, 1, &err, &formatted);
@@ -482,61 +608,80 @@ static int nf_assert(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
         }
         cs_value_release(formatted);
         cs_value_release(err);
-        
+
         return 1;
     }
     return 0;
 }
 
-static int nf_load(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_load(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 1 || argv[0].type != CS_T_STR) return 0;
+    if (out)
+        *out = cs_nil();
+    if (argc != 1 || argv[0].type != CS_T_STR)
+        return 0;
 
-    char* path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
-    if (!path) { cs_error(vm, "out of memory"); return 1; }
+    char *path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
+    if (!path) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     int rc = cs_vm_run_file(vm, path);
     free(path);
-    if (rc != 0) return 1;
-    if (out) *out = cs_bool(1);
+    if (rc != 0)
+        return 1;
+    if (out)
+        *out = cs_bool(1);
     return 0;
 }
 
-static int nf_require(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_require(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 1 || argv[0].type != CS_T_STR) return 0;
+    if (out)
+        *out = cs_nil();
+    if (argc != 1 || argv[0].type != CS_T_STR)
+        return 0;
 
-    char* path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
-    if (!path) { cs_error(vm, "out of memory"); return 1; }
+    char *path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
+    if (!path) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     cs_value exports = cs_nil();
     int rc = cs_vm_require_module(vm, path, &exports);
     free(path);
-    if (rc != 0) return 1;
-    if (out) *out = exports;
-    else cs_value_release(exports);
+    if (rc != 0)
+        return 1;
+    if (out)
+        *out = exports;
+    else
+        cs_value_release(exports);
     return 0;
 }
 
-static int nf_require_optional(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_require_optional(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 1 || argv[0].type != CS_T_STR) return 0;
+    if (out)
+        *out = cs_nil();
+    if (argc != 1 || argv[0].type != CS_T_STR)
+        return 0;
 
-    char* path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
+    char *path = resolve_path_alloc(vm, cs_to_cstr(argv[0]));
     if (!path) {
-        if (out) *out = cs_nil();
-        return 0;  // No error, just return nil for path resolution failure
+        if (out)
+            *out = cs_nil();
+        return 0; // No error, just return nil for path resolution failure
     }
 
     // Check if file exists
-    FILE* f = fopen(path, "r");
+    FILE *f = fopen(path, "r");
     if (!f) {
         free(path);
-        if (out) *out = cs_nil();
-        return 0;  // File not found - return nil without error
+        if (out)
+            *out = cs_nil();
+        return 0; // File not found - return nil without error
     }
     fclose(f);
 
@@ -549,46 +694,74 @@ static int nf_require_optional(cs_vm* vm, void* ud, int argc, const cs_value* ar
         // Parse or runtime error - propagate the error
         return 1;
     }
-    if (out) *out = exports;
-    else cs_value_release(exports);
+    if (out)
+        *out = exports;
+    else
+        cs_value_release(exports);
     return 0;
 }
 
-static int list_ensure(cs_list_obj* l, size_t need) {
-    if (!l) return 0;
-    if (need <= l->cap) return 1;
+static int list_ensure(cs_list_obj *l, size_t need) {
+    if (!l)
+        return 0;
+    if (need <= l->cap)
+        return 1;
     size_t nc = l->cap ? l->cap : 8;
-    while (nc < need) nc *= 2;
-    cs_value* ni = (cs_value*)realloc(l->items, nc * sizeof(cs_value));
-    if (!ni) return 0;
-    for (size_t i = l->cap; i < nc; i++) ni[i] = cs_nil();
+    while (nc < need)
+        nc *= 2;
+    cs_value *ni = (cs_value *)realloc(l->items, nc * sizeof(cs_value));
+    if (!ni)
+        return 0;
+    for (size_t i = l->cap; i < nc; i++)
+        ni[i] = cs_nil();
     l->items = ni;
     l->cap = nc;
     return 1;
 }
 
-static int nf_list(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_list(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     *out = cs_list(vm);
-    if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!out->as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     return 0;
 }
 
-static int nf_map(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_map(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc == 2 && argv[0].type == CS_T_LIST) {
-        if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) { cs_error(vm, "map(): mapper must be a function"); return 1; }
-        cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+        if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) {
+            cs_error(vm, "map(): mapper must be a function");
+            return 1;
+        }
+        cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
         cs_value mapper = argv[1];
         cs_value out_list = cs_list(vm);
-        if (!out_list.as.p) { cs_error(vm, "out of memory"); return 1; }
+        if (!out_list.as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         for (size_t i = 0; l && i < l->len; i++) {
-            cs_value args[1] = { l->items[i] };
+            cs_value args[1] = {l->items[i]};
             cs_value ret = cs_nil();
-            if (cs_call_value(vm, mapper, 1, args, &ret) != 0) { cs_value_release(out_list); return 1; }
-            if (cs_list_push(out_list, ret) != 0) { cs_value_release(ret); cs_value_release(out_list); cs_error(vm, "out of memory"); return 1; }
+            if (cs_call_value(vm, mapper, 1, args, &ret) != 0) {
+                cs_value_release(out_list);
+                return 1;
+            }
+            if (cs_list_push(out_list, ret) != 0) {
+                cs_value_release(ret);
+                cs_value_release(out_list);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             cs_value_release(ret);
         }
         *out = out_list;
@@ -596,24 +769,38 @@ static int nf_map(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     }
 
     *out = cs_map(vm);
-    if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!out->as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     return 0;
 }
 
-static int nf_set(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
 
     cs_value s = cs_set(vm);
-    if (!s.as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!s.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    if (argc == 0) { *out = s; return 0; }
-    if (argc != 1) { cs_value_release(s); *out = cs_nil(); return 0; }
+    if (argc == 0) {
+        *out = s;
+        return 0;
+    }
+    if (argc != 1) {
+        cs_value_release(s);
+        *out = cs_nil();
+        return 0;
+    }
 
     // ...existing code...
 
     if (argv[0].type == CS_T_LIST) {
-        cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+        cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
         for (size_t i = 0; l && i < l->len; i++) {
             if (cs_map_set_value(s, l->items[i], cs_bool(1)) != 0) {
                 cs_value_release(s);
@@ -626,9 +813,10 @@ static int nf_set(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     }
 
     if (argv[0].type == CS_T_MAP || argv[0].type == CS_T_SET) {
-        cs_map_obj* m = (cs_map_obj*)argv[0].as.p;
+        cs_map_obj *m = (cs_map_obj *)argv[0].as.p;
         for (size_t i = 0; m && i < m->cap; i++) {
-            if (!m->entries[i].in_use) continue;
+            if (!m->entries[i].in_use)
+                continue;
             if (cs_map_set_value(s, m->entries[i].key, cs_bool(1)) != 0) {
                 cs_value_release(s);
                 cs_error(vm, "out of memory");
@@ -644,42 +832,70 @@ static int nf_set(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     return 0;
 }
 
-static int nf_strbuf(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_strbuf(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     *out = cs_strbuf(vm);
-    if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!out->as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     return 0;
 }
 
-static int nf_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_bytes(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc == 0) {
         *out = cs_bytes(vm, NULL, 0);
-        if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+        if (!out->as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         return 0;
     }
-    if (argc != 1) { *out = cs_nil(); return 0; }
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    if (argv[0].type == CS_T_BYTES) { *out = cs_value_copy(argv[0]); return 0; }
+    if (argv[0].type == CS_T_BYTES) {
+        *out = cs_value_copy(argv[0]);
+        return 0;
+    }
     if (argv[0].type == CS_T_INT) {
-        if (argv[0].as.i < 0) { *out = cs_nil(); return 0; }
+        if (argv[0].as.i < 0) {
+            *out = cs_nil();
+            return 0;
+        }
         *out = cs_bytes(vm, NULL, (size_t)argv[0].as.i);
-        if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+        if (!out->as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         return 0;
     }
     if (argv[0].type == CS_T_STR) {
-        cs_string* s = (cs_string*)argv[0].as.p;
-        *out = cs_bytes(vm, (const uint8_t*)s->data, s->len);
-        if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+        cs_string *s = (cs_string *)argv[0].as.p;
+        *out = cs_bytes(vm, (const uint8_t *)s->data, s->len);
+        if (!out->as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         return 0;
     }
     if (argv[0].type == CS_T_LIST) {
-        cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+        cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
         size_t len = l ? l->len : 0;
-        uint8_t* buf = (uint8_t*)malloc(len ? len : 1);
-        if (!buf) { cs_error(vm, "out of memory"); return 1; }
+        uint8_t *buf = (uint8_t *)malloc(len ? len : 1);
+        if (!buf) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         for (size_t i = 0; i < len; i++) {
             cs_value v = l->items[i];
             if (v.type != CS_T_INT || v.as.i < 0 || v.as.i > 255) {
@@ -690,7 +906,10 @@ static int nf_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
             buf[i] = (uint8_t)v.as.i;
         }
         *out = cs_bytes_take(vm, buf, len);
-        if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+        if (!out->as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         return 0;
     }
 
@@ -698,55 +917,98 @@ static int nf_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_len(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_int(0); return 0; }
-    if (argv[0].type == CS_T_STR) { *out = cs_int((int64_t)((cs_string*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_LIST) { *out = cs_int((int64_t)((cs_list_obj*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_TUPLE) { *out = cs_int((int64_t)((cs_tuple_obj*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_MAP) { *out = cs_int((int64_t)((cs_map_obj*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_SET) { *out = cs_int((int64_t)((cs_map_obj*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_STRBUF) { *out = cs_int((int64_t)((cs_strbuf_obj*)argv[0].as.p)->len); return 0; }
-    if (argv[0].type == CS_T_BYTES) { *out = cs_int((int64_t)((cs_bytes_obj*)argv[0].as.p)->len); return 0; }
+static int nf_len(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_int(0);
+        return 0;
+    }
+    if (argv[0].type == CS_T_STR) {
+        *out = cs_int((int64_t)((cs_string *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_LIST) {
+        *out = cs_int((int64_t)((cs_list_obj *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_TUPLE) {
+        *out = cs_int((int64_t)((cs_tuple_obj *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_MAP) {
+        *out = cs_int((int64_t)((cs_map_obj *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_SET) {
+        *out = cs_int((int64_t)((cs_map_obj *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_STRBUF) {
+        *out = cs_int((int64_t)((cs_strbuf_obj *)argv[0].as.p)->len);
+        return 0;
+    }
+    if (argv[0].type == CS_T_BYTES) {
+        *out = cs_int((int64_t)((cs_bytes_obj *)argv[0].as.p)->len);
+        return 0;
+    }
     *out = cs_int(0);
     return 0;
 }
 
-static int nf_push(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 2 || argv[0].type != CS_T_LIST) return 0;
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
-    if (!list_ensure(l, l->len + 1)) { cs_error(vm, "out of memory"); return 1; }
+static int nf_push(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (out)
+        *out = cs_nil();
+    if (argc != 2 || argv[0].type != CS_T_LIST)
+        return 0;
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
+    if (!list_ensure(l, l->len + 1)) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     l->items[l->len++] = cs_value_copy(argv[1]);
     return 0;
 }
 
-static int nf_pop(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_nil(); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
-    if (!l || l->len == 0) { *out = cs_nil(); return 0; }
+static int nf_pop(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
+    if (!l || l->len == 0) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = l->items[l->len - 1];
     l->items[l->len - 1] = cs_nil();
     l->len--;
     return 0;
 }
 
-static int nf_extend(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_extend(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
+    if (out)
+        *out = cs_nil();
     if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) {
         cs_error(vm, "extend() requires two lists");
         return 1;
     }
 
-    cs_list_obj* dst = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* src = (cs_list_obj*)argv[1].as.p;
-    if (!dst || !src) return 0;
-    if (src->len == 0) return 0;
+    cs_list_obj *dst = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *src = (cs_list_obj *)argv[1].as.p;
+    if (!dst || !src)
+        return 0;
+    if (src->len == 0)
+        return 0;
 
     if (!list_ensure(dst, dst->len + src->len)) {
         cs_error(vm, "out of memory");
@@ -760,15 +1022,16 @@ static int nf_extend(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
     return 0;
 }
 
-static int nf_index_of(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_index_of(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 2 || argv[0].type != CS_T_LIST) {
         cs_error(vm, "index_of() requires a list and a value");
         return 1;
     }
 
-    cs_list_obj* list = (cs_list_obj*)argv[0].as.p;
+    cs_list_obj *list = (cs_list_obj *)argv[0].as.p;
     cs_value item = argv[1];
     for (size_t i = 0; i < list->len; i++) {
         if (cs_value_equals(&list->items[i], &item)) {
@@ -781,21 +1044,25 @@ static int nf_index_of(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     return 0;
 }
 
-static int compare_default(cs_vm* vm, cs_value a, cs_value b, int* ok) {
-    if (!ok) return 0;
+static int compare_default(cs_vm *vm, cs_value a, cs_value b, int *ok) {
+    if (!ok)
+        return 0;
     *ok = 1;
 
-    if ((a.type == CS_T_INT || a.type == CS_T_FLOAT) && (b.type == CS_T_INT || b.type == CS_T_FLOAT)) {
+    if ((a.type == CS_T_INT || a.type == CS_T_FLOAT) &&
+        (b.type == CS_T_INT || b.type == CS_T_FLOAT)) {
         double av = (a.type == CS_T_INT) ? (double)a.as.i : a.as.f;
         double bv = (b.type == CS_T_INT) ? (double)b.as.i : b.as.f;
-        if (av < bv) return -1;
-        if (av > bv) return 1;
+        if (av < bv)
+            return -1;
+        if (av > bv)
+            return 1;
         return 0;
     }
 
     if (a.type == CS_T_STR && b.type == CS_T_STR) {
-        const char* sa = cs_to_cstr(a);
-        const char* sb = cs_to_cstr(b);
+        const char *sa = cs_to_cstr(a);
+        const char *sb = cs_to_cstr(b);
         int cmp = strcmp(sa, sb);
         return (cmp < 0) ? -1 : (cmp > 0 ? 1 : 0);
     }
@@ -804,17 +1071,20 @@ static int compare_default(cs_vm* vm, cs_value a, cs_value b, int* ok) {
         return (a.as.b < b.as.b) ? -1 : (a.as.b > b.as.b ? 1 : 0);
     }
 
-    if (a.type == CS_T_NIL && b.type == CS_T_NIL) return 0;
+    if (a.type == CS_T_NIL && b.type == CS_T_NIL)
+        return 0;
 
     cs_error(vm, "sort(): incompatible types for default comparison");
     *ok = 0;
     return 0;
 }
 
-static int compare_with_cmp(cs_vm* vm, cs_value a, cs_value b, cs_value cmp, int* ok) {
-    if (!ok) return 0;
+static int compare_with_cmp(cs_vm *vm, cs_value a, cs_value b, cs_value cmp, int *ok) {
+    if (!ok)
+        return 0;
     *ok = 1;
-    if (cmp.type == CS_T_NIL) return compare_default(vm, a, b, ok);
+    if (cmp.type == CS_T_NIL)
+        return compare_default(vm, a, b, ok);
     if (cmp.type != CS_T_FUNC && cmp.type != CS_T_NATIVE) {
         cs_error(vm, "sort(): comparator must be a function");
         *ok = 0;
@@ -831,9 +1101,12 @@ static int compare_with_cmp(cs_vm* vm, cs_value a, cs_value b, cs_value cmp, int
     }
 
     int res = 0;
-    if (ret.type == CS_T_INT) res = (ret.as.i < 0) ? -1 : (ret.as.i > 0 ? 1 : 0);
-    else if (ret.type == CS_T_FLOAT) res = (ret.as.f < 0.0) ? -1 : (ret.as.f > 0.0 ? 1 : 0);
-    else if (ret.type == CS_T_BOOL) res = ret.as.b ? 1 : 0;
+    if (ret.type == CS_T_INT)
+        res = (ret.as.i < 0) ? -1 : (ret.as.i > 0 ? 1 : 0);
+    else if (ret.type == CS_T_FLOAT)
+        res = (ret.as.f < 0.0) ? -1 : (ret.as.f > 0.0 ? 1 : 0);
+    else if (ret.type == CS_T_BOOL)
+        res = ret.as.b ? 1 : 0;
     else {
         cs_error(vm, "sort(): comparator must return int/float/bool");
         *ok = 0;
@@ -842,16 +1115,19 @@ static int compare_with_cmp(cs_vm* vm, cs_value a, cs_value b, cs_value cmp, int
     return res;
 }
 
-static int sort_insertion(cs_vm* vm, cs_list_obj* list, cs_value cmp) {
-    if (!list || list->len < 2) return 0;
+static int sort_insertion(cs_vm *vm, cs_list_obj *list, cs_value cmp) {
+    if (!list || list->len < 2)
+        return 0;
     for (size_t i = 1; i < list->len; i++) {
         cs_value key = list->items[i];
         size_t j = i;
         while (j > 0) {
             int ok = 1;
             int cmp_res = compare_with_cmp(vm, list->items[j - 1], key, cmp, &ok);
-            if (!ok) return 1;
-            if (cmp_res <= 0) break;
+            if (!ok)
+                return 1;
+            if (cmp_res <= 0)
+                break;
             list->items[j] = list->items[j - 1];
             j--;
         }
@@ -860,14 +1136,16 @@ static int sort_insertion(cs_vm* vm, cs_list_obj* list, cs_value cmp) {
     return 0;
 }
 
-static int sort_quick_impl(cs_vm* vm, cs_list_obj* list, cs_value cmp, int64_t lo, int64_t hi) {
-    if (lo >= hi) return 0;
+static int sort_quick_impl(cs_vm *vm, cs_list_obj *list, cs_value cmp, int64_t lo, int64_t hi) {
+    if (lo >= hi)
+        return 0;
     cs_value pivot = list->items[hi];
     int64_t i = lo;
     for (int64_t j = lo; j < hi; j++) {
         int ok = 1;
         int cmp_res = compare_with_cmp(vm, list->items[j], pivot, cmp, &ok);
-        if (!ok) return 1;
+        if (!ok)
+            return 1;
         if (cmp_res <= 0) {
             cs_value tmp = list->items[i];
             list->items[i] = list->items[j];
@@ -879,62 +1157,82 @@ static int sort_quick_impl(cs_vm* vm, cs_list_obj* list, cs_value cmp, int64_t l
     list->items[i] = list->items[hi];
     list->items[hi] = tmp;
 
-    if (sort_quick_impl(vm, list, cmp, lo, i - 1) != 0) return 1;
-    if (sort_quick_impl(vm, list, cmp, i + 1, hi) != 0) return 1;
+    if (sort_quick_impl(vm, list, cmp, lo, i - 1) != 0)
+        return 1;
+    if (sort_quick_impl(vm, list, cmp, i + 1, hi) != 0)
+        return 1;
     return 0;
 }
 
-static int sort_quick(cs_vm* vm, cs_list_obj* list, cs_value cmp) {
-    if (!list || list->len < 2) return 0;
+static int sort_quick(cs_vm *vm, cs_list_obj *list, cs_value cmp) {
+    if (!list || list->len < 2)
+        return 0;
     return sort_quick_impl(vm, list, cmp, 0, (int64_t)list->len - 1);
 }
 
-static int sort_merge_impl(cs_vm* vm, cs_list_obj* list, cs_value cmp, cs_value* tmp, size_t lo, size_t hi) {
-    if (hi - lo <= 1) return 0;
+static int sort_merge_impl(cs_vm *vm, cs_list_obj *list, cs_value cmp, cs_value *tmp, size_t lo,
+                           size_t hi) {
+    if (hi - lo <= 1)
+        return 0;
     size_t mid = lo + (hi - lo) / 2;
-    if (sort_merge_impl(vm, list, cmp, tmp, lo, mid) != 0) return 1;
-    if (sort_merge_impl(vm, list, cmp, tmp, mid, hi) != 0) return 1;
+    if (sort_merge_impl(vm, list, cmp, tmp, lo, mid) != 0)
+        return 1;
+    if (sort_merge_impl(vm, list, cmp, tmp, mid, hi) != 0)
+        return 1;
 
     size_t i = lo, j = mid, k = 0;
     while (i < mid && j < hi) {
         int ok = 1;
         int cmp_res = compare_with_cmp(vm, list->items[i], list->items[j], cmp, &ok);
-        if (!ok) return 1;
-        if (cmp_res <= 0) tmp[k++] = list->items[i++];
-        else tmp[k++] = list->items[j++];
+        if (!ok)
+            return 1;
+        if (cmp_res <= 0)
+            tmp[k++] = list->items[i++];
+        else
+            tmp[k++] = list->items[j++];
     }
-    while (i < mid) tmp[k++] = list->items[i++];
-    while (j < hi) tmp[k++] = list->items[j++];
-    for (size_t t = 0; t < k; t++) list->items[lo + t] = tmp[t];
+    while (i < mid)
+        tmp[k++] = list->items[i++];
+    while (j < hi)
+        tmp[k++] = list->items[j++];
+    for (size_t t = 0; t < k; t++)
+        list->items[lo + t] = tmp[t];
     return 0;
 }
 
-static int sort_merge(cs_vm* vm, cs_list_obj* list, cs_value cmp) {
-    if (!list || list->len < 2) return 0;
-    cs_value* tmp = (cs_value*)malloc(sizeof(cs_value) * list->len);
-    if (!tmp) { cs_error(vm, "out of memory"); return 1; }
+static int sort_merge(cs_vm *vm, cs_list_obj *list, cs_value cmp) {
+    if (!list || list->len < 2)
+        return 0;
+    cs_value *tmp = (cs_value *)malloc(sizeof(cs_value) * list->len);
+    if (!tmp) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     int rc = sort_merge_impl(vm, list, cmp, tmp, 0, list->len);
     free(tmp);
     return rc;
 }
 
-static int nf_sort(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_sort(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_LIST) {
         cs_error(vm, "sort() requires a list");
         return 1;
     }
 
     cs_value cmp = cs_nil();
-    const char* algo = NULL;
+    const char *algo = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (argv[i].type == CS_T_STR && !algo) {
             algo = cs_to_cstr(argv[i]);
             continue;
         }
-        if ((argv[i].type == CS_T_FUNC || argv[i].type == CS_T_NATIVE || argv[i].type == CS_T_NIL) && cmp.type == CS_T_NIL) {
+        if ((argv[i].type == CS_T_FUNC || argv[i].type == CS_T_NATIVE ||
+             argv[i].type == CS_T_NIL) &&
+            cmp.type == CS_T_NIL) {
             cmp = argv[i];
             continue;
         }
@@ -942,87 +1240,138 @@ static int nf_sort(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value
         return 1;
     }
 
-    if (!algo) algo = "insertion";
+    if (!algo)
+        algo = "insertion";
 
-    cs_list_obj* list = (cs_list_obj*)argv[0].as.p;
-    if (!list || list->len < 2) { *out = cs_nil(); return 0; }
+    cs_list_obj *list = (cs_list_obj *)argv[0].as.p;
+    if (!list || list->len < 2) {
+        *out = cs_nil();
+        return 0;
+    }
 
     int rc = 0;
-    if (strcmp(algo, "insertion") == 0) rc = sort_insertion(vm, list, cmp);
-    else if (strcmp(algo, "quick") == 0 || strcmp(algo, "quicksort") == 0) rc = sort_quick(vm, list, cmp);
-    else if (strcmp(algo, "merge") == 0 || strcmp(algo, "mergesort") == 0) rc = sort_merge(vm, list, cmp);
+    if (strcmp(algo, "insertion") == 0)
+        rc = sort_insertion(vm, list, cmp);
+    else if (strcmp(algo, "quick") == 0 || strcmp(algo, "quicksort") == 0)
+        rc = sort_quick(vm, list, cmp);
+    else if (strcmp(algo, "merge") == 0 || strcmp(algo, "mergesort") == 0)
+        rc = sort_merge(vm, list, cmp);
     else {
         cs_error(vm, "sort(): unknown algorithm");
         return 1;
     }
 
-    if (rc != 0) return 1;
+    if (rc != 0)
+        return 1;
     *out = cs_nil();
     return 0;
 }
 
-static int nf_mget(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_MAP) { *out = cs_nil(); return 0; }
+static int nf_mget(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_MAP) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_map_get_value(argv[0], argv[1]);
     return 0;
 }
 
-static int nf_mset(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_mset(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 3 || argv[0].type != CS_T_MAP) return 0;
-    if (cs_map_set_value(argv[0], argv[1], argv[2]) != 0) { cs_error(vm, "out of memory"); return 1; }
+    if (out)
+        *out = cs_nil();
+    if (argc != 3 || argv[0].type != CS_T_MAP)
+        return 0;
+    if (cs_map_set_value(argv[0], argv[1], argv[2]) != 0) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     return 0;
 }
 
-static int nf_mhas(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_MAP) { *out = cs_bool(0); return 0; }
+static int nf_mhas(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_MAP) {
+        *out = cs_bool(0);
+        return 0;
+    }
     *out = cs_bool(cs_map_has_value(argv[0], argv[1]) != 0);
     return 0;
 }
 
-static int nf_mdel(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_MAP) { *out = cs_bool(0); return 0; }
+static int nf_mdel(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_MAP) {
+        *out = cs_bool(0);
+        return 0;
+    }
     *out = cs_bool(cs_map_del_value(argv[0], argv[1]) == 0);
     return 0;
 }
 
-static int nf_keys(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_keys(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_MAP) { *out = cs_list(vm); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_MAP) {
+        *out = cs_list(vm);
+        return 0;
+    }
     cs_value listv = cs_map_keys(vm, argv[0]);
-    if (listv.type == CS_T_NIL) { cs_error(vm, "out of memory"); return 1; }
+    if (listv.type == CS_T_NIL) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = listv;
     return 0;
 }
 
-static int nf_str_find(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_int(-1); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    const char* sub = ((cs_string*)argv[1].as.p)->data;
-    const char* p = strstr(s, sub);
-    if (!p) { *out = cs_int(-1); return 0; }
+static int nf_str_find(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_int(-1);
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    const char *sub = ((cs_string *)argv[1].as.p)->data;
+    const char *p = strstr(s, sub);
+    if (!p) {
+        *out = cs_int(-1);
+        return 0;
+    }
     *out = cs_int((int64_t)(p - s));
     return 0;
 }
 
-static int nf_str_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_replace(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR || argv[2].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    const char* old = ((cs_string*)argv[1].as.p)->data;
-    const char* rep = ((cs_string*)argv[2].as.p)->data;
-    if (!*old) { *out = cs_str(vm, s); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR ||
+        argv[2].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    const char *old = ((cs_string *)argv[1].as.p)->data;
+    const char *rep = ((cs_string *)argv[2].as.p)->data;
+    if (!*old) {
+        *out = cs_str(vm, s);
+        return 0;
+    }
 
     size_t ol = strlen(old);
     size_t rl = strlen(rep);
@@ -1034,22 +1383,25 @@ static int nf_str_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     }
 
     // Early exit: pattern not found
-    const char* first_hit = strstr(s, old);
+    const char *first_hit = strstr(s, old);
     if (!first_hit) {
         *out = cs_str(vm, s);
         return 0;
     }
 
     // Single-pass build with dynamic buffer
-    size_t cap = strlen(s) + 256;  // Start with input size + headroom
-    char* buf = (char*)malloc(cap);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    size_t cap = strlen(s) + 256; // Start with input size + headroom
+    char *buf = (char *)malloc(cap);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     size_t w = 0;
-    const char* p = s;
+    const char *p = s;
 
     while (1) {
-        const char* hit = strstr(p, old);
+        const char *hit = strstr(p, old);
         if (!hit) {
             // Copy remaining tail
             size_t tail_len = strlen(p);
@@ -1057,7 +1409,7 @@ static int nf_str_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
             // Ensure capacity
             while (w + tail_len >= cap) {
                 cap *= 2;
-                char* new_buf = (char*)realloc(buf, cap);
+                char *new_buf = (char *)realloc(buf, cap);
                 if (!new_buf) {
                     free(buf);
                     cs_error(vm, "out of memory");
@@ -1077,7 +1429,7 @@ static int nf_str_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
         // Ensure capacity for pre + replacement
         while (w + pre_len + rl >= cap) {
             cap *= 2;
-            char* new_buf = (char*)realloc(buf, cap);
+            char *new_buf = (char *)realloc(buf, cap);
             if (!new_buf) {
                 free(buf);
                 cs_error(vm, "out of memory");
@@ -1099,69 +1451,111 @@ static int nf_str_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     return 0;
 }
 
-static int nf_str_split(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_split(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_list(vm); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    const char* sep = ((cs_string*)argv[1].as.p)->data;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    const char *sep = ((cs_string *)argv[1].as.p)->data;
     if (!*sep) { // return [s]
         cs_value listv = cs_list(vm);
-        if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-        cs_list_obj* l = (cs_list_obj*)listv.as.p;
-        if (!list_ensure(l, 1)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (!listv.as.p) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
+        cs_list_obj *l = (cs_list_obj *)listv.as.p;
+        if (!list_ensure(l, 1)) {
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         l->items[l->len++] = cs_value_copy(argv[0]);
         *out = listv;
         return 0;
     }
 
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* l = (cs_list_obj*)listv.as.p;
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *l = (cs_list_obj *)listv.as.p;
 
     size_t sepl = strlen(sep);
-    const char* p = s;
+    const char *p = s;
     while (1) {
-        const char* hit = strstr(p, sep);
-        if (!hit) break;
+        const char *hit = strstr(p, sep);
+        if (!hit)
+            break;
         size_t n = (size_t)(hit - p);
-        char* part = (char*)malloc(n + 1);
-        if (!part) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        char *part = (char *)malloc(n + 1);
+        if (!part) {
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         memcpy(part, p, n);
         part[n] = 0;
         cs_value sv = cs_str_take(vm, part, (uint64_t)n);
-        if (!list_ensure(l, l->len + 1)) { cs_value_release(sv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (!list_ensure(l, l->len + 1)) {
+            cs_value_release(sv);
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         l->items[l->len++] = sv;
         p = hit + sepl;
     }
     cs_value tailv = cs_str(vm, p);
-    if (!list_ensure(l, l->len + 1)) { cs_value_release(tailv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+    if (!list_ensure(l, l->len + 1)) {
+        cs_value_release(tailv);
+        cs_value_release(listv);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     l->items[l->len++] = tailv;
 
     *out = listv;
     return 0;
 }
 
-static int nf_str_contains(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_bool(0); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    const char* sub = ((cs_string*)argv[1].as.p)->data;
+static int nf_str_contains(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    const char *sub = ((cs_string *)argv[1].as.p)->data;
     *out = cs_bool(strstr(s, sub) != NULL);
     return 0;
 }
 
-static int nf_str_count(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_int(0); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    const char* sub = ((cs_string*)argv[1].as.p)->data;
-    if (!*sub) { *out = cs_int(0); return 0; }
+static int nf_str_count(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_int(0);
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    const char *sub = ((cs_string *)argv[1].as.p)->data;
+    if (!*sub) {
+        *out = cs_int(0);
+        return 0;
+    }
     size_t count = 0;
     size_t subl = strlen(sub);
-    const char* p = s;
+    const char *p = s;
     while ((p = strstr(p, sub)) != NULL) {
         count++;
         p += subl;
@@ -1170,24 +1564,34 @@ static int nf_str_count(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     return 0;
 }
 
-static int nf_str_pad_start(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_pad_start(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) { *out = cs_nil(); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    size_t sl = ((cs_string*)argv[0].as.p)->len;
+    if (!out)
+        return 0;
+    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    size_t sl = ((cs_string *)argv[0].as.p)->len;
     int64_t width = argv[1].as.i;
-    const char* pad = " ";
+    const char *pad = " ";
     size_t padl = 1;
     if (argc == 3 && argv[2].type == CS_T_STR) {
-        pad = ((cs_string*)argv[2].as.p)->data;
-        padl = ((cs_string*)argv[2].as.p)->len;
+        pad = ((cs_string *)argv[2].as.p)->data;
+        padl = ((cs_string *)argv[2].as.p)->len;
     }
-    if (width <= (int64_t)sl || padl == 0) { *out = cs_str(vm, s); return 0; }
+    if (width <= (int64_t)sl || padl == 0) {
+        *out = cs_str(vm, s);
+        return 0;
+    }
     size_t need = (size_t)width - sl;
     size_t total = need + sl;
-    char* buf = (char*)malloc(total + 1);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    char *buf = (char *)malloc(total + 1);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     size_t w = 0;
     while (need > 0) {
         size_t n = padl < need ? padl : need;
@@ -1202,24 +1606,34 @@ static int nf_str_pad_start(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     return 0;
 }
 
-static int nf_str_pad_end(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_pad_end(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) { *out = cs_nil(); return 0; }
-    const char* s = ((cs_string*)argv[0].as.p)->data;
-    size_t sl = ((cs_string*)argv[0].as.p)->len;
+    if (!out)
+        return 0;
+    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *s = ((cs_string *)argv[0].as.p)->data;
+    size_t sl = ((cs_string *)argv[0].as.p)->len;
     int64_t width = argv[1].as.i;
-    const char* pad = " ";
+    const char *pad = " ";
     size_t padl = 1;
     if (argc == 3 && argv[2].type == CS_T_STR) {
-        pad = ((cs_string*)argv[2].as.p)->data;
-        padl = ((cs_string*)argv[2].as.p)->len;
+        pad = ((cs_string *)argv[2].as.p)->data;
+        padl = ((cs_string *)argv[2].as.p)->len;
     }
-    if (width <= (int64_t)sl || padl == 0) { *out = cs_str(vm, s); return 0; }
+    if (width <= (int64_t)sl || padl == 0) {
+        *out = cs_str(vm, s);
+        return 0;
+    }
     size_t need = (size_t)width - sl;
     size_t total = need + sl;
-    char* buf = (char*)malloc(total + 1);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    char *buf = (char *)malloc(total + 1);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     size_t w = 0;
     memcpy(buf + w, s, sl);
     w += sl;
@@ -1234,14 +1648,21 @@ static int nf_str_pad_end(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     return 0;
 }
 
-static int nf_str_reverse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_reverse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    cs_string* st = (cs_string*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_string *st = (cs_string *)argv[0].as.p;
     size_t sl = st->len;
-    char* buf = (char*)malloc(sl + 1);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    char *buf = (char *)malloc(sl + 1);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; i < sl; i++) {
         buf[i] = st->data[sl - 1 - i];
     }
@@ -1251,37 +1672,47 @@ static int nf_str_reverse(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
 }
 
 #if !defined(_WIN32)
-static int regex_compile_or_error(cs_vm* vm, regex_t* re, const char* pattern) {
-    if (!re) return 0;
+static int regex_compile_or_error(cs_vm *vm, regex_t *re, const char *pattern) {
+    if (!re)
+        return 0;
     int rc = regcomp(re, pattern ? pattern : "", REG_EXTENDED);
-    if (rc == 0) return 1;
+    if (rc == 0)
+        return 1;
     size_t need = regerror(rc, re, NULL, 0);
-    char* buf = (char*)malloc(need + 16);
-    if (!buf) { cs_error(vm, "regex error"); return 0; }
+    char *buf = (char *)malloc(need + 16);
+    if (!buf) {
+        cs_error(vm, "regex error");
+        return 0;
+    }
     regerror(rc, re, buf, need);
     cs_error(vm, buf);
     free(buf);
     return 0;
 }
 
-static cs_value cs_str_slice_range(cs_vm* vm, const char* s, size_t start, size_t end) {
-    if (!s || end < start) return cs_str(vm, "");
+static cs_value cs_str_slice_range(cs_vm *vm, const char *s, size_t start, size_t end) {
+    if (!s || end < start)
+        return cs_str(vm, "");
     size_t len = end - start;
-    char* buf = (char*)malloc(len + 1);
-    if (!buf) return cs_nil();
+    char *buf = (char *)malloc(len + 1);
+    if (!buf)
+        return cs_nil();
     memcpy(buf, s + start, len);
     buf[len] = 0;
     return cs_str_take(vm, buf, (uint64_t)len);
 }
 
-static int regex_buf_append(char** buf, size_t* len, size_t* cap, const char* s, size_t n) {
-    if (!s || n == 0) return 1;
+static int regex_buf_append(char **buf, size_t *len, size_t *cap, const char *s, size_t n) {
+    if (!s || n == 0)
+        return 1;
     size_t need = *len + n + 1;
     if (need > *cap) {
         size_t nc = *cap ? *cap : 64;
-        while (nc < need) nc *= 2;
-        char* nb = (char*)realloc(*buf, nc);
-        if (!nb) return 0;
+        while (nc < need)
+            nc *= 2;
+        char *nb = (char *)realloc(*buf, nc);
+        if (!nb)
+            return 0;
         *buf = nb;
         *cap = nc;
     }
@@ -1291,12 +1722,17 @@ static int regex_buf_append(char** buf, size_t* len, size_t* cap, const char* s,
     return 1;
 }
 
-static cs_value regex_match_map(cs_vm* vm, const char* text, size_t offset, regmatch_t* matches, size_t nmatch) {
-    if (!matches || nmatch == 0 || matches[0].rm_so < 0) return cs_nil();
+static cs_value regex_match_map(cs_vm *vm, const char *text, size_t offset, regmatch_t *matches,
+                                size_t nmatch) {
+    if (!matches || nmatch == 0 || matches[0].rm_so < 0)
+        return cs_nil();
     size_t start = offset + (size_t)matches[0].rm_so;
     size_t end = offset + (size_t)matches[0].rm_eo;
     cs_value mapv = cs_map(vm);
-    if (!mapv.as.p) { cs_error(vm, "out of memory"); return cs_nil(); }
+    if (!mapv.as.p) {
+        cs_error(vm, "out of memory");
+        return cs_nil();
+    }
 
     cs_value matchv = cs_str_slice_range(vm, text, start, end);
     cs_value groups = cs_list(vm);
@@ -1342,14 +1778,19 @@ static cs_value regex_match_map(cs_vm* vm, const char* text, size_t offset, regm
     return mapv;
 }
 
-static int nf_regex_is_match(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_is_match(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_bool(0); return 0; }
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* text = cs_to_cstr(argv[1]);
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *text = cs_to_cstr(argv[1]);
     regex_t re;
-    if (!regex_compile_or_error(vm, &re, pattern)) return 1;
+    if (!regex_compile_or_error(vm, &re, pattern))
+        return 1;
     regmatch_t m;
     int rc = regexec(&re, text, 1, &m, 0);
     regfree(&re);
@@ -1357,34 +1798,51 @@ static int nf_regex_is_match(cs_vm* vm, void* ud, int argc, const cs_value* argv
     return 0;
 }
 
-static int nf_regex_match(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_match(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_bool(0); return 0; }
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* text = cs_to_cstr(argv[1]);
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *text = cs_to_cstr(argv[1]);
     regex_t re;
-    if (!regex_compile_or_error(vm, &re, pattern)) return 1;
+    if (!regex_compile_or_error(vm, &re, pattern))
+        return 1;
     regmatch_t m;
     int rc = regexec(&re, text, 1, &m, 0);
     regfree(&re);
-    if (rc != 0) { *out = cs_bool(0); return 0; }
+    if (rc != 0) {
+        *out = cs_bool(0);
+        return 0;
+    }
     size_t len = strlen(text);
     *out = cs_bool(m.rm_so == 0 && (size_t)m.rm_eo == len);
     return 0;
 }
 
-static int nf_regex_find(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_find(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* text = cs_to_cstr(argv[1]);
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *text = cs_to_cstr(argv[1]);
     regex_t re;
-    if (!regex_compile_or_error(vm, &re, pattern)) return 1;
+    if (!regex_compile_or_error(vm, &re, pattern))
+        return 1;
     size_t nmatch = (size_t)re.re_nsub + 1;
-    regmatch_t* matches = (regmatch_t*)calloc(nmatch, sizeof(regmatch_t));
-    if (!matches) { regfree(&re); cs_error(vm, "out of memory"); return 1; }
+    regmatch_t *matches = (regmatch_t *)calloc(nmatch, sizeof(regmatch_t));
+    if (!matches) {
+        regfree(&re);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     int rc = regexec(&re, text, nmatch, matches, 0);
     if (rc != 0) {
         free(matches);
@@ -1395,32 +1853,48 @@ static int nf_regex_find(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
     cs_value mv = regex_match_map(vm, text, 0, matches, nmatch);
     free(matches);
     regfree(&re);
-    if (mv.type == CS_T_NIL) return 1;
+    if (mv.type == CS_T_NIL)
+        return 1;
     *out = mv;
     return 0;
 }
 
-static int nf_regex_find_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_find_all(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_list(vm); return 0; }
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* text = cs_to_cstr(argv[1]);
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *text = cs_to_cstr(argv[1]);
     regex_t re;
-    if (!regex_compile_or_error(vm, &re, pattern)) return 1;
+    if (!regex_compile_or_error(vm, &re, pattern))
+        return 1;
     size_t nmatch = (size_t)re.re_nsub + 1;
-    regmatch_t* matches = (regmatch_t*)calloc(nmatch, sizeof(regmatch_t));
-    if (!matches) { regfree(&re); cs_error(vm, "out of memory"); return 1; }
+    regmatch_t *matches = (regmatch_t *)calloc(nmatch, sizeof(regmatch_t));
+    if (!matches) {
+        regfree(&re);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { free(matches); regfree(&re); cs_error(vm, "out of memory"); return 1; }
+    if (!listv.as.p) {
+        free(matches);
+        regfree(&re);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     size_t text_len = strlen(text);
     size_t offset = 0;
     while (offset <= text_len) {
-        const char* sub = text + offset;
+        const char *sub = text + offset;
         int rc = regexec(&re, sub, nmatch, matches, 0);
-        if (rc != 0 || matches[0].rm_so < 0) break;
+        if (rc != 0 || matches[0].rm_so < 0)
+            break;
 
         cs_value mv = regex_match_map(vm, text, offset, matches, nmatch);
         if (mv.type == CS_T_NIL || cs_list_push(listv, mv) != 0) {
@@ -1436,7 +1910,8 @@ static int nf_regex_find_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
         size_t mstart = offset + (size_t)matches[0].rm_so;
         size_t mend = offset + (size_t)matches[0].rm_eo;
         if (mend == mstart) {
-            if (mend >= text_len) break;
+            if (mend >= text_len)
+                break;
             offset = mend + 1;
         } else {
             offset = mend;
@@ -1449,23 +1924,30 @@ static int nf_regex_find_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
     return 0;
 }
 
-static int nf_regex_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_replace(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR || argv[2].type != CS_T_STR) {
+    if (!out)
+        return 0;
+    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR ||
+        argv[2].type != CS_T_STR) {
         *out = cs_nil();
         return 0;
     }
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* text = cs_to_cstr(argv[1]);
-    const char* repl = cs_to_cstr(argv[2]);
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *text = cs_to_cstr(argv[1]);
+    const char *repl = cs_to_cstr(argv[2]);
     regex_t re;
-    if (!regex_compile_or_error(vm, &re, pattern)) return 1;
+    if (!regex_compile_or_error(vm, &re, pattern))
+        return 1;
     size_t nmatch = (size_t)re.re_nsub + 1;
-    regmatch_t* matches = (regmatch_t*)calloc(nmatch, sizeof(regmatch_t));
-    if (!matches) { regfree(&re); cs_error(vm, "out of memory"); return 1; }
+    regmatch_t *matches = (regmatch_t *)calloc(nmatch, sizeof(regmatch_t));
+    if (!matches) {
+        regfree(&re);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0;
     size_t cap = 0;
     size_t text_len = strlen(text);
@@ -1473,9 +1955,10 @@ static int nf_regex_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     size_t last = 0;
 
     while (offset <= text_len) {
-        const char* sub = text + offset;
+        const char *sub = text + offset;
         int rc = regexec(&re, sub, nmatch, matches, 0);
-        if (rc != 0 || matches[0].rm_so < 0) break;
+        if (rc != 0 || matches[0].rm_so < 0)
+            break;
         size_t mstart = offset + (size_t)matches[0].rm_so;
         size_t mend = offset + (size_t)matches[0].rm_eo;
 
@@ -1498,7 +1981,8 @@ static int nf_regex_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv,
 
         last = mend;
         if (mend == mstart) {
-            if (mend >= text_len) break;
+            if (mend >= text_len)
+                break;
             offset = mend + 1;
         } else {
             offset = mend;
@@ -1526,172 +2010,285 @@ static int nf_regex_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     return 0;
 }
 #else
-static int nf_regex_is_match(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (out) *out = cs_bool(0);
+static int nf_regex_is_match(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (out)
+        *out = cs_bool(0);
     cs_error(vm, "regex not supported on this platform");
     return 1;
 }
 
-static int nf_regex_match(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_match(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     return nf_regex_is_match(vm, ud, argc, argv, out);
 }
 
-static int nf_regex_find(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_find(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     return nf_regex_is_match(vm, ud, argc, argv, out);
 }
 
-static int nf_regex_find_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_find_all(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     return nf_regex_is_match(vm, ud, argc, argv, out);
 }
 
-static int nf_regex_replace(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_regex_replace(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     return nf_regex_is_match(vm, ud, argc, argv, out);
 }
 #endif
 
-static int nf_path_join(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_path_join(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    char* joined = path_join_alloc(((cs_string*)argv[0].as.p)->data, ((cs_string*)argv[1].as.p)->data);
-    if (!joined) { cs_error(vm, "out of memory"); return 1; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    char *joined =
+        path_join_alloc(((cs_string *)argv[0].as.p)->data, ((cs_string *)argv[1].as.p)->data);
+    if (!joined) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = cs_str_take(vm, joined, (uint64_t)-1);
     return 0;
 }
 
-static int nf_path_dirname(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_path_dirname(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    const char* last_slash = strrchr(path, '/');
-    const char* last_bslash = strrchr(path, '\\');
-    const char* last = last_slash;
-    if (last_bslash && (!last || last_bslash > last)) last = last_bslash;
-    if (!last) { *out = cs_str(vm, "."); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    const char *last_slash = strrchr(path, '/');
+    const char *last_bslash = strrchr(path, '\\');
+    const char *last = last_slash;
+    if (last_bslash && (!last || last_bslash > last))
+        last = last_bslash;
+    if (!last) {
+        *out = cs_str(vm, ".");
+        return 0;
+    }
     size_t n = (size_t)(last - path);
-    if (n == 0) { *out = cs_str(vm, "/"); return 0; }
-    char* buf = (char*)malloc(n + 1);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    if (n == 0) {
+        *out = cs_str(vm, "/");
+        return 0;
+    }
+    char *buf = (char *)malloc(n + 1);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     memcpy(buf, path, n);
     buf[n] = 0;
     *out = cs_str_take(vm, buf, (uint64_t)n);
     return 0;
 }
 
-static int nf_path_basename(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_path_basename(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    const char* last_slash = strrchr(path, '/');
-    const char* last_bslash = strrchr(path, '\\');
-    const char* last = last_slash;
-    if (last_bslash && (!last || last_bslash > last)) last = last_bslash;
-    const char* base = last ? last + 1 : path;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    const char *last_slash = strrchr(path, '/');
+    const char *last_bslash = strrchr(path, '\\');
+    const char *last = last_slash;
+    if (last_bslash && (!last || last_bslash > last))
+        last = last_bslash;
+    const char *base = last ? last + 1 : path;
     *out = cs_str(vm, base);
     return 0;
 }
 
-static int nf_path_ext(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_path_ext(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    const char* base = path;
-    const char* last_slash = strrchr(path, '/');
-    const char* last_bslash = strrchr(path, '\\');
-    const char* last = last_slash;
-    if (last_bslash && (!last || last_bslash > last)) last = last_bslash;
-    if (last) base = last + 1;
-    const char* dot = strrchr(base, '.');
-    if (!dot || dot == base) { *out = cs_str(vm, ""); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    const char *base = path;
+    const char *last_slash = strrchr(path, '/');
+    const char *last_bslash = strrchr(path, '\\');
+    const char *last = last_slash;
+    if (last_bslash && (!last || last_bslash > last))
+        last = last_bslash;
+    if (last)
+        base = last + 1;
+    const char *dot = strrchr(base, '.');
+    if (!dot || dot == base) {
+        *out = cs_str(vm, "");
+        return 0;
+    }
     *out = cs_str(vm, dot + 1);
     return 0;
 }
 
-static int nf_read_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_read_file(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    FILE* f = fopen(resolved, "rb");
+    FILE *f = fopen(resolved, "rb");
     free(resolved);
-    if (!f) { *out = cs_nil(); return 0; }
+    if (!f) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); *out = cs_nil(); return 0; }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
     long sz = ftell(f);
-    if (sz < 0) { fclose(f); *out = cs_nil(); return 0; }
-    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); *out = cs_nil(); return 0; }
+    if (sz < 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
 
     size_t n = (size_t)sz;
-    char* buf = (char*)malloc(n + 1);
-    if (!buf) { fclose(f); cs_error(vm, "out of memory"); return 1; }
+    char *buf = (char *)malloc(n + 1);
+    if (!buf) {
+        fclose(f);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     size_t r = fread(buf, 1, n, f);
     fclose(f);
-    if (r != n) { free(buf); *out = cs_nil(); return 0; }
+    if (r != n) {
+        free(buf);
+        *out = cs_nil();
+        return 0;
+    }
     buf[n] = 0;
     *out = cs_str_take(vm, buf, (uint64_t)n);
     return 0;
 }
 
-static int nf_read_file_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_read_file_bytes(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    FILE* f = fopen(resolved, "rb");
+    FILE *f = fopen(resolved, "rb");
     free(resolved);
-    if (!f) { *out = cs_nil(); return 0; }
+    if (!f) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); *out = cs_nil(); return 0; }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
     long sz = ftell(f);
-    if (sz < 0) { fclose(f); *out = cs_nil(); return 0; }
-    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); *out = cs_nil(); return 0; }
+    if (sz < 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        *out = cs_nil();
+        return 0;
+    }
 
     size_t n = (size_t)sz;
-    uint8_t* buf = (uint8_t*)malloc(n ? n : 1);
-    if (!buf) { fclose(f); cs_error(vm, "out of memory"); return 1; }
+    uint8_t *buf = (uint8_t *)malloc(n ? n : 1);
+    if (!buf) {
+        fclose(f);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     size_t r = fread(buf, 1, n, f);
     fclose(f);
-    if (r != n) { free(buf); *out = cs_nil(); return 0; }
+    if (r != n) {
+        free(buf);
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_bytes_take(vm, buf, n);
-    if (!out->as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!out->as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     return 0;
 }
 
-static int nf_write_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_write_file(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || (argv[1].type != CS_T_STR && argv[1].type != CS_T_BYTES)) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR ||
+        (argv[1].type != CS_T_STR && argv[1].type != CS_T_BYTES)) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    const char* data = NULL;
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    const char *data = NULL;
     size_t len = 0;
     if (argv[1].type == CS_T_STR) {
-        data = ((cs_string*)argv[1].as.p)->data;
-        len = ((cs_string*)argv[1].as.p)->len;
+        data = ((cs_string *)argv[1].as.p)->data;
+        len = ((cs_string *)argv[1].as.p)->len;
     } else {
-        cs_bytes_obj* b = (cs_bytes_obj*)argv[1].as.p;
-        data = b ? (const char*)b->data : NULL;
+        cs_bytes_obj *b = (cs_bytes_obj *)argv[1].as.p;
+        data = b ? (const char *)b->data : NULL;
         len = b ? b->len : 0;
     }
 
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    FILE* f = fopen(resolved, "wb");
+    FILE *f = fopen(resolved, "wb");
     free(resolved);
-    if (!f) { *out = cs_bool(0); return 0; }
+    if (!f) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
     size_t w = fwrite(data, 1, len, f);
     fclose(f);
@@ -1699,22 +2296,32 @@ static int nf_write_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
     return 0;
 }
 
-static int nf_write_file_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_write_file_bytes(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_BYTES) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_BYTES) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    cs_bytes_obj* b = (cs_bytes_obj*)argv[1].as.p;
-    const char* data = b ? (const char*)b->data : NULL;
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    cs_bytes_obj *b = (cs_bytes_obj *)argv[1].as.p;
+    const char *data = b ? (const char *)b->data : NULL;
     size_t len = b ? b->len : 0;
 
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    FILE* f = fopen(resolved, "wb");
+    FILE *f = fopen(resolved, "wb");
     free(resolved);
-    if (!f) { *out = cs_bool(0); return 0; }
+    if (!f) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
     size_t w = fwrite(data, 1, len, f);
     fclose(f);
@@ -1722,14 +2329,21 @@ static int nf_write_file_bytes(cs_vm* vm, void* ud, int argc, const cs_value* ar
     return 0;
 }
 
-static int nf_exists(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_exists(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     CS_STAT_STRUCT st;
     int ok = fs_stat(resolved, &st);
@@ -1738,76 +2352,133 @@ static int nf_exists(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
     return 0;
 }
 
-static int nf_is_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_is_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     int ok = fs_is_dir(resolved);
     free(resolved);
     *out = cs_bool(ok);
     return 0;
 }
 
-static int nf_is_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_is_file(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     int ok = fs_is_file(resolved);
     free(resolved);
     *out = cs_bool(ok);
     return 0;
 }
 
-static int nf_list_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     cs_value listv = cs_list(vm);
-    if (listv.type != CS_T_LIST) { free(resolved); *out = cs_nil(); return 0; }
+    if (listv.type != CS_T_LIST) {
+        free(resolved);
+        *out = cs_nil();
+        return 0;
+    }
 
 #if defined(_WIN32)
     size_t n = strlen(resolved);
-    const char* suffix = (n > 0 && (resolved[n - 1] == '/' || resolved[n - 1] == '\\')) ? "*" : "\\*";
+    const char *suffix =
+        (n > 0 && (resolved[n - 1] == '/' || resolved[n - 1] == '\\')) ? "*" : "\\*";
     size_t sn = strlen(suffix);
-    char* pattern = (char*)malloc(n + sn + 1);
-    if (!pattern) { free(resolved); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+    char *pattern = (char *)malloc(n + sn + 1);
+    if (!pattern) {
+        free(resolved);
+        cs_value_release(listv);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     memcpy(pattern, resolved, n);
     memcpy(pattern + n, suffix, sn + 1);
 
     WIN32_FIND_DATAA data;
     HANDLE h = FindFirstFileA(pattern, &data);
     free(pattern);
-    if (h == INVALID_HANDLE_VALUE) { free(resolved); cs_value_release(listv); *out = cs_nil(); return 0; }
+    if (h == INVALID_HANDLE_VALUE) {
+        free(resolved);
+        cs_value_release(listv);
+        *out = cs_nil();
+        return 0;
+    }
     do {
-        const char* name = data.cFileName;
-        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        const char *name = data.cFileName;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+            continue;
         cs_value sv = cs_str(vm, name);
-        if (cs_list_push(listv, sv) != 0) { cs_value_release(sv); FindClose(h); free(resolved); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (cs_list_push(listv, sv) != 0) {
+            cs_value_release(sv);
+            FindClose(h);
+            free(resolved);
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         cs_value_release(sv);
     } while (FindNextFileA(h, &data));
     FindClose(h);
 #else
-    DIR* dir = opendir(resolved);
-    if (!dir) { free(resolved); cs_value_release(listv); *out = cs_nil(); return 0; }
-    struct dirent* ent;
+    DIR *dir = opendir(resolved);
+    if (!dir) {
+        free(resolved);
+        cs_value_release(listv);
+        *out = cs_nil();
+        return 0;
+    }
+    struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
-        const char* name = ent->d_name;
-        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        const char *name = ent->d_name;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+            continue;
         cs_value sv = cs_str(vm, name);
-        if (cs_list_push(listv, sv) != 0) { cs_value_release(sv); closedir(dir); free(resolved); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (cs_list_push(listv, sv) != 0) {
+            cs_value_release(sv);
+            closedir(dir);
+            free(resolved);
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         cs_value_release(sv);
     }
     closedir(dir);
@@ -1818,16 +2489,27 @@ static int nf_list_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     return 0;
 }
 
-static int nf_mkdir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_mkdir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    if (fs_is_dir(resolved)) { free(resolved); *out = cs_bool(1); return 0; }
+    if (fs_is_dir(resolved)) {
+        free(resolved);
+        *out = cs_bool(1);
+        return 0;
+    }
 
 #if defined(_WIN32)
     int ok = _mkdir(resolved) == 0;
@@ -1839,14 +2521,21 @@ static int nf_mkdir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_rm(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_rm(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     int ok = 0;
     if (fs_is_dir(resolved)) {
@@ -1864,16 +2553,20 @@ static int nf_rm(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* 
     return 0;
 }
 
-static int nf_rename(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_rename(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* a = ((cs_string*)argv[0].as.p)->data;
-    const char* b = ((cs_string*)argv[1].as.p)->data;
+    const char *a = ((cs_string *)argv[0].as.p)->data;
+    const char *b = ((cs_string *)argv[1].as.p)->data;
 
-    char* ra = resolve_path_alloc(vm, a);
-    char* rb = resolve_path_alloc(vm, b);
+    char *ra = resolve_path_alloc(vm, a);
+    char *rb = resolve_path_alloc(vm, b);
     if (!ra || !rb) {
         free(ra);
         free(rb);
@@ -1888,38 +2581,53 @@ static int nf_rename(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
     return 0;
 }
 
-static int nf_cwd(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_cwd(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
     (void)argc;
     (void)argv;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     *out = cs_str(vm, vm_current_dir(vm));
     return 0;
 }
 
-static int nf_chdir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_chdir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
-    const char* path = ((cs_string*)argv[0].as.p)->data;
-    char* resolved = resolve_path_alloc(vm, path);
-    if (!resolved) { cs_error(vm, "out of memory"); return 1; }
+    const char *path = ((cs_string *)argv[0].as.p)->data;
+    char *resolved = resolve_path_alloc(vm, path);
+    if (!resolved) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    if (!fs_is_dir(resolved)) { free(resolved); *out = cs_bool(0); return 0; }
+    if (!fs_is_dir(resolved)) {
+        free(resolved);
+        *out = cs_bool(0);
+        return 0;
+    }
     int ok = vm_set_current_dir(vm, resolved);
     free(resolved);
     *out = cs_bool(ok);
     return 0;
 }
 
-static int sb_append(char** buf, size_t* len, size_t* cap, const char* s, size_t n) {
-    if (!buf || !len || !cap) return 0;
+static int sb_append(char **buf, size_t *len, size_t *cap, const char *s, size_t n) {
+    if (!buf || !len || !cap)
+        return 0;
     if (*len + n + 1 > *cap) {
         size_t nc = (*cap == 0) ? 64 : *cap;
-        while (*len + n + 1 > nc) nc *= 2;
-        char* nb = (char*)realloc(*buf, nc);
-        if (!nb) return 0;
+        while (*len + n + 1 > nc)
+            nc *= 2;
+        char *nb = (char *)realloc(*buf, nc);
+        if (!nb)
+            return 0;
         *buf = nb;
         *cap = nc;
     }
@@ -1929,32 +2637,43 @@ static int sb_append(char** buf, size_t* len, size_t* cap, const char* s, size_t
     return 1;
 }
 
-static int sb_append_quoted_arg(char** buf, size_t* len, size_t* cap, const char* s) {
-    if (!sb_append(buf, len, cap, "\"", 1)) return 0;
+static int sb_append_quoted_arg(char **buf, size_t *len, size_t *cap, const char *s) {
+    if (!sb_append(buf, len, cap, "\"", 1))
+        return 0;
     for (size_t i = 0; s && s[i]; i++) {
         char c = s[i];
         if (c == '"' || c == '\\') {
-            if (!sb_append(buf, len, cap, "\\", 1)) return 0;
+            if (!sb_append(buf, len, cap, "\\", 1))
+                return 0;
         }
-        if (!sb_append(buf, len, cap, &c, 1)) return 0;
+        if (!sb_append(buf, len, cap, &c, 1))
+            return 0;
     }
-    if (!sb_append(buf, len, cap, "\"", 1)) return 0;
+    if (!sb_append(buf, len, cap, "\"", 1))
+        return 0;
     return 1;
 }
 
-static int nf_subprocess(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_subprocess(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argc > 2 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-
-    cs_list_obj* args = NULL;
-    if (argc == 2) {
-        if (argv[1].type != CS_T_LIST) { *out = cs_nil(); return 0; }
-        args = (cs_list_obj*)argv[1].as.p;
+    if (!out)
+        return 0;
+    if (argc < 1 || argc > 2 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
     }
 
-    const char* cmd = cs_to_cstr(argv[0]);
-    char* cmd_buf = NULL;
+    cs_list_obj *args = NULL;
+    if (argc == 2) {
+        if (argv[1].type != CS_T_LIST) {
+            *out = cs_nil();
+            return 0;
+        }
+        args = (cs_list_obj *)argv[1].as.p;
+    }
+
+    const char *cmd = cs_to_cstr(argv[0]);
+    char *cmd_buf = NULL;
     size_t cmd_len = 0, cmd_cap = 0;
 
     if (!sb_append_quoted_arg(&cmd_buf, &cmd_len, &cmd_cap, cmd)) {
@@ -1967,8 +2686,9 @@ static int nf_subprocess(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
         for (size_t i = 0; i < args->len; i++) {
             cs_value v = args->items[i];
             char tmp[128];
-            const char* s = (v.type == CS_T_STR) ? cs_to_cstr(v) : value_repr(v, tmp, sizeof(tmp));
-            if (!sb_append(&cmd_buf, &cmd_len, &cmd_cap, " ", 1) || !sb_append_quoted_arg(&cmd_buf, &cmd_len, &cmd_cap, s)) {
+            const char *s = (v.type == CS_T_STR) ? cs_to_cstr(v) : value_repr(v, tmp, sizeof(tmp));
+            if (!sb_append(&cmd_buf, &cmd_len, &cmd_cap, " ", 1) ||
+                !sb_append_quoted_arg(&cmd_buf, &cmd_len, &cmd_cap, s)) {
                 free(cmd_buf);
                 cs_error(vm, "out of memory");
                 return 1;
@@ -1982,14 +2702,14 @@ static int nf_subprocess(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
         return 1;
     }
 
-    FILE* fp = CS_POPEN(cmd_buf, "r");
+    FILE *fp = CS_POPEN(cmd_buf, "r");
     if (!fp) {
         free(cmd_buf);
         cs_error(vm, "subprocess() failed to spawn command");
         return 1;
     }
 
-    char* out_buf = NULL;
+    char *out_buf = NULL;
     size_t out_len = 0, out_cap = 0;
     char chunk[4096];
     size_t nread;
@@ -2008,19 +2728,37 @@ static int nf_subprocess(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
 
     int exit_code = status;
 #if !defined(_WIN32)
-    if (WIFEXITED(status)) exit_code = WEXITSTATUS(status);
+    if (WIFEXITED(status))
+        exit_code = WEXITSTATUS(status);
 #endif
 
     cs_value out_map = cs_map(vm);
-    if (!out_map.as.p) { free(out_buf); cs_error(vm, "out of memory"); return 1; }
+    if (!out_map.as.p) {
+        free(out_buf);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     cs_value out_str = out_buf ? cs_str_take(vm, out_buf, (uint64_t)out_len) : cs_str(vm, "");
-    if (out_str.type == CS_T_NIL) { cs_value_release(out_map); cs_error(vm, "out of memory"); return 1; }
-    if (cs_map_set(out_map, "out", out_str) != 0) { cs_value_release(out_str); cs_value_release(out_map); cs_error(vm, "out of memory"); return 1; }
+    if (out_str.type == CS_T_NIL) {
+        cs_value_release(out_map);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    if (cs_map_set(out_map, "out", out_str) != 0) {
+        cs_value_release(out_str);
+        cs_value_release(out_map);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     cs_value_release(out_str);
 
     cs_value code_val = cs_int((int64_t)exit_code);
-    if (cs_map_set(out_map, "code", code_val) != 0) { cs_value_release(out_map); cs_error(vm, "out of memory"); return 1; }
+    if (cs_map_set(out_map, "code", code_val) != 0) {
+        cs_value_release(out_map);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     *out = out_map;
     return 0;
@@ -2033,46 +2771,52 @@ static int nf_subprocess(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
 // ---------- Glob Patterns ----------
 
 typedef struct {
-    char** patterns;
+    char **patterns;
     size_t pattern_count;
     int recursive;
-    const char* base_path;
+    const char *base_path;
 } glob_matcher;
 
-static int glob_match_simple(const char* pattern, const char* str) {
+static int glob_match_simple(const char *pattern, const char *str) {
     // Simple glob matching with *, ?, [], {}
     return fnmatch(pattern, str, FNM_PATHNAME | FNM_PERIOD) == 0;
 }
 
-static int glob_has_double_star(const char* pattern) {
-    const char* p = pattern;
+static int glob_has_double_star(const char *pattern) {
+    const char *p = pattern;
     while (*p) {
-        if (p[0] == '*' && p[1] == '*') return 1;
+        if (p[0] == '*' && p[1] == '*')
+            return 1;
         p++;
     }
     return 0;
 }
 
-static void glob_scan_directory(cs_vm* vm, const char* path, const char* pattern, cs_value result, int depth, int max_depth) {
-    if (depth > max_depth) return;
-    
-    DIR* dir = opendir(path);
-    if (!dir) return;
-    
-    struct dirent* ent;
+static void glob_scan_directory(cs_vm *vm, const char *path, const char *pattern, cs_value result,
+                                int depth, int max_depth) {
+    if (depth > max_depth)
+        return;
+
+    DIR *dir = opendir(path);
+    if (!dir)
+        return;
+
+    struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
-        const char* name = ent->d_name;
-        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
-        
-        char* full_path = path_join_alloc(path, name);
-        if (!full_path) continue;
-        
+        const char *name = ent->d_name;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+            continue;
+
+        char *full_path = path_join_alloc(path, name);
+        if (!full_path)
+            continue;
+
         struct stat st;
         if (stat(full_path, &st) != 0) {
             free(full_path);
             continue;
         }
-        
+
         // Match the pattern against the filename
         if (glob_match_simple(pattern, name)) {
             cs_value sv = cs_str(vm, full_path);
@@ -2081,60 +2825,61 @@ static void glob_scan_directory(cs_vm* vm, const char* path, const char* pattern
                 cs_value_release(sv);
             }
         }
-        
+
         // Recursively scan subdirectories if we haven't hit max depth
         if (S_ISDIR(st.st_mode) && depth < max_depth) {
             glob_scan_directory(vm, full_path, pattern, result, depth + 1, max_depth);
         }
-        
+
         free(full_path);
     }
     closedir(dir);
 }
 
-static int nf_glob(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_glob(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argc > 2 || argv[0].type != CS_T_STR) {
         *out = cs_nil();
         return 0;
     }
-    
-    const char* pattern = cs_to_cstr(argv[0]);
-    const char* base_path = ".";
-    
+
+    const char *pattern = cs_to_cstr(argv[0]);
+    const char *base_path = ".";
+
     if (argc == 2 && argv[1].type == CS_T_STR) {
         base_path = cs_to_cstr(argv[1]);
     }
-    
-    char* resolved_base = resolve_path_alloc(vm, base_path);
+
+    char *resolved_base = resolve_path_alloc(vm, base_path);
     if (!resolved_base) {
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     cs_value listv = cs_list(vm);
     if (listv.type != CS_T_LIST) {
         free(resolved_base);
         *out = cs_nil();
         return 0;
     }
-    
+
     // Check if pattern has ** for recursive matching
     int is_recursive = glob_has_double_star(pattern);
     int max_depth = is_recursive ? 100 : 0;
-    
+
     // Remove ** from pattern for matching
-    char* clean_pattern = cs_strdup2_local(pattern);
+    char *clean_pattern = cs_strdup2_local(pattern);
     if (!clean_pattern) {
         free(resolved_base);
         cs_value_release(listv);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Replace **/  with empty string (for patterns like **/*.txt)
-    char* p = clean_pattern;
+    char *p = clean_pattern;
     while (*p) {
         if (p[0] == '*' && p[1] == '*' && p[2] == '/') {
             // Remove **/ entirely
@@ -2147,9 +2892,9 @@ static int nf_glob(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value
             p++;
         }
     }
-    
+
     glob_scan_directory(vm, resolved_base, clean_pattern, listv, 0, max_depth);
-    
+
     free(clean_pattern);
     free(resolved_base);
     *out = listv;
@@ -2166,13 +2911,13 @@ typedef struct {
     int handle_id;
     int inotify_fd;
     int watch_fd;
-    char* path;
+    char *path;
     cs_value callback;
     int is_directory;
     int recursive;
 } file_watch;
 
-static file_watch* watches[MAX_WATCHES];
+static file_watch *watches[MAX_WATCHES];
 static int next_watch_handle = 1;
 static int inotify_global_fd = -1;
 
@@ -2184,15 +2929,17 @@ static void init_inotify() {
 
 static int find_watch_by_handle(int handle) {
     for (int i = 0; i < MAX_WATCHES; i++) {
-        if (watches[i] && watches[i]->handle_id == handle) return i;
+        if (watches[i] && watches[i]->handle_id == handle)
+            return i;
     }
     return -1;
 }
 
 static void cleanup_watch(int idx) {
-    if (idx < 0 || idx >= MAX_WATCHES || !watches[idx]) return;
-    
-    file_watch* w = watches[idx];
+    if (idx < 0 || idx >= MAX_WATCHES || !watches[idx])
+        return;
+
+    file_watch *w = watches[idx];
     if (w->watch_fd >= 0 && inotify_global_fd >= 0) {
         inotify_rm_watch(inotify_global_fd, w->watch_fd);
     }
@@ -2202,80 +2949,88 @@ static void cleanup_watch(int idx) {
     watches[idx] = NULL;
 }
 
-static const char* inotify_event_type(uint32_t mask) {
-    if (mask & IN_CREATE) return "created";
-    if (mask & IN_MODIFY) return "modified";
-    if (mask & IN_DELETE) return "deleted";
-    if (mask & IN_MOVED_FROM || mask & IN_MOVED_TO) return "renamed";
+static const char *inotify_event_type(uint32_t mask) {
+    if (mask & IN_CREATE)
+        return "created";
+    if (mask & IN_MODIFY)
+        return "modified";
+    if (mask & IN_DELETE)
+        return "deleted";
+    if (mask & IN_MOVED_FROM || mask & IN_MOVED_TO)
+        return "renamed";
     return "changed";
 }
 
-static void process_inotify_events(cs_vm* vm) {
-    if (inotify_global_fd < 0) return;
-    
+static void process_inotify_events(cs_vm *vm) {
+    if (inotify_global_fd < 0)
+        return;
+
     char buffer[INOTIFY_BUF_LEN];
     ssize_t len = read(inotify_global_fd, buffer, INOTIFY_BUF_LEN);
-    if (len < 0) return;
-    
+    if (len < 0)
+        return;
+
     int i = 0;
     while (i < len) {
-        struct inotify_event* event = (struct inotify_event*)&buffer[i];
-        
+        struct inotify_event *event = (struct inotify_event *)&buffer[i];
+
         // Find the watch that corresponds to this event
         for (int w = 0; w < MAX_WATCHES; w++) {
             if (watches[w] && watches[w]->watch_fd == event->wd) {
-                file_watch* watch = watches[w];
-                
+                file_watch *watch = watches[w];
+
                 // Build full path
-                char* event_path = watch->path;
+                char *event_path = watch->path;
                 if (event->len > 0) {
                     event_path = path_join_alloc(watch->path, event->name);
                 }
-                
+
                 // Call the callback
                 cs_value event_type = cs_str(vm, inotify_event_type(event->mask));
                 cs_value path_val = cs_str(vm, event_path);
-                
+
                 cs_value args[2] = {event_type, path_val};
                 cs_value result = cs_nil();
                 cs_call_value(vm, watch->callback, 2, args, &result);
-                
+
                 cs_value_release(event_type);
                 cs_value_release(path_val);
                 cs_value_release(result);
-                
+
                 if (event->len > 0 && event_path != watch->path) {
                     free(event_path);
                 }
                 break;
             }
         }
-        
+
         i += INOTIFY_EVENT_SIZE + event->len;
     }
 }
 
-static int nf_watch_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_watch_file(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_STR || (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE)) {
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_STR ||
+        (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE)) {
         *out = cs_int(-1);
         return 0;
     }
-    
+
     init_inotify();
     if (inotify_global_fd < 0) {
         cs_error(vm, "failed to initialize inotify");
         return 1;
     }
-    
-    const char* path = cs_to_cstr(argv[0]);
-    char* resolved = resolve_path_alloc(vm, path);
+
+    const char *path = cs_to_cstr(argv[0]);
+    char *resolved = resolve_path_alloc(vm, path);
     if (!resolved) {
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Find free slot
     int slot = -1;
     for (int i = 0; i < MAX_WATCHES; i++) {
@@ -2284,29 +3039,29 @@ static int nf_watch_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
             break;
         }
     }
-    
+
     if (slot < 0) {
         free(resolved);
         cs_error(vm, "too many watches");
         return 1;
     }
-    
-    int wd = inotify_add_watch(inotify_global_fd, resolved, 
-                               IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVE);
+
+    int wd =
+        inotify_add_watch(inotify_global_fd, resolved, IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVE);
     if (wd < 0) {
         free(resolved);
         cs_error(vm, "failed to add watch");
         return 1;
     }
-    
-    file_watch* w = (file_watch*)malloc(sizeof(file_watch));
+
+    file_watch *w = (file_watch *)malloc(sizeof(file_watch));
     if (!w) {
         inotify_rm_watch(inotify_global_fd, wd);
         free(resolved);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     w->handle_id = next_watch_handle++;
     w->inotify_fd = inotify_global_fd;
     w->watch_fd = wd;
@@ -2314,38 +3069,40 @@ static int nf_watch_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
     w->callback = cs_value_copy(argv[1]);
     w->is_directory = 0;
     w->recursive = 0;
-    
+
     watches[slot] = w;
     *out = cs_int(w->handle_id);
     return 0;
 }
 
-static int nf_watch_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_watch_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE)) {
+    if (!out)
+        return 0;
+    if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR ||
+        (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE)) {
         *out = cs_int(-1);
         return 0;
     }
-    
+
     int recursive = 0;
     if (argc == 3 && argv[2].type == CS_T_BOOL) {
         recursive = argv[2].as.b;
     }
-    
+
     init_inotify();
     if (inotify_global_fd < 0) {
         cs_error(vm, "failed to initialize inotify");
         return 1;
     }
-    
-    const char* path = cs_to_cstr(argv[0]);
-    char* resolved = resolve_path_alloc(vm, path);
+
+    const char *path = cs_to_cstr(argv[0]);
+    char *resolved = resolve_path_alloc(vm, path);
     if (!resolved) {
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Find free slot
     int slot = -1;
     for (int i = 0; i < MAX_WATCHES; i++) {
@@ -2354,31 +3111,32 @@ static int nf_watch_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
             break;
         }
     }
-    
+
     if (slot < 0) {
         free(resolved);
         cs_error(vm, "too many watches");
         return 1;
     }
-    
+
     uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_MOVE;
-    if (recursive) mask |= IN_CREATE; // Watch for new subdirectories
-    
+    if (recursive)
+        mask |= IN_CREATE; // Watch for new subdirectories
+
     int wd = inotify_add_watch(inotify_global_fd, resolved, mask);
     if (wd < 0) {
         free(resolved);
         cs_error(vm, "failed to add watch");
         return 1;
     }
-    
-    file_watch* w = (file_watch*)malloc(sizeof(file_watch));
+
+    file_watch *w = (file_watch *)malloc(sizeof(file_watch));
     if (!w) {
         inotify_rm_watch(inotify_global_fd, wd);
         free(resolved);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     w->handle_id = next_watch_handle++;
     w->inotify_fd = inotify_global_fd;
     w->watch_fd = wd;
@@ -2386,39 +3144,42 @@ static int nf_watch_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     w->callback = cs_value_copy(argv[1]);
     w->is_directory = 1;
     w->recursive = recursive;
-    
+
     watches[slot] = w;
     *out = cs_int(w->handle_id);
     return 0;
 }
 
-static int nf_unwatch(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_unwatch(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)vm;
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 1 || argv[0].type != CS_T_INT) {
         *out = cs_bool(0);
         return 0;
     }
-    
+
     int handle = (int)argv[0].as.i;
     int idx = find_watch_by_handle(handle);
     if (idx < 0) {
         *out = cs_bool(0);
         return 0;
     }
-    
+
     cleanup_watch(idx);
     *out = cs_bool(1);
     return 0;
 }
 
-static int nf_process_file_watches(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_process_file_watches(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                   cs_value *out) {
     (void)ud;
     (void)argc;
     (void)argv;
-    if (!out) return 0;
-    
+    if (!out)
+        return 0;
+
     process_inotify_events(vm);
     *out = cs_nil();
     return 0;
@@ -2427,7 +3188,7 @@ static int nf_process_file_watches(cs_vm* vm, void* ud, int argc, const cs_value
 // ---------- Temp Files ----------
 
 #define MAX_TEMP_FILES 512
-static char* temp_files[MAX_TEMP_FILES];
+static char *temp_files[MAX_TEMP_FILES];
 static int temp_file_count = 0;
 static int temp_cleanup_registered = 0;
 
@@ -2442,29 +3203,30 @@ static void cleanup_temp_files() {
     }
 }
 
-static void register_temp_cleanup(const char* path) {
+static void register_temp_cleanup(const char *path) {
     if (!temp_cleanup_registered) {
         atexit(cleanup_temp_files);
         temp_cleanup_registered = 1;
     }
-    
+
     if (temp_file_count < MAX_TEMP_FILES) {
         temp_files[temp_file_count++] = cs_strdup2_local(path);
     }
 }
 
-static char* create_temp_path(const char* prefix, const char* suffix, int is_dir) {
-    const char* tmp_dir = getenv("TMPDIR");
-    if (!tmp_dir) tmp_dir = "/tmp";
-    
+static char *create_temp_path(const char *prefix, const char *suffix, int is_dir) {
+    const char *tmp_dir = getenv("TMPDIR");
+    if (!tmp_dir)
+        tmp_dir = "/tmp";
+
     char template[1024];
     // Template must end with XXXXXX for mkstemp/mkdtemp
-    snprintf(template, sizeof(template), "%s/%sXXXXXX", 
-             tmp_dir, prefix ? prefix : "cs_");
-    
-    char* path = cs_strdup2_local(template);
-    if (!path) return NULL;
-    
+    snprintf(template, sizeof(template), "%s/%sXXXXXX", tmp_dir, prefix ? prefix : "cs_");
+
+    char *path = cs_strdup2_local(template);
+    if (!path)
+        return NULL;
+
     if (is_dir) {
         if (mkdtemp(path) == NULL) {
             free(path);
@@ -2478,12 +3240,12 @@ static char* create_temp_path(const char* prefix, const char* suffix, int is_dir
             return NULL;
         }
         close(fd);
-        
+
         // If suffix requested, rename the file to add suffix
         if (suffix && suffix[0]) {
             size_t path_len = strlen(path);
             size_t suffix_len = strlen(suffix);
-            char* new_path = (char*)malloc(path_len + suffix_len + 1);
+            char *new_path = (char *)malloc(path_len + suffix_len + 1);
             if (new_path) {
                 memcpy(new_path, path, path_len);
                 memcpy(new_path + path_len, suffix, suffix_len + 1);
@@ -2497,56 +3259,58 @@ static char* create_temp_path(const char* prefix, const char* suffix, int is_dir
             }
         }
     }
-    
+
     register_temp_cleanup(path);
     return path;
 }
 
-static int nf_temp_file(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_temp_file(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
-    const char* prefix = NULL;
-    const char* suffix = NULL;
-    
+    if (!out)
+        return 0;
+
+    const char *prefix = NULL;
+    const char *suffix = NULL;
+
     if (argc >= 1 && argv[0].type == CS_T_STR) {
         prefix = cs_to_cstr(argv[0]);
     }
     if (argc >= 2 && argv[1].type == CS_T_STR) {
         suffix = cs_to_cstr(argv[1]);
     }
-    
-    char* path = create_temp_path(prefix, suffix, 0);
+
+    char *path = create_temp_path(prefix, suffix, 0);
     if (!path) {
         cs_error(vm, "failed to create temp file");
         return 1;
     }
-    
+
     cs_value result = cs_str(vm, path);
     free(path);
-    
+
     *out = result;
     return 0;
 }
 
-static int nf_temp_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_temp_dir(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
-    const char* prefix = NULL;
+    if (!out)
+        return 0;
+
+    const char *prefix = NULL;
     if (argc >= 1 && argv[0].type == CS_T_STR) {
         prefix = cs_to_cstr(argv[0]);
     }
-    
-    char* path = create_temp_path(prefix, NULL, 1);
+
+    char *path = create_temp_path(prefix, NULL, 1);
     if (!path) {
         cs_error(vm, "failed to create temp directory");
         return 1;
     }
-    
+
     cs_value result = cs_str(vm, path);
     free(path);
-    
+
     *out = result;
     return 0;
 }
@@ -2555,34 +3319,35 @@ static int nf_temp_dir(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
 
 // Zip using miniz (we'll use zlib for gzip and implement tar manually)
 
-static int nf_gzip_compress(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_gzip_compress(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
         *out = cs_bool(0);
         return 0;
     }
-    
-    const char* input_path = cs_to_cstr(argv[0]);
-    const char* output_path = cs_to_cstr(argv[1]);
-    
-    char* resolved_in = resolve_path_alloc(vm, input_path);
-    char* resolved_out = resolve_path_alloc(vm, output_path);
+
+    const char *input_path = cs_to_cstr(argv[0]);
+    const char *output_path = cs_to_cstr(argv[1]);
+
+    char *resolved_in = resolve_path_alloc(vm, input_path);
+    char *resolved_out = resolve_path_alloc(vm, output_path);
     if (!resolved_in || !resolved_out) {
         free(resolved_in);
         free(resolved_out);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
-    FILE* in = fopen(resolved_in, "rb");
+
+    FILE *in = fopen(resolved_in, "rb");
     if (!in) {
         free(resolved_in);
         free(resolved_out);
         *out = cs_bool(0);
         return 0;
     }
-    
+
     gzFile out_gz = gzopen(resolved_out, "wb");
     if (!out_gz) {
         fclose(in);
@@ -2591,47 +3356,48 @@ static int nf_gzip_compress(cs_vm* vm, void* ud, int argc, const cs_value* argv,
         *out = cs_bool(0);
         return 0;
     }
-    
+
     char buffer[8192];
     size_t bytes_read;
     int success = 1;
-    
+
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), in)) > 0) {
         if (gzwrite(out_gz, buffer, (unsigned)bytes_read) != (int)bytes_read) {
             success = 0;
             break;
         }
     }
-    
+
     fclose(in);
     gzclose(out_gz);
     free(resolved_in);
     free(resolved_out);
-    
+
     *out = cs_bool(success);
     return 0;
 }
 
-static int nf_gzip_decompress(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_gzip_decompress(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
         *out = cs_bool(0);
         return 0;
     }
-    
-    const char* input_path = cs_to_cstr(argv[0]);
-    const char* output_path = cs_to_cstr(argv[1]);
-    
-    char* resolved_in = resolve_path_alloc(vm, input_path);
-    char* resolved_out = resolve_path_alloc(vm, output_path);
+
+    const char *input_path = cs_to_cstr(argv[0]);
+    const char *output_path = cs_to_cstr(argv[1]);
+
+    char *resolved_in = resolve_path_alloc(vm, input_path);
+    char *resolved_out = resolve_path_alloc(vm, output_path);
     if (!resolved_in || !resolved_out) {
         free(resolved_in);
         free(resolved_out);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     gzFile in_gz = gzopen(resolved_in, "rb");
     if (!in_gz) {
         free(resolved_in);
@@ -2639,8 +3405,8 @@ static int nf_gzip_decompress(cs_vm* vm, void* ud, int argc, const cs_value* arg
         *out = cs_bool(0);
         return 0;
     }
-    
-    FILE* out_file = fopen(resolved_out, "wb");
+
+    FILE *out_file = fopen(resolved_out, "wb");
     if (!out_file) {
         gzclose(in_gz);
         free(resolved_in);
@@ -2648,23 +3414,23 @@ static int nf_gzip_decompress(cs_vm* vm, void* ud, int argc, const cs_value* arg
         *out = cs_bool(0);
         return 0;
     }
-    
+
     char buffer[8192];
     int bytes_read;
     int success = 1;
-    
+
     while ((bytes_read = gzread(in_gz, buffer, sizeof(buffer))) > 0) {
         if (fwrite(buffer, 1, bytes_read, out_file) != (size_t)bytes_read) {
             success = 0;
             break;
         }
     }
-    
+
     gzclose(in_gz);
     fclose(out_file);
     free(resolved_in);
     free(resolved_out);
-    
+
     *out = cs_bool(success);
     return 0;
 }
@@ -2708,10 +3474,11 @@ typedef struct {
     char padding[12];
 } tar_header;
 
-static void tar_format_octal(char* dest, size_t size, uint64_t value) {
+static void tar_format_octal(char *dest, size_t size, uint64_t value) {
     // Format as octal, null-terminated, filling the field
     // TAR format uses null or space padding
-    if (size == 0) return;
+    if (size == 0)
+        return;
     int len = snprintf(dest, size, "%0*lo", (int)(size - 1), (unsigned long)value);
     if (len < 0 || (size_t)len >= size) {
         // Truncated - just zero-fill as fallback
@@ -2720,7 +3487,7 @@ static void tar_format_octal(char* dest, size_t size, uint64_t value) {
     }
 }
 
-static uint64_t tar_parse_octal(const char* str, size_t size) {
+static uint64_t tar_parse_octal(const char *str, size_t size) {
     char buf[256];
     size_t len = size < sizeof(buf) ? size : sizeof(buf) - 1;
     memcpy(buf, str, len);
@@ -2728,31 +3495,32 @@ static uint64_t tar_parse_octal(const char* str, size_t size) {
     return (uint64_t)strtoul(buf, NULL, 8);
 }
 
-static void tar_calculate_checksum(tar_header* header) {
+static void tar_calculate_checksum(tar_header *header) {
     memset(header->chksum, ' ', TAR_CHKSUM_SIZE);
     unsigned int checksum = 0;
-    unsigned char* p = (unsigned char*)header;
+    unsigned char *p = (unsigned char *)header;
     for (int i = 0; i < TAR_BLOCK_SIZE; i++) {
         checksum += p[i];
     }
     tar_format_octal(header->chksum, TAR_CHKSUM_SIZE, checksum);
 }
 
-static int tar_add_file(FILE* tar, const char* filename, const char* arcname) {
-    FILE* f = fopen(filename, "rb");
-    if (!f) return 0;
-    
+static int tar_add_file(FILE *tar, const char *filename, const char *arcname) {
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+        return 0;
+
     // Get file stats
     struct stat st;
     if (fstat(fileno(f), &st) != 0) {
         fclose(f);
         return 0;
     }
-    
+
     // Create header
     tar_header header;
     memset(&header, 0, sizeof(header));
-    
+
     strncpy(header.name, arcname, TAR_NAME_SIZE - 1);
     tar_format_octal(header.mode, TAR_MODE_SIZE, st.st_mode & 0777);
     tar_format_octal(header.uid, TAR_UID_SIZE, st.st_uid);
@@ -2762,15 +3530,15 @@ static int tar_add_file(FILE* tar, const char* filename, const char* arcname) {
     header.typeflag[0] = '0'; // Regular file
     memcpy(header.magic, "ustar", 5);
     memcpy(header.version, "00", 2);
-    
+
     tar_calculate_checksum(&header);
-    
+
     // Write header
     if (fwrite(&header, TAR_BLOCK_SIZE, 1, tar) != 1) {
         fclose(f);
         return 0;
     }
-    
+
     // Write file content
     char buffer[TAR_BLOCK_SIZE];
     size_t bytes_read;
@@ -2783,82 +3551,86 @@ static int tar_add_file(FILE* tar, const char* filename, const char* arcname) {
             return 0;
         }
     }
-    
+
     fclose(f);
     return 1;
 }
 
-static int nf_tar_create(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_tar_create(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argc > 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_LIST) {
         *out = cs_bool(0);
         return 0;
     }
-    
-    const char* archive_path = cs_to_cstr(argv[0]);
-    cs_list_obj* files = (cs_list_obj*)argv[1].as.p;
-    const char* compress = NULL;
-    
+
+    const char *archive_path = cs_to_cstr(argv[0]);
+    cs_list_obj *files = (cs_list_obj *)argv[1].as.p;
+    const char *compress = NULL;
+
     if (argc == 3 && argv[2].type == CS_T_STR) {
         compress = cs_to_cstr(argv[2]);
     }
-    
-    char* resolved = resolve_path_alloc(vm, archive_path);
+
+    char *resolved = resolve_path_alloc(vm, archive_path);
     if (!resolved) {
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Determine output file (use temp file if gzip compression)
-    char* tar_path = resolved;
+    char *tar_path = resolved;
     char temp_tar[1024];
     if (compress && strcmp(compress, "gzip") == 0) {
         snprintf(temp_tar, sizeof(temp_tar), "%s.tmp", resolved);
         tar_path = temp_tar;
     }
-    
-    FILE* tar = fopen(tar_path, "wb");
+
+    FILE *tar = fopen(tar_path, "wb");
     if (!tar) {
         free(resolved);
         *out = cs_bool(0);
         return 0;
     }
-    
+
     int success = 1;
     for (size_t i = 0; i < files->len; i++) {
         cs_value v = files->items[i];
-        if (v.type != CS_T_STR) continue;
-        
-        const char* file = cs_to_cstr(v);
-        char* file_resolved = resolve_path_alloc(vm, file);
-        if (!file_resolved) continue;
-        
+        if (v.type != CS_T_STR)
+            continue;
+
+        const char *file = cs_to_cstr(v);
+        char *file_resolved = resolve_path_alloc(vm, file);
+        if (!file_resolved)
+            continue;
+
         // Use basename as archive name
-        const char* arcname = strrchr(file, '/');
-        if (!arcname) arcname = strrchr(file, '\\');
+        const char *arcname = strrchr(file, '/');
+        if (!arcname)
+            arcname = strrchr(file, '\\');
         arcname = arcname ? arcname + 1 : file;
-        
+
         if (!tar_add_file(tar, file_resolved, arcname)) {
             success = 0;
         }
-        
+
         free(file_resolved);
     }
-    
+
     // Write two empty blocks to mark end of archive
     char empty[TAR_BLOCK_SIZE];
     memset(empty, 0, TAR_BLOCK_SIZE);
     fwrite(empty, TAR_BLOCK_SIZE, 1, tar);
     fwrite(empty, TAR_BLOCK_SIZE, 1, tar);
-    
+
     fclose(tar);
-    
+
     // Compress if needed
     if (success && compress && strcmp(compress, "gzip") == 0) {
         gzFile gz = gzopen(resolved, "wb");
         if (gz) {
-            FILE* in = fopen(tar_path, "rb");
+            FILE *in = fopen(tar_path, "rb");
             if (in) {
                 char buffer[8192];
                 size_t bytes;
@@ -2873,38 +3645,39 @@ static int nf_tar_create(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
             success = 0;
         }
     }
-    
+
     free(resolved);
     *out = cs_bool(success);
     return 0;
 }
 
-static int nf_tar_list(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_tar_list(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 1 || argv[0].type != CS_T_STR) {
         *out = cs_nil();
         return 0;
     }
-    
-    const char* archive_path = cs_to_cstr(argv[0]);
-    char* resolved = resolve_path_alloc(vm, archive_path);
+
+    const char *archive_path = cs_to_cstr(argv[0]);
+    char *resolved = resolve_path_alloc(vm, archive_path);
     if (!resolved) {
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Check if gzipped
     int is_gzipped = 0;
-    const char* ext = strrchr(archive_path, '.');
+    const char *ext = strrchr(archive_path, '.');
     if (ext && strcmp(ext, ".gz") == 0) {
         is_gzipped = 1;
     }
-    
-    FILE* tar = NULL;
+
+    FILE *tar = NULL;
     gzFile gz = NULL;
     char temp_tar[1024];
-    
+
     if (is_gzipped) {
         // Decompress to temp file
         snprintf(temp_tar, sizeof(temp_tar), "/tmp/cs_tar_XXXXXX");
@@ -2915,7 +3688,7 @@ static int nf_tar_list(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
             return 0;
         }
         close(fd);
-        
+
         gz = gzopen(resolved, "rb");
         tar = fopen(temp_tar, "wb");
         if (gz && tar) {
@@ -2931,82 +3704,87 @@ static int nf_tar_list(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     } else {
         tar = fopen(resolved, "rb");
     }
-    
+
     if (!tar) {
         free(resolved);
-        if (is_gzipped) remove(temp_tar);
+        if (is_gzipped)
+            remove(temp_tar);
         *out = cs_nil();
         return 0;
     }
-    
+
     cs_value listv = cs_list(vm);
     if (listv.type != CS_T_LIST) {
         fclose(tar);
         free(resolved);
-        if (is_gzipped) remove(temp_tar);
+        if (is_gzipped)
+            remove(temp_tar);
         *out = cs_nil();
         return 0;
     }
-    
+
     tar_header header;
     while (fread(&header, TAR_BLOCK_SIZE, 1, tar) == 1) {
         // Check for end of archive
-        if (header.name[0] == '\0') break;
-        
+        if (header.name[0] == '\0')
+            break;
+
         // Get file name
         cs_value sv = cs_str(vm, header.name);
         if (sv.type == CS_T_STR) {
             cs_list_push(listv, sv);
             cs_value_release(sv);
         }
-        
+
         // Skip file content
         uint64_t size = tar_parse_octal(header.size, TAR_SIZE_SIZE);
         uint64_t blocks = (size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
         fseek(tar, blocks * TAR_BLOCK_SIZE, SEEK_CUR);
     }
-    
+
     fclose(tar);
     free(resolved);
-    if (is_gzipped) remove(temp_tar);
-    
+    if (is_gzipped)
+        remove(temp_tar);
+
     *out = listv;
     return 0;
 }
 
-static int nf_tar_extract(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_tar_extract(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc != 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
         *out = cs_bool(0);
         return 0;
     }
-    
-    const char* archive_path = cs_to_cstr(argv[0]);
-    const char* dest_path = cs_to_cstr(argv[1]);
-    
-    char* resolved_arc = resolve_path_alloc(vm, archive_path);
-    char* resolved_dest = resolve_path_alloc(vm, dest_path);
+
+    const char *archive_path = cs_to_cstr(argv[0]);
+    const char *dest_path = cs_to_cstr(argv[1]);
+
+    char *resolved_arc = resolve_path_alloc(vm, archive_path);
+    char *resolved_dest = resolve_path_alloc(vm, dest_path);
     if (!resolved_arc || !resolved_dest) {
         free(resolved_arc);
         free(resolved_dest);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     // Create destination directory if needed
     mkdir(resolved_dest, 0777);
-    
+
     // Check if gzipped
     int is_gzipped = 0;
-    const char* ext = strrchr(archive_path, '.');
+    const char *ext = strrchr(archive_path, '.');
     if (ext && strcmp(ext, ".gz") == 0) {
         is_gzipped = 1;
     }
-    
-    FILE* tar = NULL;
+
+    FILE *tar = NULL;
     char temp_tar[1024];
-    
+
     if (is_gzipped) {
         // Decompress to temp file
         snprintf(temp_tar, sizeof(temp_tar), "/tmp/cs_tar_XXXXXX");
@@ -3018,7 +3796,7 @@ static int nf_tar_extract(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
             return 0;
         }
         close(fd);
-        
+
         gzFile gz = gzopen(resolved_arc, "rb");
         tar = fopen(temp_tar, "wb");
         if (gz && tar) {
@@ -3034,36 +3812,39 @@ static int nf_tar_extract(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     } else {
         tar = fopen(resolved_arc, "rb");
     }
-    
+
     if (!tar) {
         free(resolved_arc);
         free(resolved_dest);
-        if (is_gzipped) remove(temp_tar);
+        if (is_gzipped)
+            remove(temp_tar);
         *out = cs_bool(0);
         return 0;
     }
-    
+
     int success = 1;
     tar_header header;
     while (fread(&header, TAR_BLOCK_SIZE, 1, tar) == 1) {
-        if (header.name[0] == '\0') break;
-        
-        char* out_path = path_join_alloc(resolved_dest, header.name);
+        if (header.name[0] == '\0')
+            break;
+
+        char *out_path = path_join_alloc(resolved_dest, header.name);
         if (!out_path) {
             success = 0;
             break;
         }
-        
+
         uint64_t size = tar_parse_octal(header.size, TAR_SIZE_SIZE);
-        
+
         // Extract regular file
         if (header.typeflag[0] == '0' || header.typeflag[0] == '\0') {
-            FILE* f = fopen(out_path, "wb");
+            FILE *f = fopen(out_path, "wb");
             if (f) {
                 uint64_t remaining = size;
                 char buffer[TAR_BLOCK_SIZE];
                 while (remaining > 0) {
-                    size_t to_read = remaining > TAR_BLOCK_SIZE ? TAR_BLOCK_SIZE : (size_t)remaining;
+                    size_t to_read =
+                        remaining > TAR_BLOCK_SIZE ? TAR_BLOCK_SIZE : (size_t)remaining;
                     if (fread(buffer, 1, TAR_BLOCK_SIZE, tar) != TAR_BLOCK_SIZE) {
                         success = 0;
                         break;
@@ -3083,15 +3864,16 @@ static int nf_tar_extract(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
             uint64_t blocks = (size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
             fseek(tar, blocks * TAR_BLOCK_SIZE, SEEK_CUR);
         }
-        
+
         free(out_path);
     }
-    
+
     fclose(tar);
     free(resolved_arc);
     free(resolved_dest);
-    if (is_gzipped) remove(temp_tar);
-    
+    if (is_gzipped)
+        remove(temp_tar);
+
     *out = cs_bool(success);
     return 0;
 }
@@ -3100,83 +3882,153 @@ static int nf_tar_extract(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
 
 // ---------- JSON helpers ----------
 typedef struct {
-    const char* s;
+    const char *s;
     size_t len;
     size_t pos;
-    cs_vm* vm;
+    cs_vm *vm;
 } json_parser;
 
-static void json_skip_ws(json_parser* p) {
+static void json_skip_ws(json_parser *p) {
     while (p->pos < p->len) {
         char c = p->s[p->pos];
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { p->pos++; continue; }
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            p->pos++;
+            continue;
+        }
         break;
     }
 }
 
-static int json_match(json_parser* p, const char* lit) {
+static int json_match(json_parser *p, const char *lit) {
     size_t n = strlen(lit);
-    if (p->pos + n > p->len) return 0;
-    if (memcmp(p->s + p->pos, lit, n) != 0) return 0;
+    if (p->pos + n > p->len)
+        return 0;
+    if (memcmp(p->s + p->pos, lit, n) != 0)
+        return 0;
     p->pos += n;
     return 1;
 }
 
 static int json_hex_val(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
     return -1;
 }
 
-static cs_value json_parse_value(json_parser* p, int* ok);
+static cs_value json_parse_value(json_parser *p, int *ok);
 
-static cs_value json_parse_string(json_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value json_parse_string(json_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
-    if (p->pos >= p->len || p->s[p->pos] != '"') { *ok = 0; return cs_nil(); }
+    if (p->pos >= p->len || p->s[p->pos] != '"') {
+        *ok = 0;
+        return cs_nil();
+    }
     p->pos++;
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
     while (p->pos < p->len) {
         char c = p->s[p->pos++];
-        if (c == '"') break;
-        if ((unsigned char)c < 0x20) { *ok = 0; break; }
+        if (c == '"')
+            break;
+        if ((unsigned char)c < 0x20) {
+            *ok = 0;
+            break;
+        }
         if (c == '\\') {
-            if (p->pos >= p->len) { *ok = 0; break; }
+            if (p->pos >= p->len) {
+                *ok = 0;
+                break;
+            }
             char e = p->s[p->pos++];
             switch (e) {
-                case '"': c = '"'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case '\\': c = '\\'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case '/': c = '/'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case 'b': c = '\b'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case 'f': c = '\f'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case 'n': c = '\n'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case 'r': c = '\r'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
-                case 't': c = '\t'; if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; } break;
+                case '"':
+                    c = '"';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case '\\':
+                    c = '\\';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case '/':
+                    c = '/';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case 'b':
+                    c = '\b';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case 'f':
+                    c = '\f';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case 'n':
+                    c = '\n';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case 'r':
+                    c = '\r';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
+                case 't':
+                    c = '\t';
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
+                    break;
                 case 'u': {
-                    if (p->pos + 4 > p->len) { *ok = 0; break; }
+                    if (p->pos + 4 > p->len) {
+                        *ok = 0;
+                        break;
+                    }
                     int h1 = json_hex_val(p->s[p->pos++]);
                     int h2 = json_hex_val(p->s[p->pos++]);
                     int h3 = json_hex_val(p->s[p->pos++]);
                     int h4 = json_hex_val(p->s[p->pos++]);
-                    if (h1 < 0 || h2 < 0 || h3 < 0 || h4 < 0) { *ok = 0; break; }
+                    if (h1 < 0 || h2 < 0 || h3 < 0 || h4 < 0) {
+                        *ok = 0;
+                        break;
+                    }
                     int code = (h1 << 12) | (h2 << 8) | (h3 << 4) | h4;
                     // Handle surrogate pairs
                     if (code >= 0xD800 && code <= 0xDBFF) {
                         // High surrogate, expect another \uXXXX
-                        if (p->pos + 6 <= p->len && p->s[p->pos] == '\\' && p->s[p->pos+1] == 'u') {
+                        if (p->pos + 6 <= p->len && p->s[p->pos] == '\\' &&
+                            p->s[p->pos + 1] == 'u') {
                             p->pos += 2;
                             int l1 = json_hex_val(p->s[p->pos++]);
                             int l2 = json_hex_val(p->s[p->pos++]);
                             int l3 = json_hex_val(p->s[p->pos++]);
                             int l4 = json_hex_val(p->s[p->pos++]);
-                            if (l1 < 0 || l2 < 0 || l3 < 0 || l4 < 0) { *ok = 0; break; }
+                            if (l1 < 0 || l2 < 0 || l3 < 0 || l4 < 0) {
+                                *ok = 0;
+                                break;
+                            }
                             int low = (l1 << 12) | (l2 << 8) | (l3 << 4) | l4;
                             if (low >= 0xDC00 && low <= 0xDFFF) {
                                 // Valid surrogate pair
-                                uint32_t full = 0x10000 + (((code - 0xD800) << 10) | (low - 0xDC00));
+                                uint32_t full =
+                                    0x10000 + (((code - 0xD800) << 10) | (low - 0xDC00));
                                 char utf8[4];
                                 int utf8len = 0;
                                 if (full <= 0x10FFFF) {
@@ -3186,19 +4038,25 @@ static cs_value json_parse_string(json_parser* p, int* ok) {
                                     utf8[3] = 0x80 | (full & 0x3F);
                                     utf8len = 4;
                                 }
-                                if (!sb_append(&buf, &len, &cap, utf8, utf8len)) { *ok = 0; break; }
+                                if (!sb_append(&buf, &len, &cap, utf8, utf8len)) {
+                                    *ok = 0;
+                                    break;
+                                }
                                 break;
                             } else {
                                 // Invalid low surrogate
-                                *ok = 0; break;
+                                *ok = 0;
+                                break;
                             }
                         } else {
                             // Missing low surrogate
-                            *ok = 0; break;
+                            *ok = 0;
+                            break;
                         }
                     } else if (code >= 0xDC00 && code <= 0xDFFF) {
                         // Unexpected low surrogate
-                        *ok = 0; break;
+                        *ok = 0;
+                        break;
                     } else {
                         // Encode as UTF-8
                         char utf8[3];
@@ -3216,88 +4074,145 @@ static cs_value json_parse_string(json_parser* p, int* ok) {
                             utf8[2] = 0x80 | (code & 0x3F);
                             utf8len = 3;
                         }
-                        if (!sb_append(&buf, &len, &cap, utf8, utf8len)) { *ok = 0; break; }
+                        if (!sb_append(&buf, &len, &cap, utf8, utf8len)) {
+                            *ok = 0;
+                            break;
+                        }
                     }
                     break;
                 }
                 default:
                     c = e;
-                    if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; }
+                    if (!sb_append(&buf, &len, &cap, &c, 1)) {
+                        *ok = 0;
+                    }
                     break;
             }
-            if (!*ok) break;
+            if (!*ok)
+                break;
             continue;
         }
-        if (!sb_append(&buf, &len, &cap, &c, 1)) { *ok = 0; break; }
+        if (!sb_append(&buf, &len, &cap, &c, 1)) {
+            *ok = 0;
+            break;
+        }
     }
 
-    if (!*ok) { free(buf); return cs_nil(); }
+    if (!*ok) {
+        free(buf);
+        return cs_nil();
+    }
     if (!buf) {
-        char* empty = (char*)malloc(1);
-        if (!empty) { *ok = 0; return cs_nil(); }
+        char *empty = (char *)malloc(1);
+        if (!empty) {
+            *ok = 0;
+            return cs_nil();
+        }
         empty[0] = 0;
         return cs_str_take(p->vm, empty, 0);
     }
     return cs_str_take(p->vm, buf, (uint64_t)len);
 }
 
-static cs_value json_parse_number(json_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value json_parse_number(json_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
     size_t start = p->pos;
-    if (p->pos < p->len && (p->s[p->pos] == '-' || p->s[p->pos] == '+')) p->pos++;
-    while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos])) p->pos++;
+    if (p->pos < p->len && (p->s[p->pos] == '-' || p->s[p->pos] == '+'))
+        p->pos++;
+    while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos]))
+        p->pos++;
     if (p->pos < p->len && p->s[p->pos] == '.') {
         p->pos++;
-        while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos])) p->pos++;
+        while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos]))
+            p->pos++;
     }
     if (p->pos < p->len && (p->s[p->pos] == 'e' || p->s[p->pos] == 'E')) {
         p->pos++;
-        if (p->pos < p->len && (p->s[p->pos] == '+' || p->s[p->pos] == '-')) p->pos++;
-        while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos])) p->pos++;
+        if (p->pos < p->len && (p->s[p->pos] == '+' || p->s[p->pos] == '-'))
+            p->pos++;
+        while (p->pos < p->len && isdigit((unsigned char)p->s[p->pos]))
+            p->pos++;
     }
 
     size_t n = p->pos - start;
-    if (n == 0) { *ok = 0; return cs_nil(); }
+    if (n == 0) {
+        *ok = 0;
+        return cs_nil();
+    }
     int is_float = 0;
     for (size_t i = start; i < p->pos; i++) {
         char c = p->s[i];
-        if (c == '.' || c == 'e' || c == 'E') { is_float = 1; break; }
+        if (c == '.' || c == 'e' || c == 'E') {
+            is_float = 1;
+            break;
+        }
     }
 
     if (!is_float) {
         errno = 0;
         long long v = strtoll(p->s + start, NULL, 10);
-        if (errno == 0) return cs_int((int64_t)v);
+        if (errno == 0)
+            return cs_int((int64_t)v);
     }
 
     errno = 0;
     double d = strtod(p->s + start, NULL);
-    if (errno != 0) { *ok = 0; return cs_nil(); }
+    if (errno != 0) {
+        *ok = 0;
+        return cs_nil();
+    }
     return cs_float(d);
 }
 
-static cs_value json_parse_array(json_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value json_parse_array(json_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
-    if (p->pos >= p->len || p->s[p->pos] != '[') { *ok = 0; return cs_nil(); }
+    if (p->pos >= p->len || p->s[p->pos] != '[') {
+        *ok = 0;
+        return cs_nil();
+    }
     p->pos++;
     json_skip_ws(p);
 
     cs_value listv = cs_list(p->vm);
-    if (listv.type != CS_T_LIST) { *ok = 0; return cs_nil(); }
+    if (listv.type != CS_T_LIST) {
+        *ok = 0;
+        return cs_nil();
+    }
 
-    if (p->pos < p->len && p->s[p->pos] == ']') { p->pos++; return listv; }
+    if (p->pos < p->len && p->s[p->pos] == ']') {
+        p->pos++;
+        return listv;
+    }
 
     while (p->pos < p->len) {
         cs_value v = json_parse_value(p, ok);
-        if (!*ok) { cs_value_release(listv); return cs_nil(); }
-        if (cs_list_push(listv, v) != 0) { cs_value_release(v); cs_value_release(listv); cs_error(p->vm, "out of memory"); *ok = 0; return cs_nil(); }
+        if (!*ok) {
+            cs_value_release(listv);
+            return cs_nil();
+        }
+        if (cs_list_push(listv, v) != 0) {
+            cs_value_release(v);
+            cs_value_release(listv);
+            cs_error(p->vm, "out of memory");
+            *ok = 0;
+            return cs_nil();
+        }
         cs_value_release(v);
 
         json_skip_ws(p);
-        if (p->pos < p->len && p->s[p->pos] == ',') { p->pos++; json_skip_ws(p); continue; }
-        if (p->pos < p->len && p->s[p->pos] == ']') { p->pos++; return listv; }
+        if (p->pos < p->len && p->s[p->pos] == ',') {
+            p->pos++;
+            json_skip_ws(p);
+            continue;
+        }
+        if (p->pos < p->len && p->s[p->pos] == ']') {
+            p->pos++;
+            return listv;
+        }
         break;
     }
 
@@ -3306,29 +4221,51 @@ static cs_value json_parse_array(json_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value json_parse_object(json_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value json_parse_object(json_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
-    if (p->pos >= p->len || p->s[p->pos] != '{') { *ok = 0; return cs_nil(); }
+    if (p->pos >= p->len || p->s[p->pos] != '{') {
+        *ok = 0;
+        return cs_nil();
+    }
     p->pos++;
     json_skip_ws(p);
 
     cs_value mapv = cs_map(p->vm);
-    if (mapv.type != CS_T_MAP) { *ok = 0; return cs_nil(); }
+    if (mapv.type != CS_T_MAP) {
+        *ok = 0;
+        return cs_nil();
+    }
 
-    if (p->pos < p->len && p->s[p->pos] == '}') { p->pos++; return mapv; }
+    if (p->pos < p->len && p->s[p->pos] == '}') {
+        p->pos++;
+        return mapv;
+    }
 
     while (p->pos < p->len) {
         cs_value keyv = json_parse_string(p, ok);
-        if (!*ok || keyv.type != CS_T_STR) { cs_value_release(mapv); return cs_nil(); }
+        if (!*ok || keyv.type != CS_T_STR) {
+            cs_value_release(mapv);
+            return cs_nil();
+        }
 
         json_skip_ws(p);
-        if (p->pos >= p->len || p->s[p->pos] != ':') { cs_value_release(keyv); cs_value_release(mapv); *ok = 0; return cs_nil(); }
+        if (p->pos >= p->len || p->s[p->pos] != ':') {
+            cs_value_release(keyv);
+            cs_value_release(mapv);
+            *ok = 0;
+            return cs_nil();
+        }
         p->pos++;
         json_skip_ws(p);
 
         cs_value val = json_parse_value(p, ok);
-        if (!*ok) { cs_value_release(keyv); cs_value_release(mapv); return cs_nil(); }
+        if (!*ok) {
+            cs_value_release(keyv);
+            cs_value_release(mapv);
+            return cs_nil();
+        }
 
         if (cs_map_set(mapv, cs_to_cstr(keyv), val) != 0) {
             cs_value_release(keyv);
@@ -3342,8 +4279,15 @@ static cs_value json_parse_object(json_parser* p, int* ok) {
         cs_value_release(val);
 
         json_skip_ws(p);
-        if (p->pos < p->len && p->s[p->pos] == ',') { p->pos++; json_skip_ws(p); continue; }
-        if (p->pos < p->len && p->s[p->pos] == '}') { p->pos++; return mapv; }
+        if (p->pos < p->len && p->s[p->pos] == ',') {
+            p->pos++;
+            json_skip_ws(p);
+            continue;
+        }
+        if (p->pos < p->len && p->s[p->pos] == '}') {
+            p->pos++;
+            return mapv;
+        }
         break;
     }
 
@@ -3352,54 +4296,98 @@ static cs_value json_parse_object(json_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value json_parse_value(json_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value json_parse_value(json_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
     json_skip_ws(p);
-    if (p->pos >= p->len) { *ok = 0; return cs_nil(); }
+    if (p->pos >= p->len) {
+        *ok = 0;
+        return cs_nil();
+    }
     char c = p->s[p->pos];
 
-    if (c == '"') return json_parse_string(p, ok);
-    if (c == '[') return json_parse_array(p, ok);
-    if (c == '{') return json_parse_object(p, ok);
-    if (c == 't') { if (json_match(p, "true")) return cs_bool(1); }
-    if (c == 'f') { if (json_match(p, "false")) return cs_bool(0); }
-    if (c == 'n') { if (json_match(p, "null")) return cs_nil(); }
-    if (c == '-' || c == '+' || isdigit((unsigned char)c)) return json_parse_number(p, ok);
+    if (c == '"')
+        return json_parse_string(p, ok);
+    if (c == '[')
+        return json_parse_array(p, ok);
+    if (c == '{')
+        return json_parse_object(p, ok);
+    if (c == 't') {
+        if (json_match(p, "true"))
+            return cs_bool(1);
+    }
+    if (c == 'f') {
+        if (json_match(p, "false"))
+            return cs_bool(0);
+    }
+    if (c == 'n') {
+        if (json_match(p, "null"))
+            return cs_nil();
+    }
+    if (c == '-' || c == '+' || isdigit((unsigned char)c))
+        return json_parse_number(p, ok);
 
     *ok = 0;
     return cs_nil();
 }
 
-static int json_append_escaped(char** buf, size_t* len, size_t* cap, const char* s) {
-    if (!buf || !len || !cap) return 0;
-    if (!sb_append(buf, len, cap, "\"", 1)) return 0;
+static int json_append_escaped(char **buf, size_t *len, size_t *cap, const char *s) {
+    if (!buf || !len || !cap)
+        return 0;
+    if (!sb_append(buf, len, cap, "\"", 1))
+        return 0;
     for (size_t i = 0; s && s[i]; i++) {
         char c = s[i];
         switch (c) {
-            case '"': if (!sb_append(buf, len, cap, "\\\"", 2)) return 0; break;
-            case '\\': if (!sb_append(buf, len, cap, "\\\\", 2)) return 0; break;
-            case '\b': if (!sb_append(buf, len, cap, "\\b", 2)) return 0; break;
-            case '\f': if (!sb_append(buf, len, cap, "\\f", 2)) return 0; break;
-            case '\n': if (!sb_append(buf, len, cap, "\\n", 2)) return 0; break;
-            case '\r': if (!sb_append(buf, len, cap, "\\r", 2)) return 0; break;
-            case '\t': if (!sb_append(buf, len, cap, "\\t", 2)) return 0; break;
+            case '"':
+                if (!sb_append(buf, len, cap, "\\\"", 2))
+                    return 0;
+                break;
+            case '\\':
+                if (!sb_append(buf, len, cap, "\\\\", 2))
+                    return 0;
+                break;
+            case '\b':
+                if (!sb_append(buf, len, cap, "\\b", 2))
+                    return 0;
+                break;
+            case '\f':
+                if (!sb_append(buf, len, cap, "\\f", 2))
+                    return 0;
+                break;
+            case '\n':
+                if (!sb_append(buf, len, cap, "\\n", 2))
+                    return 0;
+                break;
+            case '\r':
+                if (!sb_append(buf, len, cap, "\\r", 2))
+                    return 0;
+                break;
+            case '\t':
+                if (!sb_append(buf, len, cap, "\\t", 2))
+                    return 0;
+                break;
             default:
                 if ((unsigned char)c < 0x20) {
                     char tmp[7];
                     snprintf(tmp, sizeof(tmp), "\\u%04x", (unsigned char)c);
-                    if (!sb_append(buf, len, cap, tmp, 6)) return 0;
+                    if (!sb_append(buf, len, cap, tmp, 6))
+                        return 0;
                 } else {
-                    if (!sb_append(buf, len, cap, &c, 1)) return 0;
+                    if (!sb_append(buf, len, cap, &c, 1))
+                        return 0;
                 }
                 break;
         }
     }
-    if (!sb_append(buf, len, cap, "\"", 1)) return 0;
+    if (!sb_append(buf, len, cap, "\"", 1))
+        return 0;
     return 1;
 }
 
-static int json_stringify_value(cs_vm* vm, cs_value v, char** buf, size_t* len, size_t* cap, void** stack, size_t depth) {
+static int json_stringify_value(cs_vm *vm, cs_value v, char **buf, size_t *len, size_t *cap,
+                                void **stack, size_t depth) {
     switch (v.type) {
         case CS_T_NIL:
             return sb_append(buf, len, cap, "null", 4);
@@ -3418,36 +4406,53 @@ static int json_stringify_value(cs_vm* vm, cs_value v, char** buf, size_t* len, 
         case CS_T_STR:
             return json_append_escaped(buf, len, cap, cs_to_cstr(v));
         case CS_T_LIST: {
-            cs_list_obj* list = (cs_list_obj*)v.as.p;
-            for (size_t i = 0; i < depth; i++) if (stack[i] == list) { cs_error(vm, "json_stringify(): cycle detected"); return 0; }
+            cs_list_obj *list = (cs_list_obj *)v.as.p;
+            for (size_t i = 0; i < depth; i++)
+                if (stack[i] == list) {
+                    cs_error(vm, "json_stringify(): cycle detected");
+                    return 0;
+                }
             stack[depth] = list;
-            if (!sb_append(buf, len, cap, "[", 1)) return 0;
+            if (!sb_append(buf, len, cap, "[", 1))
+                return 0;
             for (size_t i = 0; i < list->len; i++) {
-                if (i > 0 && !sb_append(buf, len, cap, ",", 1)) return 0;
-                if (!json_stringify_value(vm, list->items[i], buf, len, cap, stack, depth + 1)) return 0;
+                if (i > 0 && !sb_append(buf, len, cap, ",", 1))
+                    return 0;
+                if (!json_stringify_value(vm, list->items[i], buf, len, cap, stack, depth + 1))
+                    return 0;
             }
             return sb_append(buf, len, cap, "]", 1);
         }
         case CS_T_MAP: {
-            cs_map_obj* m = (cs_map_obj*)v.as.p;
-            for (size_t i = 0; i < depth; i++) if (stack[i] == m) { cs_error(vm, "json_stringify(): cycle detected"); return 0; }
+            cs_map_obj *m = (cs_map_obj *)v.as.p;
+            for (size_t i = 0; i < depth; i++)
+                if (stack[i] == m) {
+                    cs_error(vm, "json_stringify(): cycle detected");
+                    return 0;
+                }
             stack[depth] = m;
-            if (!sb_append(buf, len, cap, "{", 1)) return 0;
+            if (!sb_append(buf, len, cap, "{", 1))
+                return 0;
             int first = 1;
             for (size_t i = 0; i < m->cap; i++) {
-                if (!m->entries[i].in_use) continue;
+                if (!m->entries[i].in_use)
+                    continue;
                 // Only allow string keys
                 cs_value key = m->entries[i].key;
                 if (key.type != CS_T_STR) {
                     cs_error(vm, "json_stringify(): object keys must be strings (RFC 8259)");
                     return 0;
                 }
-                if (!first && !sb_append(buf, len, cap, ",", 1)) return 0;
+                if (!first && !sb_append(buf, len, cap, ",", 1))
+                    return 0;
                 first = 0;
-                const char* kstr = cs_to_cstr(key);
-                if (!json_append_escaped(buf, len, cap, kstr)) return 0;
-                if (!sb_append(buf, len, cap, ":", 1)) return 0;
-                if (!json_stringify_value(vm, m->entries[i].val, buf, len, cap, stack, depth + 1)) return 0;
+                const char *kstr = cs_to_cstr(key);
+                if (!json_append_escaped(buf, len, cap, kstr))
+                    return 0;
+                if (!sb_append(buf, len, cap, ":", 1))
+                    return 0;
+                if (!json_stringify_value(vm, m->entries[i].val, buf, len, cap, stack, depth + 1))
+                    return 0;
             }
             return sb_append(buf, len, cap, "}", 1);
         }
@@ -3457,12 +4462,16 @@ static int json_stringify_value(cs_vm* vm, cs_value v, char** buf, size_t* len, 
     }
 }
 
-static int nf_json_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_json_parse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const cs_string* s = (const cs_string*)argv[0].as.p;
+    const cs_string *s = (const cs_string *)argv[0].as.p;
     json_parser p;
     p.s = s ? s->data : "";
     p.len = s ? s->len : 0;
@@ -3471,28 +4480,42 @@ static int nf_json_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
 
     int ok = 1;
     cs_value v = json_parse_value(&p, &ok);
-    if (!ok) { cs_error(vm, "json_parse(): invalid JSON"); return 1; }
+    if (!ok) {
+        cs_error(vm, "json_parse(): invalid JSON");
+        return 1;
+    }
     json_skip_ws(&p);
-    if (p.pos != p.len) { cs_value_release(v); cs_error(vm, "json_parse(): trailing characters"); return 1; }
+    if (p.pos != p.len) {
+        cs_value_release(v);
+        cs_error(vm, "json_parse(): trailing characters");
+        return 1;
+    }
     *out = v;
     return 0;
 }
 
-static int nf_json_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_json_stringify(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
-    void* stack[128];
+    void *stack[128];
     if (!json_stringify_value(vm, argv[0], &buf, &len, &cap, stack, 0)) {
         free(buf);
         return 1;
     }
     if (!buf) {
-        char* empty = (char*)malloc(1);
-        if (!empty) { cs_error(vm, "out of memory"); return 1; }
+        char *empty = (char *)malloc(1);
+        if (!empty) {
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         empty[0] = 0;
         *out = cs_str_take(vm, empty, 0);
         return 0;
@@ -3506,7 +4529,7 @@ static int nf_json_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv
 // ============================================================================
 
 typedef struct {
-    const char* s;
+    const char *s;
     size_t len;
     size_t pos;
     int row;
@@ -3515,10 +4538,10 @@ typedef struct {
     char quote;
     int skip_empty;
     int trim;
-    cs_vm* vm;
+    cs_vm *vm;
 } csv_parser;
 
-static void csv_init(csv_parser* p, const char* s, size_t len, cs_vm* vm) {
+static void csv_init(csv_parser *p, const char *s, size_t len, cs_vm *vm) {
     p->s = s;
     p->len = len;
     p->pos = 0;
@@ -3532,29 +4555,30 @@ static void csv_init(csv_parser* p, const char* s, size_t len, cs_vm* vm) {
 }
 
 // Skip UTF-8 BOM if present
-static void csv_skip_bom(csv_parser* p) {
-    if (p->pos + 3 <= p->len &&
-        (unsigned char)p->s[p->pos] == 0xEF &&
-        (unsigned char)p->s[p->pos+1] == 0xBB &&
-        (unsigned char)p->s[p->pos+2] == 0xBF) {
+static void csv_skip_bom(csv_parser *p) {
+    if (p->pos + 3 <= p->len && (unsigned char)p->s[p->pos] == 0xEF &&
+        (unsigned char)p->s[p->pos + 1] == 0xBB && (unsigned char)p->s[p->pos + 2] == 0xBF) {
         p->pos += 3;
     }
 }
 
 // Check if at end of line or end of file
-static int csv_at_eol(csv_parser* p) {
-    if (p->pos >= p->len) return 1;
+static int csv_at_eol(csv_parser *p) {
+    if (p->pos >= p->len)
+        return 1;
     char c = p->s[p->pos];
     return (c == '\r' || c == '\n');
 }
 
 // Skip to end of line
-static void csv_skip_eol(csv_parser* p) {
-    if (p->pos >= p->len) return;
+static void csv_skip_eol(csv_parser *p) {
+    if (p->pos >= p->len)
+        return;
     char c = p->s[p->pos];
     if (c == '\r') {
         p->pos++;
-        if (p->pos < p->len && p->s[p->pos] == '\n') p->pos++; // \r\n
+        if (p->pos < p->len && p->s[p->pos] == '\n')
+            p->pos++; // \r\n
     } else if (c == '\n') {
         p->pos++;
     }
@@ -3563,12 +4587,13 @@ static void csv_skip_eol(csv_parser* p) {
 }
 
 // Parse a single CSV field
-static cs_value csv_parse_field(csv_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value csv_parse_field(csv_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
 
     size_t start_col = p->col;
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     // Check if field starts with quote
@@ -3616,10 +4641,11 @@ static cs_value csv_parse_field(csv_parser* p, int* ok) {
         }
 
         // Check that we properly closed the quote
-        if (p->pos > 0 && p->s[p->pos-1] != p->quote) {
+        if (p->pos > 0 && p->s[p->pos - 1] != p->quote) {
             free(buf);
             char err[256];
-            snprintf(err, sizeof(err), "unterminated quoted field at row %d, col %zu", p->row, start_col);
+            snprintf(err, sizeof(err), "unterminated quoted field at row %d, col %zu", p->row,
+                     start_col);
             cs_error(p->vm, err);
             *ok = 0;
             return cs_nil();
@@ -3628,7 +4654,8 @@ static cs_value csv_parse_field(csv_parser* p, int* ok) {
         // Unquoted field - read until delimiter or EOL
         while (p->pos < p->len) {
             char c = p->s[p->pos];
-            if (c == p->delimiter || c == '\r' || c == '\n') break;
+            if (c == p->delimiter || c == '\r' || c == '\n')
+                break;
             if (!sb_append(&buf, &len, &cap, &c, 1)) {
                 free(buf);
                 cs_error(p->vm, "out of memory");
@@ -3644,11 +4671,13 @@ static cs_value csv_parse_field(csv_parser* p, int* ok) {
     if (p->trim && buf && len > 0) {
         // Trim leading whitespace
         size_t start = 0;
-        while (start < len && isspace((unsigned char)buf[start])) start++;
+        while (start < len && isspace((unsigned char)buf[start]))
+            start++;
 
         // Trim trailing whitespace
         size_t end = len;
-        while (end > start && isspace((unsigned char)buf[end-1])) end--;
+        while (end > start && isspace((unsigned char)buf[end - 1]))
+            end--;
 
         if (start > 0 || end < len) {
             size_t new_len = end - start;
@@ -3660,7 +4689,8 @@ static cs_value csv_parse_field(csv_parser* p, int* ok) {
     }
 
     // Create string value
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(p->vm, "out of memory");
         *ok = 0;
@@ -3671,8 +4701,9 @@ static cs_value csv_parse_field(csv_parser* p, int* ok) {
 }
 
 // Parse a single CSV row
-static cs_value csv_parse_row(csv_parser* p, int* ok) {
-    if (!ok) return cs_nil();
+static cs_value csv_parse_row(csv_parser *p, int *ok) {
+    if (!ok)
+        return cs_nil();
     *ok = 1;
 
     cs_value row = cs_list(p->vm);
@@ -3715,16 +4746,17 @@ static cs_value csv_parse_row(csv_parser* p, int* ok) {
     return row;
 }
 
-static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_csv_parse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_STR) {
         cs_error(vm, "csv_parse() requires a string argument");
         return 1;
     }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* text = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *text = str_obj->data;
     size_t text_len = str_obj->len;
 
     csv_parser p;
@@ -3735,7 +4767,7 @@ static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     if (argc >= 2 && argv[1].type == CS_T_MAP) {
         cs_value opt_delimiter = cs_map_get(argv[1], "delimiter");
         if (opt_delimiter.type == CS_T_STR) {
-            cs_string* delim_str = (cs_string*)opt_delimiter.as.p;
+            cs_string *delim_str = (cs_string *)opt_delimiter.as.p;
             if (delim_str->len == 1) {
                 p.delimiter = delim_str->data[0];
             }
@@ -3744,7 +4776,7 @@ static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
 
         cs_value opt_quote = cs_map_get(argv[1], "quote");
         if (opt_quote.type == CS_T_STR) {
-            cs_string* quote_str = (cs_string*)opt_quote.as.p;
+            cs_string *quote_str = (cs_string *)opt_quote.as.p;
             if (quote_str->len == 1) {
                 p.quote = quote_str->data[0];
             }
@@ -3830,13 +4862,14 @@ static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         for (size_t i = 0; i < row_len; i++) {
             cs_value field = cs_list_get(row, i);
             if (field.type == CS_T_STR) {
-                cs_string* s = (cs_string*)field.as.p;
+                cs_string *s = (cs_string *)field.as.p;
                 if (s->len > 0) {
                     is_empty = 0;
                 }
             }
             cs_value_release(field);
-            if (!is_empty) break;
+            if (!is_empty)
+                break;
         }
 
         if (is_empty && p.skip_empty) {
@@ -3871,7 +4904,7 @@ static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
                 cs_value val = cs_list_get(row, i);
 
                 if (key.type == CS_T_STR) {
-                    cs_string* key_str = (cs_string*)key.as.p;
+                    cs_string *key_str = (cs_string *)key.as.p;
                     cs_map_set(map_row, key_str->data, val);
                 }
 
@@ -3896,9 +4929,10 @@ static int nf_csv_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     return 0;
 }
 
-static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_csv_stringify(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_LIST) {
         cs_error(vm, "csv_stringify() requires a list argument");
         return 1;
@@ -3911,7 +4945,7 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     if (argc >= 2 && argv[1].type == CS_T_MAP) {
         cs_value opt_delimiter = cs_map_get(argv[1], "delimiter");
         if (opt_delimiter.type == CS_T_STR) {
-            cs_string* delim_str = (cs_string*)opt_delimiter.as.p;
+            cs_string *delim_str = (cs_string *)opt_delimiter.as.p;
             if (delim_str->len == 1) {
                 delimiter = delim_str->data[0];
             }
@@ -3920,7 +4954,7 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
 
         cs_value opt_quote = cs_map_get(argv[1], "quote");
         if (opt_quote.type == CS_T_STR) {
-            cs_string* quote_str = (cs_string*)opt_quote.as.p;
+            cs_string *quote_str = (cs_string *)opt_quote.as.p;
             if (quote_str->len == 1) {
                 quote = quote_str->data[0];
             }
@@ -3928,7 +4962,7 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
         cs_value_release(opt_quote);
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     size_t num_rows = cs_list_len(argv[0]);
@@ -3966,7 +5000,7 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
             for (size_t k = 0; k < num_keys; k++) {
                 cs_value key = cs_list_get(keys, k);
                 if (key.type == CS_T_STR) {
-                    cs_string* key_str = (cs_string*)key.as.p;
+                    cs_string *key_str = (cs_string *)key.as.p;
                     cs_value val = cs_map_get(row, key_str->data);
                     cs_list_push(fields_list, val);
                     cs_value_release(val);
@@ -3984,7 +5018,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
             if (f > 0) {
                 // Add delimiter between fields
                 if (!sb_append(&buf, &len, &cap, &delimiter, 1)) {
-                    if (is_map) cs_value_release(fields_list);
+                    if (is_map)
+                        cs_value_release(fields_list);
                     cs_value_release(row);
                     free(buf);
                     cs_error(vm, "out of memory");
@@ -3995,11 +5030,11 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
             cs_value field = cs_list_get(fields_list, f);
 
             // Convert field to string
-            const char* field_str = NULL;
+            const char *field_str = NULL;
             char tmp[128];
 
             if (field.type == CS_T_STR) {
-                cs_string* s = (cs_string*)field.as.p;
+                cs_string *s = (cs_string *)field.as.p;
                 field_str = s->data;
             } else if (field.type == CS_T_INT) {
                 snprintf(tmp, sizeof(tmp), "%lld", (long long)field.as.i);
@@ -4017,7 +5052,7 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
 
             // Check if field needs quoting (contains delimiter, quote, or newline)
             int needs_quote = 0;
-            for (const char* p = field_str; *p; p++) {
+            for (const char *p = field_str; *p; p++) {
                 if (*p == delimiter || *p == quote || *p == '\r' || *p == '\n') {
                     needs_quote = 1;
                     break;
@@ -4028,7 +5063,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
                 // Add opening quote
                 if (!sb_append(&buf, &len, &cap, &quote, 1)) {
                     cs_value_release(field);
-                    if (is_map) cs_value_release(fields_list);
+                    if (is_map)
+                        cs_value_release(fields_list);
                     cs_value_release(row);
                     free(buf);
                     cs_error(vm, "out of memory");
@@ -4036,12 +5072,13 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
                 }
 
                 // Add field content, escaping quotes
-                for (const char* p = field_str; *p; p++) {
+                for (const char *p = field_str; *p; p++) {
                     if (*p == quote) {
                         // Escape quote by doubling it
                         if (!sb_append(&buf, &len, &cap, &quote, 1)) {
                             cs_value_release(field);
-                            if (is_map) cs_value_release(fields_list);
+                            if (is_map)
+                                cs_value_release(fields_list);
                             cs_value_release(row);
                             free(buf);
                             cs_error(vm, "out of memory");
@@ -4050,7 +5087,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
                     }
                     if (!sb_append(&buf, &len, &cap, p, 1)) {
                         cs_value_release(field);
-                        if (is_map) cs_value_release(fields_list);
+                        if (is_map)
+                            cs_value_release(fields_list);
                         cs_value_release(row);
                         free(buf);
                         cs_error(vm, "out of memory");
@@ -4061,7 +5099,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
                 // Add closing quote
                 if (!sb_append(&buf, &len, &cap, &quote, 1)) {
                     cs_value_release(field);
-                    if (is_map) cs_value_release(fields_list);
+                    if (is_map)
+                        cs_value_release(fields_list);
                     cs_value_release(row);
                     free(buf);
                     cs_error(vm, "out of memory");
@@ -4072,7 +5111,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
                 size_t field_len = strlen(field_str);
                 if (!sb_append(&buf, &len, &cap, field_str, field_len)) {
                     cs_value_release(field);
-                    if (is_map) cs_value_release(fields_list);
+                    if (is_map)
+                        cs_value_release(fields_list);
                     cs_value_release(row);
                     free(buf);
                     cs_error(vm, "out of memory");
@@ -4083,7 +5123,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
             cs_value_release(field);
         }
 
-        if (is_map) cs_value_release(fields_list);
+        if (is_map)
+            cs_value_release(fields_list);
         cs_value_release(row);
 
         // Add newline after each row
@@ -4094,7 +5135,8 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
         }
     }
 
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(vm, "out of memory");
         return 1;
@@ -4113,24 +5155,24 @@ static int nf_csv_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
 
 // Tag directive
 typedef struct {
-    char* handle;
-    char* prefix;
+    char *handle;
+    char *prefix;
 } yaml_tag_directive;
 
 typedef struct {
-    char* name;
+    char *name;
     cs_value value;
 } yaml_anchor;
 
 typedef struct {
-    const char* s;
+    const char *s;
     size_t len;
     size_t pos;
     int line;
     int col;
     int indent_stack[YAML_MAX_INDENT_DEPTH];
     int indent_depth;
-    cs_vm* vm;
+    cs_vm *vm;
     yaml_anchor anchors[YAML_MAX_ANCHORS];
     size_t anchor_count;
     yaml_tag_directive tag_directives[YAML_MAX_TAG_DIRECTIVES];
@@ -4139,7 +5181,7 @@ typedef struct {
     int yaml_version_minor;
 } yaml_parser;
 
-static void yaml_init(yaml_parser* p, const char* s, size_t len, cs_vm* vm) {
+static void yaml_init(yaml_parser *p, const char *s, size_t len, cs_vm *vm) {
     p->s = s;
     p->len = len;
     p->pos = 0;
@@ -4165,7 +5207,7 @@ static void yaml_init(yaml_parser* p, const char* s, size_t len, cs_vm* vm) {
     }
 }
 
-static void yaml_cleanup(yaml_parser* p) {
+static void yaml_cleanup(yaml_parser *p) {
     for (size_t i = 0; i < p->anchor_count; i++) {
         if (p->anchors[i].name) {
             free(p->anchors[i].name);
@@ -4189,13 +5231,15 @@ static void yaml_cleanup(yaml_parser* p) {
     }
 }
 
-static int yaml_peek(yaml_parser* p) {
-    if (p->pos >= p->len) return -1;
+static int yaml_peek(yaml_parser *p) {
+    if (p->pos >= p->len)
+        return -1;
     return (unsigned char)p->s[p->pos];
 }
 
-static int yaml_advance(yaml_parser* p) {
-    if (p->pos >= p->len) return -1;
+static int yaml_advance(yaml_parser *p) {
+    if (p->pos >= p->len)
+        return -1;
     int ch = (unsigned char)p->s[p->pos++];
     if (ch == '\n') {
         p->line++;
@@ -4206,7 +5250,7 @@ static int yaml_advance(yaml_parser* p) {
     return ch;
 }
 
-static void yaml_skip_ws_inline(yaml_parser* p) {
+static void yaml_skip_ws_inline(yaml_parser *p) {
     while (p->pos < p->len) {
         int ch = yaml_peek(p);
         if (ch == ' ') {
@@ -4217,7 +5261,7 @@ static void yaml_skip_ws_inline(yaml_parser* p) {
     }
 }
 
-static void yaml_skip_comment(yaml_parser* p) {
+static void yaml_skip_comment(yaml_parser *p) {
     if (yaml_peek(p) == '#') {
         while (p->pos < p->len && yaml_peek(p) != '\n') {
             yaml_advance(p);
@@ -4225,7 +5269,7 @@ static void yaml_skip_comment(yaml_parser* p) {
     }
 }
 
-static void yaml_skip_ws_and_comments(yaml_parser* p) {
+static void yaml_skip_ws_and_comments(yaml_parser *p) {
     while (p->pos < p->len) {
         int ch = yaml_peek(p);
         if (ch == ' ' || ch == '\t') {
@@ -4238,7 +5282,7 @@ static void yaml_skip_ws_and_comments(yaml_parser* p) {
     }
 }
 
-static int yaml_get_indent(yaml_parser* p) {
+static int yaml_get_indent(yaml_parser *p) {
     int indent = 0;
     size_t start_pos = p->pos;
     while (p->pos < p->len) {
@@ -4259,8 +5303,7 @@ static int yaml_get_indent(yaml_parser* p) {
     return indent;
 }
 
-__attribute__((unused))
-static int yaml_skip_to_indent(yaml_parser* p, int expected_indent) {
+__attribute__((unused)) static int yaml_skip_to_indent(yaml_parser *p, int expected_indent) {
     while (p->pos < p->len) {
         int ch = yaml_peek(p);
         if (ch == '\n') {
@@ -4280,19 +5323,19 @@ static int yaml_skip_to_indent(yaml_parser* p, int expected_indent) {
     return 0;
 }
 
-__attribute__((unused))
-static cs_value yaml_parse_null(yaml_parser* p, const char* str, size_t len) {
-    if (len == 0) return cs_str(p->vm, "");
+__attribute__((unused)) static cs_value yaml_parse_null(yaml_parser *p, const char *str,
+                                                        size_t len) {
+    if (len == 0)
+        return cs_str(p->vm, "");
 
-    if ((len == 4 && strncmp(str, "null", 4) == 0) ||
-        (len == 1 && str[0] == '~')) {
+    if ((len == 4 && strncmp(str, "null", 4) == 0) || (len == 1 && str[0] == '~')) {
         return cs_nil();
     }
 
     return cs_nil(); // Will be overridden if not null
 }
 
-static cs_value yaml_parse_bool(yaml_parser* p, const char* str, size_t len, int* is_bool) {
+static cs_value yaml_parse_bool(yaml_parser *p, const char *str, size_t len, int *is_bool) {
     (void)p;
     *is_bool = 0;
 
@@ -4324,11 +5367,12 @@ static cs_value yaml_parse_bool(yaml_parser* p, const char* str, size_t len, int
     return cs_nil();
 }
 
-static cs_value yaml_parse_number(yaml_parser* p, const char* str, size_t len, int* is_number) {
+static cs_value yaml_parse_number(yaml_parser *p, const char *str, size_t len, int *is_number) {
     (void)p;
     *is_number = 0;
 
-    if (len == 0) return cs_nil();
+    if (len == 0)
+        return cs_nil();
 
     // Check for special float values
     if (len == 4 && strncmp(str, ".inf", 4) == 0) {
@@ -4345,9 +5389,10 @@ static cs_value yaml_parse_number(yaml_parser* p, const char* str, size_t len, i
     }
 
     // Try to parse as number
-    char* end = NULL;
+    char *end = NULL;
     char buf[256];
-    if (len >= sizeof(buf)) return cs_nil();
+    if (len >= sizeof(buf))
+        return cs_nil();
     memcpy(buf, str, len);
     buf[len] = '\0';
 
@@ -4386,12 +5431,12 @@ static cs_value yaml_parse_number(yaml_parser* p, const char* str, size_t len, i
     return cs_nil();
 }
 
-static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok);
-static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok);
+static cs_value yaml_parse_plain_scalar(yaml_parser *p, int indent, int *ok);
+static cs_value yaml_parse_value(yaml_parser *p, int indent, int *ok);
 
 // Parse Unicode escape sequence (\uXXXX or \UXXXXXXXX)
 // Helper function to encode a Unicode codepoint to UTF-8
-static int yaml_encode_utf8(uint32_t codepoint, char** buf, size_t* len, size_t* cap) {
+static int yaml_encode_utf8(uint32_t codepoint, char **buf, size_t *len, size_t *cap) {
     if (codepoint <= 0x7F) {
         char c = (char)codepoint;
         return sb_append(buf, len, cap, &c, 1);
@@ -4403,28 +5448,27 @@ static int yaml_encode_utf8(uint32_t codepoint, char** buf, size_t* len, size_t*
         char c1 = (char)(0xE0 | (codepoint >> 12));
         char c2 = (char)(0x80 | ((codepoint >> 6) & 0x3F));
         char c3 = (char)(0x80 | (codepoint & 0x3F));
-        return sb_append(buf, len, cap, &c1, 1) &&
-               sb_append(buf, len, cap, &c2, 1) &&
+        return sb_append(buf, len, cap, &c1, 1) && sb_append(buf, len, cap, &c2, 1) &&
                sb_append(buf, len, cap, &c3, 1);
     } else if (codepoint <= 0x10FFFF) {
         char c1 = (char)(0xF0 | (codepoint >> 18));
         char c2 = (char)(0x80 | ((codepoint >> 12) & 0x3F));
         char c3 = (char)(0x80 | ((codepoint >> 6) & 0x3F));
         char c4 = (char)(0x80 | (codepoint & 0x3F));
-        return sb_append(buf, len, cap, &c1, 1) &&
-               sb_append(buf, len, cap, &c2, 1) &&
-               sb_append(buf, len, cap, &c3, 1) &&
-               sb_append(buf, len, cap, &c4, 1);
+        return sb_append(buf, len, cap, &c1, 1) && sb_append(buf, len, cap, &c2, 1) &&
+               sb_append(buf, len, cap, &c3, 1) && sb_append(buf, len, cap, &c4, 1);
     }
 
     return 0;
 }
 
-static int yaml_parse_unicode_escape(yaml_parser* p, int num_digits, char** buf, size_t* len, size_t* cap) {
+static int yaml_parse_unicode_escape(yaml_parser *p, int num_digits, char **buf, size_t *len,
+                                     size_t *cap) {
     uint32_t codepoint = 0;
     for (int i = 0; i < num_digits; i++) {
         int ch = yaml_peek(p);
-        if (ch == -1) return 0;
+        if (ch == -1)
+            return 0;
         yaml_advance(p);
 
         if (ch >= '0' && ch <= '9') {
@@ -4443,16 +5487,22 @@ static int yaml_parse_unicode_escape(yaml_parser* p, int num_digits, char** buf,
 
 // Base64 decoding for !!binary tag
 static int base64_char_value(char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    if (c == '=') return -1; // padding
-    return -2; // invalid
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    if (c == '=')
+        return -1; // padding
+    return -2;     // invalid
 }
 
-static uint8_t* base64_decode(const char* input, size_t input_len, size_t* output_len) {
+static uint8_t *base64_decode(const char *input, size_t input_len, size_t *output_len) {
     // Remove whitespace and count valid chars
     size_t valid_len = 0;
     for (size_t i = 0; i < input_len; i++) {
@@ -4461,42 +5511,44 @@ static uint8_t* base64_decode(const char* input, size_t input_len, size_t* outpu
             valid_len++;
         }
     }
-    
+
     // Empty string is valid (0 bytes)
     if (valid_len == 0) {
         *output_len = 0;
         // Return empty bytes - allocate minimum buffer
-        uint8_t* empty = (uint8_t*)malloc(1);
-        if (!empty) return NULL;
+        uint8_t *empty = (uint8_t *)malloc(1);
+        if (!empty)
+            return NULL;
         return empty;
     }
-    
+
     if (valid_len % 4 != 0) {
         return NULL;
     }
-    
+
     size_t max_output_len = (valid_len / 4) * 3;
-    uint8_t* output = (uint8_t*)malloc(max_output_len);
-    if (!output) return NULL;
-    
+    uint8_t *output = (uint8_t *)malloc(max_output_len);
+    if (!output)
+        return NULL;
+
     size_t out_pos = 0;
     int values[4];
     int val_count = 0;
-    
+
     for (size_t i = 0; i < input_len; i++) {
         char c = input[i];
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
             continue; // skip whitespace
         }
-        
+
         int val = base64_char_value(c);
         if (val == -2) {
             free(output);
             return NULL; // invalid character
         }
-        
+
         values[val_count++] = val;
-        
+
         if (val_count == 4) {
             // Decode 4 base64 chars to 3 bytes
             if (values[0] >= 0 && values[1] >= 0) {
@@ -4511,13 +5563,13 @@ static uint8_t* base64_decode(const char* input, size_t input_len, size_t* outpu
             val_count = 0;
         }
     }
-    
+
     *output_len = out_pos;
     return output;
 }
 
 // ISO 8601 timestamp validation for !!timestamp tag
-static int is_valid_iso8601_timestamp(const char* s) {
+static int is_valid_iso8601_timestamp(const char *s) {
     // Basic validation for common ISO 8601 formats:
     // YYYY-MM-DD
     // YYYY-MM-DDTHH:MM:SS
@@ -4525,82 +5577,114 @@ static int is_valid_iso8601_timestamp(const char* s) {
     // YYYY-MM-DDTHH:MM:SSZ
     // YYYY-MM-DDTHH:MM:SS+HH:MM
     // YYYY-MM-DD HH:MM:SS
-    
-    if (!s || strlen(s) < 10) return 0;
-    
+
+    if (!s || strlen(s) < 10)
+        return 0;
+
     // Check year-month-day format (YYYY-MM-DD)
-    if (!(s[0] >= '0' && s[0] <= '9')) return 0;
-    if (!(s[1] >= '0' && s[1] <= '9')) return 0;
-    if (!(s[2] >= '0' && s[2] <= '9')) return 0;
-    if (!(s[3] >= '0' && s[3] <= '9')) return 0;
-    if (s[4] != '-') return 0;
-    if (!(s[5] >= '0' && s[5] <= '9')) return 0;
-    if (!(s[6] >= '0' && s[6] <= '9')) return 0;
-    if (s[7] != '-') return 0;
-    if (!(s[8] >= '0' && s[8] <= '9')) return 0;
-    if (!(s[9] >= '0' && s[9] <= '9')) return 0;
-    
+    if (!(s[0] >= '0' && s[0] <= '9'))
+        return 0;
+    if (!(s[1] >= '0' && s[1] <= '9'))
+        return 0;
+    if (!(s[2] >= '0' && s[2] <= '9'))
+        return 0;
+    if (!(s[3] >= '0' && s[3] <= '9'))
+        return 0;
+    if (s[4] != '-')
+        return 0;
+    if (!(s[5] >= '0' && s[5] <= '9'))
+        return 0;
+    if (!(s[6] >= '0' && s[6] <= '9'))
+        return 0;
+    if (s[7] != '-')
+        return 0;
+    if (!(s[8] >= '0' && s[8] <= '9'))
+        return 0;
+    if (!(s[9] >= '0' && s[9] <= '9'))
+        return 0;
+
     // If just date, that's valid
-    if (s[10] == '\0') return 1;
-    
+    if (s[10] == '\0')
+        return 1;
+
     // Check for time separator (T or space)
-    if (s[10] != 'T' && s[10] != 't' && s[10] != ' ') return 0;
-    
+    if (s[10] != 'T' && s[10] != 't' && s[10] != ' ')
+        return 0;
+
     // Check time format (HH:MM:SS)
-    if (strlen(s) < 19) return 0;
-    if (!(s[11] >= '0' && s[11] <= '9')) return 0;
-    if (!(s[12] >= '0' && s[12] <= '9')) return 0;
-    if (s[13] != ':') return 0;
-    if (!(s[14] >= '0' && s[14] <= '9')) return 0;
-    if (!(s[15] >= '0' && s[15] <= '9')) return 0;
-    if (s[16] != ':') return 0;
-    if (!(s[17] >= '0' && s[17] <= '9')) return 0;
-    if (!(s[18] >= '0' && s[18] <= '9')) return 0;
-    
+    if (strlen(s) < 19)
+        return 0;
+    if (!(s[11] >= '0' && s[11] <= '9'))
+        return 0;
+    if (!(s[12] >= '0' && s[12] <= '9'))
+        return 0;
+    if (s[13] != ':')
+        return 0;
+    if (!(s[14] >= '0' && s[14] <= '9'))
+        return 0;
+    if (!(s[15] >= '0' && s[15] <= '9'))
+        return 0;
+    if (s[16] != ':')
+        return 0;
+    if (!(s[17] >= '0' && s[17] <= '9'))
+        return 0;
+    if (!(s[18] >= '0' && s[18] <= '9'))
+        return 0;
+
     // End of string is valid
-    if (s[19] == '\0') return 1;
-    
+    if (s[19] == '\0')
+        return 1;
+
     // Check for fractional seconds (.sss...)
     if (s[19] == '.') {
         size_t i = 20;
-        while (s[i] >= '0' && s[i] <= '9') i++;
+        while (s[i] >= '0' && s[i] <= '9')
+            i++;
         if (s[i] == '\0' || s[i] == 'Z' || s[i] == 'z' || s[i] == '+' || s[i] == '-') {
             // Valid fractional seconds
-            if (s[i] == '\0' || s[i] == 'Z' || s[i] == 'z') return 1;
+            if (s[i] == '\0' || s[i] == 'Z' || s[i] == 'z')
+                return 1;
             // Continue to check timezone
         } else {
             return 0;
         }
     }
-    
+
     // Check for timezone (Z or ±HH:MM)
     size_t pos = 19;
     while (s[pos] && s[pos] != 'Z' && s[pos] != 'z' && s[pos] != '+' && s[pos] != '-') {
         pos++;
     }
-    
+
     if (s[pos] == 'Z' || s[pos] == 'z') {
         return s[pos + 1] == '\0';
     }
-    
+
     if (s[pos] == '+' || s[pos] == '-') {
         // Check ±HH:MM format
-        if (strlen(s + pos) < 6) return 0;
-        if (!(s[pos + 1] >= '0' && s[pos + 1] <= '9')) return 0;
-        if (!(s[pos + 2] >= '0' && s[pos + 2] <= '9')) return 0;
-        if (s[pos + 3] != ':') return 0;
-        if (!(s[pos + 4] >= '0' && s[pos + 4] <= '9')) return 0;
-        if (!(s[pos + 5] >= '0' && s[pos + 5] <= '9')) return 0;
+        if (strlen(s + pos) < 6)
+            return 0;
+        if (!(s[pos + 1] >= '0' && s[pos + 1] <= '9'))
+            return 0;
+        if (!(s[pos + 2] >= '0' && s[pos + 2] <= '9'))
+            return 0;
+        if (s[pos + 3] != ':')
+            return 0;
+        if (!(s[pos + 4] >= '0' && s[pos + 4] <= '9'))
+            return 0;
+        if (!(s[pos + 5] >= '0' && s[pos + 5] <= '9'))
+            return 0;
         return s[pos + 6] == '\0';
     }
-    
+
     return 1;
 }
 
 // Apply tag to value
-static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, int* ok) {
-    if (!tag) return val;
-    
+static cs_value yaml_apply_tag(yaml_parser *p, const char *tag, cs_value val, int *ok) {
+    if (!tag)
+        return val;
+
     // Standard YAML 1.2 tags
     if (strcmp(tag, "!!null") == 0 || strcmp(tag, "tag:yaml.org,2002:null") == 0) {
         cs_value_release(val);
@@ -4608,11 +5692,13 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
     }
     if (strcmp(tag, "!!bool") == 0 || strcmp(tag, "tag:yaml.org,2002:bool") == 0) {
         if (val.type == CS_T_STR) {
-            cs_string* s = (cs_string*)val.as.p;
+            cs_string *s = (cs_string *)val.as.p;
             cs_value result;
-            if (strcmp(s->data, "true") == 0 || strcmp(s->data, "yes") == 0 || strcmp(s->data, "on") == 0) {
+            if (strcmp(s->data, "true") == 0 || strcmp(s->data, "yes") == 0 ||
+                strcmp(s->data, "on") == 0) {
                 result = cs_bool(1);
-            } else if (strcmp(s->data, "false") == 0 || strcmp(s->data, "no") == 0 || strcmp(s->data, "off") == 0) {
+            } else if (strcmp(s->data, "false") == 0 || strcmp(s->data, "no") == 0 ||
+                       strcmp(s->data, "off") == 0) {
                 result = cs_bool(0);
             } else {
                 cs_error(p->vm, "invalid boolean value for !!bool tag");
@@ -4627,8 +5713,8 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
     }
     if (strcmp(tag, "!!int") == 0 || strcmp(tag, "tag:yaml.org,2002:int") == 0) {
         if (val.type == CS_T_STR) {
-            cs_string* s = (cs_string*)val.as.p;
-            char* end = NULL;
+            cs_string *s = (cs_string *)val.as.p;
+            char *end = NULL;
             long long ival = strtoll(s->data, &end, 0);
             if (end && *end == '\0') {
                 cs_value_release(val);
@@ -4643,8 +5729,8 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
     }
     if (strcmp(tag, "!!float") == 0 || strcmp(tag, "tag:yaml.org,2002:float") == 0) {
         if (val.type == CS_T_STR) {
-            cs_string* s = (cs_string*)val.as.p;
-            char* end = NULL;
+            cs_string *s = (cs_string *)val.as.p;
+            char *end = NULL;
             double fval = strtod(s->data, &end);
             if (end && *end == '\0') {
                 cs_value_release(val);
@@ -4683,13 +5769,13 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         }
         return val;
     }
-    
+
     // !!binary - Base64-encoded binary data
     if (strcmp(tag, "!!binary") == 0 || strcmp(tag, "tag:yaml.org,2002:binary") == 0) {
         if (val.type == CS_T_STR) {
-            cs_string* s = (cs_string*)val.as.p;
+            cs_string *s = (cs_string *)val.as.p;
             size_t decoded_len;
-            uint8_t* decoded = base64_decode(s->data, s->len, &decoded_len);
+            uint8_t *decoded = base64_decode(s->data, s->len, &decoded_len);
             if (decoded) {
                 cs_value result = cs_bytes_take(p->vm, decoded, decoded_len);
                 cs_value_release(val);
@@ -4701,26 +5787,27 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         cs_value_release(val);
         return cs_nil();
     }
-    
+
     // !!timestamp - ISO 8601 timestamp
     if (strcmp(tag, "!!timestamp") == 0 || strcmp(tag, "tag:yaml.org,2002:timestamp") == 0) {
         if (val.type == CS_T_STR) {
-            cs_string* s = (cs_string*)val.as.p;
+            cs_string *s = (cs_string *)val.as.p;
             if (is_valid_iso8601_timestamp(s->data)) {
                 return val; // Return validated timestamp string
             }
         }
-        cs_error(p->vm, "!!timestamp requires valid ISO 8601 format (e.g., '2024-01-27T15:30:00Z')");
+        cs_error(p->vm,
+                 "!!timestamp requires valid ISO 8601 format (e.g., '2024-01-27T15:30:00Z')");
         *ok = 0;
         cs_value_release(val);
         return cs_nil();
     }
-    
+
     // !!set - Unordered set (map with null values)
     if (strcmp(tag, "!!set") == 0 || strcmp(tag, "tag:yaml.org,2002:set") == 0) {
         if (val.type == CS_T_MAP) {
             // Verify all values are null
-            cs_map_obj* m = (cs_map_obj*)val.as.p;
+            cs_map_obj *m = (cs_map_obj *)val.as.p;
             for (size_t i = 0; i < m->cap; i++) {
                 if (m->entries[i].in_use && m->entries[i].val.type != CS_T_NIL) {
                     cs_error(p->vm, "!!set requires all map values to be null");
@@ -4733,15 +5820,15 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         } else if (val.type == CS_T_LIST) {
             // Convert list to map with null values
             cs_value set = cs_map(p->vm);
-            cs_list_obj* list = (cs_list_obj*)val.as.p;
+            cs_list_obj *list = (cs_list_obj *)val.as.p;
             for (size_t i = 0; i < list->len; i++) {
                 if (list->items[i].type == CS_T_STR) {
-                    cs_string* key = (cs_string*)list->items[i].as.p;
+                    cs_string *key = (cs_string *)list->items[i].as.p;
                     cs_map_set(set, key->data, cs_nil());
                 } else {
                     // For non-string keys, convert to string
                     char tmp[64];
-                    const char* key_str = NULL;
+                    const char *key_str = NULL;
                     if (list->items[i].type == CS_T_INT) {
                         snprintf(tmp, sizeof(tmp), "%lld", (long long)list->items[i].as.i);
                         key_str = tmp;
@@ -4764,12 +5851,12 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         cs_value_release(val);
         return cs_nil();
     }
-    
+
     // !!omap - Ordered map (list of single-entry maps)
     if (strcmp(tag, "!!omap") == 0 || strcmp(tag, "tag:yaml.org,2002:omap") == 0) {
         if (val.type == CS_T_LIST) {
             // Verify it's a list of single-entry maps
-            cs_list_obj* list = (cs_list_obj*)val.as.p;
+            cs_list_obj *list = (cs_list_obj *)val.as.p;
             for (size_t i = 0; i < list->len; i++) {
                 if (list->items[i].type != CS_T_MAP) {
                     cs_error(p->vm, "!!omap requires list of maps");
@@ -4777,7 +5864,7 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
                     cs_value_release(val);
                     return cs_nil();
                 }
-                cs_map_obj* entry = (cs_map_obj*)list->items[i].as.p;
+                cs_map_obj *entry = (cs_map_obj *)list->items[i].as.p;
                 if (entry->len != 1) {
                     cs_error(p->vm, "!!omap entries must have exactly one key-value pair");
                     *ok = 0;
@@ -4793,12 +5880,12 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         cs_value_release(val);
         return cs_nil();
     }
-    
+
     // !!pairs - Ordered pairs (list of single-entry maps, duplicates allowed)
     if (strcmp(tag, "!!pairs") == 0 || strcmp(tag, "tag:yaml.org,2002:pairs") == 0) {
         if (val.type == CS_T_LIST) {
             // Similar to !!omap but allows duplicate keys
-            cs_list_obj* list = (cs_list_obj*)val.as.p;
+            cs_list_obj *list = (cs_list_obj *)val.as.p;
             for (size_t i = 0; i < list->len; i++) {
                 if (list->items[i].type != CS_T_MAP) {
                     cs_error(p->vm, "!!pairs requires list of maps");
@@ -4806,7 +5893,7 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
                     cs_value_release(val);
                     return cs_nil();
                 }
-                cs_map_obj* entry = (cs_map_obj*)list->items[i].as.p;
+                cs_map_obj *entry = (cs_map_obj *)list->items[i].as.p;
                 if (entry->len != 1) {
                     cs_error(p->vm, "!!pairs entries must have exactly one key-value pair");
                     *ok = 0;
@@ -4822,17 +5909,17 @@ static cs_value yaml_apply_tag(yaml_parser* p, const char* tag, cs_value val, in
         cs_value_release(val);
         return cs_nil();
     }
-    
+
     // For unknown tags, just return the value as-is
     // A full implementation would allow custom tag handlers
     return val;
 }
 
-static cs_value yaml_parse_quoted_string(yaml_parser* p, char quote_char, int* ok) {
+static cs_value yaml_parse_quoted_string(yaml_parser *p, char quote_char, int *ok) {
     *ok = 1;
     yaml_advance(p); // Skip opening quote
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     while (p->pos < p->len) {
@@ -4852,7 +5939,8 @@ static cs_value yaml_parse_quoted_string(yaml_parser* p, char quote_char, int* o
                 continue;
             }
             // End of string
-            if (!buf) buf = cs_strdup2_local("");
+            if (!buf)
+                buf = cs_strdup2_local("");
             if (!buf) {
                 cs_error(p->vm, "out of memory");
                 *ok = 0;
@@ -4866,25 +5954,52 @@ static cs_value yaml_parse_quoted_string(yaml_parser* p, char quote_char, int* o
         if (ch == '\\' && quote_char == '"') {
             // Handle escape sequences in double-quoted strings
             int next = yaml_peek(p);
-            if (next == -1) break;
+            if (next == -1)
+                break;
             yaml_advance(p);
 
             char esc;
             int is_simple_esc = 1;
             switch (next) {
-                case '0': esc = '\0'; break;
-                case 'a': esc = '\a'; break;
-                case 'b': esc = '\b'; break;
-                case 't': esc = '\t'; break;
-                case 'n': esc = '\n'; break;
-                case 'v': esc = '\v'; break;
-                case 'f': esc = '\f'; break;
-                case 'r': esc = '\r'; break;
-                case 'e': esc = '\x1B'; break;
-                case ' ': esc = ' '; break;
-                case '"': esc = '"'; break;
-                case '/': esc = '/'; break;
-                case '\\': esc = '\\'; break;
+                case '0':
+                    esc = '\0';
+                    break;
+                case 'a':
+                    esc = '\a';
+                    break;
+                case 'b':
+                    esc = '\b';
+                    break;
+                case 't':
+                    esc = '\t';
+                    break;
+                case 'n':
+                    esc = '\n';
+                    break;
+                case 'v':
+                    esc = '\v';
+                    break;
+                case 'f':
+                    esc = '\f';
+                    break;
+                case 'r':
+                    esc = '\r';
+                    break;
+                case 'e':
+                    esc = '\x1B';
+                    break;
+                case ' ':
+                    esc = ' ';
+                    break;
+                case '"':
+                    esc = '"';
+                    break;
+                case '/':
+                    esc = '/';
+                    break;
+                case '\\':
+                    esc = '\\';
+                    break;
                 case 'x':
                     // \xHH - 2-digit hex escape (YAML 1.2.2)
                     is_simple_esc = 0;
@@ -4981,7 +6096,7 @@ static cs_value yaml_parse_quoted_string(yaml_parser* p, char quote_char, int* o
     return cs_nil();
 }
 
-static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent, int* ok) {
+static cs_value yaml_parse_multiline(yaml_parser *p, char style, int base_indent, int *ok) {
     *ok = 1;
     yaml_advance(p); // Skip | or >
 
@@ -4989,7 +6104,7 @@ static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent
     // Format: | or |- or |+ or |2 or |2- or |-2 etc.
     char chomp = 'c'; // 'c' = clip (default), '-' = strip, '+' = keep
     int explicit_indent = -1;
-    
+
     // Read up to 2 indicators (chomp and indent, in either order)
     for (int i = 0; i < 2; i++) {
         int ch = yaml_peek(p);
@@ -5016,7 +6131,7 @@ static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent
 
     // Determine content indent
     int content_indent = explicit_indent >= 0 ? (base_indent + explicit_indent) : -1;
-    
+
     if (content_indent < 0) {
         // Auto-detect from first non-empty line
         size_t scan_pos = p->pos;
@@ -5040,12 +6155,12 @@ static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent
         content_indent = base_indent + 2;
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     int first_line = 1;
     int trailing_newlines = 0;
-    
+
     while (p->pos < p->len) {
         // Check indent
         int indent = 0;
@@ -5144,7 +6259,8 @@ static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent
     }
     // else chomp == '-': strip, don't add any trailing newlines
 
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(p->vm, "out of memory");
         *ok = 0;
@@ -5153,7 +6269,7 @@ static cs_value yaml_parse_multiline(yaml_parser* p, char style, int base_indent
     return cs_str_take(p->vm, buf, (uint64_t)len);
 }
 
-static cs_value yaml_parse_flow_list(yaml_parser* p, int* ok) {
+static cs_value yaml_parse_flow_list(yaml_parser *p, int *ok) {
     *ok = 1;
     yaml_advance(p); // Skip [
 
@@ -5204,7 +6320,7 @@ static cs_value yaml_parse_flow_list(yaml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value yaml_parse_flow_map(yaml_parser* p, int* ok) {
+static cs_value yaml_parse_flow_map(yaml_parser *p, int *ok) {
     *ok = 1;
     yaml_advance(p); // Skip {
 
@@ -5260,7 +6376,7 @@ static cs_value yaml_parse_flow_map(yaml_parser* p, int* ok) {
 
         // Set in map
         if (key.type == CS_T_STR) {
-            cs_string* key_str = (cs_string*)key.as.p;
+            cs_string *key_str = (cs_string *)key.as.p;
             cs_map_set(map, key_str->data, val);
         }
 
@@ -5283,10 +6399,10 @@ static cs_value yaml_parse_flow_map(yaml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok) {
+static cs_value yaml_parse_plain_scalar(yaml_parser *p, int indent, int *ok) {
     *ok = 1;
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     // YAML 1.2.2: Reserved indicators @ and ` cannot start plain scalars
@@ -5301,7 +6417,8 @@ static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok) {
         int ch = yaml_peek(p);
 
         // End conditions
-        if (ch == '\n' || ch == ':' || ch == '#' || ch == ',' || ch == ']' || ch == '}' || ch == -1) {
+        if (ch == '\n' || ch == ':' || ch == '#' || ch == ',' || ch == ']' || ch == '}' ||
+            ch == -1) {
             // Special handling for ':'
             if (ch == ':') {
                 // In flow context (indent < 0), ':' is ALWAYS a delimiter
@@ -5331,7 +6448,7 @@ static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok) {
     }
 
     // Trim trailing whitespace
-    while (len > 0 && (buf[len-1] == ' ' || buf[len-1] == '\t')) {
+    while (len > 0 && (buf[len - 1] == ' ' || buf[len - 1] == '\t')) {
         len--;
     }
 
@@ -5341,8 +6458,7 @@ static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok) {
     }
 
     // Check if this is a special value
-    if ((len == 4 && strncmp(buf, "null", 4) == 0) ||
-        (len == 1 && buf[0] == '~')) {
+    if ((len == 4 && strncmp(buf, "null", 4) == 0) || (len == 1 && buf[0] == '~')) {
         free(buf);
         return cs_nil();
     }
@@ -5368,14 +6484,15 @@ static cs_value yaml_parse_plain_scalar(yaml_parser* p, int indent, int* ok) {
     return cs_str_take(p->vm, buf, (uint64_t)len);
 }
 
-static cs_value yaml_parse_alias(yaml_parser* p, int* ok) {
+static cs_value yaml_parse_alias(yaml_parser *p, int *ok) {
     *ok = 1;
     yaml_advance(p); // Skip *
 
     size_t start = p->pos;
     while (p->pos < p->len) {
         int ch = yaml_peek(p);
-        if (ch == ' ' || ch == '\n' || ch == '\t' || ch == ',' || ch == ']' || ch == '}' || ch == ':' || ch == '#') {
+        if (ch == ' ' || ch == '\n' || ch == '\t' || ch == ',' || ch == ']' || ch == '}' ||
+            ch == ':' || ch == '#') {
             break;
         }
         yaml_advance(p);
@@ -5401,7 +6518,7 @@ static cs_value yaml_parse_alias(yaml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value yaml_parse_list(yaml_parser* p, int base_indent, int* ok) {
+static cs_value yaml_parse_list(yaml_parser *p, int base_indent, int *ok) {
     *ok = 1;
 
     cs_value list = cs_list(p->vm);
@@ -5478,7 +6595,7 @@ static cs_value yaml_parse_list(yaml_parser* p, int base_indent, int* ok) {
     return list;
 }
 
-static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
+static cs_value yaml_parse_map(yaml_parser *p, int base_indent, int *ok) {
     *ok = 1;
 
     cs_value map = cs_map(p->vm);
@@ -5491,7 +6608,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
     while (p->pos < p->len) {
         // Check current indent
         int indent = yaml_get_indent(p);
-        
+
         // In block context, check indentation
         if (base_indent >= 0) {
             if (indent < base_indent) {
@@ -5536,19 +6653,19 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
             // Check for document marker ---
             if (next == '-' && p->pos + 2 < p->len && p->s[p->pos + 2] == '-') {
                 // Check if followed by whitespace or EOF
-                if (p->pos + 3 >= p->len || 
-                    p->s[p->pos + 3] == ' ' || p->s[p->pos + 3] == '\t' || p->s[p->pos + 3] == '\n') {
+                if (p->pos + 3 >= p->len || p->s[p->pos + 3] == ' ' || p->s[p->pos + 3] == '\t' ||
+                    p->s[p->pos + 3] == '\n') {
                     break;
                 }
             }
         }
-        
+
         // Check for document end marker ...
         if (yaml_peek(p) == '.') {
             if (p->pos + 2 < p->len && p->s[p->pos + 1] == '.' && p->s[p->pos + 2] == '.') {
                 // Check if followed by whitespace or EOF
-                if (p->pos + 3 >= p->len || 
-                    p->s[p->pos + 3] == ' ' || p->s[p->pos + 3] == '\t' || p->s[p->pos + 3] == '\n') {
+                if (p->pos + 3 >= p->len || p->s[p->pos + 3] == ' ' || p->s[p->pos + 3] == '\t' ||
+                    p->s[p->pos + 3] == '\n') {
                     break;
                 }
             }
@@ -5559,7 +6676,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
         if (yaml_peek(p) == '?') {
             yaml_advance(p);
             yaml_skip_ws_inline(p);
-            
+
             // Parse complex key (can be any value type)
             if (yaml_peek(p) == '\n') {
                 yaml_advance(p);
@@ -5567,12 +6684,12 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
             } else {
                 key = yaml_parse_value(p, base_indent, ok);
             }
-            
+
             if (!*ok) {
                 cs_value_release(map);
                 return cs_nil();
             }
-            
+
             // Skip to value indicator ':'
             yaml_skip_ws_inline(p);
             if (yaml_peek(p) == '\n') {
@@ -5619,7 +6736,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
         // Check for merge operator '<<'
         int is_merge = 0;
         if (key.type == CS_T_STR) {
-            cs_string* key_str = (cs_string*)key.as.p;
+            cs_string *key_str = (cs_string *)key.as.p;
             if (strcmp(key_str->data, "<<") == 0) {
                 is_merge = 1;
             }
@@ -5651,7 +6768,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
                     for (size_t i = 0; i < num_keys; i++) {
                         cs_value src_key = cs_list_get(src_keys, i);
                         if (src_key.type == CS_T_STR) {
-                            cs_string* key_str = (cs_string*)src_key.as.p;
+                            cs_string *key_str = (cs_string *)src_key.as.p;
                             cs_value existing = cs_map_get(map, key_str->data);
                             // Only merge if key doesn't already exist
                             if (existing.type == CS_T_NIL) {
@@ -5678,7 +6795,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
                             for (size_t j = 0; j < num_keys; j++) {
                                 cs_value src_key = cs_list_get(src_keys, j);
                                 if (src_key.type == CS_T_STR) {
-                                    cs_string* key_str = (cs_string*)src_key.as.p;
+                                    cs_string *key_str = (cs_string *)src_key.as.p;
                                     cs_value existing = cs_map_get(map, key_str->data);
                                     if (existing.type == CS_T_NIL) {
                                         cs_value src_val = cs_map_get(item, key_str->data);
@@ -5700,7 +6817,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
         } else {
             // Set in map (convert non-string keys to strings for map compatibility)
             if (key.type == CS_T_STR) {
-                cs_string* key_str = (cs_string*)key.as.p;
+                cs_string *key_str = (cs_string *)key.as.p;
                 cs_map_set(map, key_str->data, val);
             } else {
                 // Convert key to string representation
@@ -5738,7 +6855,7 @@ static cs_value yaml_parse_map(yaml_parser* p, int base_indent, int* ok) {
     return map;
 }
 
-static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
+static cs_value yaml_parse_value(yaml_parser *p, int indent, int *ok) {
     *ok = 1;
 
     // Only skip inline whitespace in flow context (indent < 0)
@@ -5754,11 +6871,11 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
     }
 
     // Tag (!!type or !tag)
-    char* tag = NULL;
+    char *tag = NULL;
     if (ch == '!') {
         yaml_advance(p);
         size_t start = p->pos;
-        
+
         // Check for !! (standard tag)
         if (yaml_peek(p) == '!') {
             yaml_advance(p);
@@ -5766,14 +6883,15 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
             // Read tag name
             while (p->pos < p->len) {
                 int c = yaml_peek(p);
-                if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' || c == ']' || c == '{' || c == '}') {
+                if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' ||
+                    c == ']' || c == '{' || c == '}') {
                     break;
                 }
                 yaml_advance(p);
             }
             size_t tag_len = p->pos - start;
             if (tag_len > 0) {
-                tag = (char*)malloc(tag_len + 3);
+                tag = (char *)malloc(tag_len + 3);
                 if (tag) {
                     tag[0] = '!';
                     tag[1] = '!';
@@ -5785,14 +6903,15 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
             // Local tag or tag handle
             while (p->pos < p->len) {
                 int c = yaml_peek(p);
-                if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' || c == ']' || c == '{' || c == '}') {
+                if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' ||
+                    c == ']' || c == '{' || c == '}') {
                     break;
                 }
                 yaml_advance(p);
             }
             size_t tag_len = p->pos - start;
             if (tag_len > 0) {
-                tag = (char*)malloc(tag_len + 2);
+                tag = (char *)malloc(tag_len + 2);
                 if (tag) {
                     tag[0] = '!';
                     memcpy(tag + 1, p->s + start, tag_len);
@@ -5806,7 +6925,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
 
         // If value is on next line after tag, handle it recursively
         if (ch == '\n' && indent >= 0) {
-            yaml_advance(p);  // Skip newline
+            yaml_advance(p); // Skip newline
             // Get the indentation level but don't skip it - let the parser handle it
             int actual_indent = yaml_get_indent(p);
             // Parse value at the actual indentation level
@@ -5847,7 +6966,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
     }
 
     // Anchor (store it but parse the value)
-    char* anchor_name = NULL;
+    char *anchor_name = NULL;
     if (ch == '&') {
         yaml_advance(p);
         size_t start = p->pos;
@@ -5860,7 +6979,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
         }
         size_t name_len = p->pos - start;
         if (name_len > 0) {
-            anchor_name = (char*)malloc(name_len + 1);
+            anchor_name = (char *)malloc(name_len + 1);
             if (anchor_name) {
                 memcpy(anchor_name, p->s + start, name_len);
                 anchor_name[name_len] = '\0';
@@ -5881,14 +7000,15 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
                 // Read tag name
                 while (p->pos < p->len) {
                     int c = yaml_peek(p);
-                    if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' || c == ']' || c == '{' || c == '}') {
+                    if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' ||
+                        c == ']' || c == '{' || c == '}') {
                         break;
                     }
                     yaml_advance(p);
                 }
                 size_t tag_len = p->pos - tag_start;
                 if (tag_len > 0) {
-                    tag = (char*)malloc(tag_len + 3);
+                    tag = (char *)malloc(tag_len + 3);
                     if (tag) {
                         tag[0] = '!';
                         tag[1] = '!';
@@ -5900,14 +7020,15 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
                 // Local tag or tag handle
                 while (p->pos < p->len) {
                     int c = yaml_peek(p);
-                    if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' || c == ']' || c == '{' || c == '}') {
+                    if (c == ' ' || c == '\n' || c == '\t' || c == ':' || c == ',' || c == '[' ||
+                        c == ']' || c == '{' || c == '}') {
                         break;
                     }
                     yaml_advance(p);
                 }
                 size_t tag_len = p->pos - tag_start;
                 if (tag_len > 0) {
-                    tag = (char*)malloc(tag_len + 2);
+                    tag = (char *)malloc(tag_len + 2);
                     if (tag) {
                         tag[0] = '!';
                         memcpy(tag + 1, p->s + tag_start, tag_len);
@@ -5922,7 +7043,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
 
         // If value is on next line after anchor, handle it recursively
         if (ch == '\n' && indent >= 0) {
-            yaml_advance(p);  // Skip newline
+            yaml_advance(p); // Skip newline
             cs_value result = yaml_parse_value(p, indent + 2, ok);
             if (*ok && tag) {
                 result = yaml_apply_tag(p, tag, result, ok);
@@ -5991,7 +7112,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
         }
         p->pos = save;
 
-        if (first_char == '-' && line_indent == indent && 
+        if (first_char == '-' && line_indent == indent &&
             (next_char == ' ' || next_char == '\n' || next_char == '\t')) {
             // This is a list at the expected indentation
             cs_value result = yaml_parse_list(p, line_indent, ok);
@@ -6059,7 +7180,7 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
 
     // Look ahead for key: value pattern (only in block context)
     int looks_like_map = 0;
-    if (indent >= 0) {  // Only do map lookahead in block context
+    if (indent >= 0) { // Only do map lookahead in block context
         while (p->pos < p->len) {
             int c = yaml_peek(p);
             if (c == ':') {
@@ -6111,16 +7232,17 @@ static cs_value yaml_parse_value(yaml_parser* p, int indent, int* ok) {
     return result;
 }
 
-static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_yaml_parse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_STR) {
         cs_error(vm, "yaml_parse() requires a string argument");
         return 1;
     }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* text = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *text = str_obj->data;
     size_t text_len = str_obj->len;
 
     yaml_parser p;
@@ -6144,12 +7266,12 @@ static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
                 break;
             }
         }
-        
+
         // Check for %YAML directive
         if (p.pos + 5 < p.len && strncmp(p.s + p.pos, "%YAML", 5) == 0) {
             p.pos += 5;
             yaml_skip_ws_inline(&p);
-            
+
             // Parse version (e.g., "1.2")
             if (p.pos < p.len && yaml_peek(&p) >= '0' && yaml_peek(&p) <= '9') {
                 p.yaml_version_major = yaml_peek(&p) - '0';
@@ -6162,7 +7284,7 @@ static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
                     }
                 }
             }
-            
+
             // Skip to end of line
             while (p.pos < p.len && yaml_peek(&p) != '\n') {
                 yaml_advance(&p);
@@ -6172,41 +7294,46 @@ static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
             }
             continue;
         }
-        
+
         // Check for %TAG directive
         if (p.pos + 4 < p.len && strncmp(p.s + p.pos, "%TAG", 4) == 0) {
             p.pos += 4;
             yaml_skip_ws_inline(&p);
-            
+
             // Parse handle
             size_t handle_start = p.pos;
             while (p.pos < p.len && yaml_peek(&p) != ' ' && yaml_peek(&p) != '\t') {
                 yaml_advance(&p);
             }
             size_t handle_len = p.pos - handle_start;
-            
+
             yaml_skip_ws_inline(&p);
-            
+
             // Parse prefix
             size_t prefix_start = p.pos;
-            while (p.pos < p.len && yaml_peek(&p) != ' ' && yaml_peek(&p) != '\t' && yaml_peek(&p) != '\n') {
+            while (p.pos < p.len && yaml_peek(&p) != ' ' && yaml_peek(&p) != '\t' &&
+                   yaml_peek(&p) != '\n') {
                 yaml_advance(&p);
             }
             size_t prefix_len = p.pos - prefix_start;
-            
+
             // Store tag directive
-            if (handle_len > 0 && prefix_len > 0 && p.tag_directive_count < YAML_MAX_TAG_DIRECTIVES) {
-                p.tag_directives[p.tag_directive_count].handle = (char*)malloc(handle_len + 1);
-                p.tag_directives[p.tag_directive_count].prefix = (char*)malloc(prefix_len + 1);
-                if (p.tag_directives[p.tag_directive_count].handle && p.tag_directives[p.tag_directive_count].prefix) {
-                    memcpy(p.tag_directives[p.tag_directive_count].handle, p.s + handle_start, handle_len);
+            if (handle_len > 0 && prefix_len > 0 &&
+                p.tag_directive_count < YAML_MAX_TAG_DIRECTIVES) {
+                p.tag_directives[p.tag_directive_count].handle = (char *)malloc(handle_len + 1);
+                p.tag_directives[p.tag_directive_count].prefix = (char *)malloc(prefix_len + 1);
+                if (p.tag_directives[p.tag_directive_count].handle &&
+                    p.tag_directives[p.tag_directive_count].prefix) {
+                    memcpy(p.tag_directives[p.tag_directive_count].handle, p.s + handle_start,
+                           handle_len);
                     p.tag_directives[p.tag_directive_count].handle[handle_len] = '\0';
-                    memcpy(p.tag_directives[p.tag_directive_count].prefix, p.s + prefix_start, prefix_len);
+                    memcpy(p.tag_directives[p.tag_directive_count].prefix, p.s + prefix_start,
+                           prefix_len);
                     p.tag_directives[p.tag_directive_count].prefix[prefix_len] = '\0';
                     p.tag_directive_count++;
                 }
             }
-            
+
             // Skip to end of line
             while (p.pos < p.len && yaml_peek(&p) != '\n') {
                 yaml_advance(&p);
@@ -6216,7 +7343,7 @@ static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
             }
             continue;
         }
-        
+
         break;
     }
 
@@ -6265,10 +7392,12 @@ static int nf_yaml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
 }
 
 // Helper function to stringify a YAML value (forward declaration)
-static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len, size_t* cap, int depth, int indent);
+static int yaml_stringify_value(cs_vm *vm, cs_value val, char **buf, size_t *len, size_t *cap,
+                                int depth, int indent);
 
 // Helper function to stringify a YAML value
-static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len, size_t* cap, int depth, int indent) {
+static int yaml_stringify_value(cs_vm *vm, cs_value val, char **buf, size_t *len, size_t *cap,
+                                int depth, int indent) {
     switch (val.type) {
         case CS_T_NIL:
             if (!sb_append(buf, len, cap, "null", 4)) {
@@ -6278,7 +7407,7 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
             break;
 
         case CS_T_BOOL: {
-            const char* str = val.as.b ? "true" : "false";
+            const char *str = val.as.b ? "true" : "false";
             if (!sb_append(buf, len, cap, str, strlen(str))) {
                 cs_error(vm, "out of memory");
                 return 0;
@@ -6307,8 +7436,8 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
         }
 
         case CS_T_STR: {
-            cs_string* s = (cs_string*)val.as.p;
-            const char* str = s->data;
+            cs_string *s = (cs_string *)val.as.p;
+            const char *str = s->data;
 
             // Check if string needs quoting (contains special chars)
             int needs_quote = 0;
@@ -6320,9 +7449,8 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
                     needs_quote = 1;
                     break;
                 }
-                if (ch == ':' || ch == '#' || ch == '[' || ch == ']' ||
-                    ch == '{' || ch == '}' || ch == ',' || ch == '&' ||
-                    ch == '*' || ch == '!' || ch == '|' || ch == '>' ||
+                if (ch == ':' || ch == '#' || ch == '[' || ch == ']' || ch == '{' || ch == '}' ||
+                    ch == ',' || ch == '&' || ch == '*' || ch == '!' || ch == '|' || ch == '>' ||
                     ch == '\'' || ch == '"' || ch == '%' || ch == '@' || ch == '`') {
                     needs_quote = 1;
                 }
@@ -6331,9 +7459,8 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
             // Check if string looks like a number or boolean
             if (!needs_quote && s->len > 0) {
                 if (strcmp(str, "true") == 0 || strcmp(str, "false") == 0 ||
-                    strcmp(str, "null") == 0 || strcmp(str, "yes") == 0 ||
-                    strcmp(str, "no") == 0 || strcmp(str, "on") == 0 ||
-                    strcmp(str, "off") == 0) {
+                    strcmp(str, "null") == 0 || strcmp(str, "yes") == 0 || strcmp(str, "no") == 0 ||
+                    strcmp(str, "on") == 0 || strcmp(str, "off") == 0) {
                     needs_quote = 1;
                 }
             }
@@ -6346,7 +7473,7 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
                 }
                 // Add indented content
                 for (size_t i = 0; i < s->len; i++) {
-                    if (i == 0 || str[i-1] == '\n') {
+                    if (i == 0 || str[i - 1] == '\n') {
                         for (int j = 0; j < (depth + 1) * indent; j++) {
                             if (!sb_append(buf, len, cap, " ", 1)) {
                                 cs_error(vm, "out of memory");
@@ -6471,7 +7598,7 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
 
                     cs_value key = cs_list_get(keys, i);
                     if (key.type == CS_T_STR) {
-                        cs_string* key_str = (cs_string*)key.as.p;
+                        cs_string *key_str = (cs_string *)key.as.p;
                         if (!sb_append(buf, len, cap, key_str->data, key_str->len)) {
                             cs_value_release(key);
                             cs_value_release(keys);
@@ -6490,7 +7617,8 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
                                 cs_error(vm, "out of memory");
                                 return 0;
                             }
-                            if (!yaml_stringify_value(vm, map_val, buf, len, cap, depth + 1, indent)) {
+                            if (!yaml_stringify_value(vm, map_val, buf, len, cap, depth + 1,
+                                                      indent)) {
                                 cs_value_release(map_val);
                                 cs_value_release(key);
                                 cs_value_release(keys);
@@ -6533,16 +7661,17 @@ static int yaml_stringify_value(cs_vm* vm, cs_value val, char** buf, size_t* len
 }
 
 // Parse multiple YAML documents from a stream
-static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_yaml_parse_all(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_STR) {
         cs_error(vm, "yaml_parse_all() requires a string argument");
         return 1;
     }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* text = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *text = str_obj->data;
     size_t text_len = str_obj->len;
 
     // Create list to hold all documents
@@ -6574,7 +7703,7 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
                     break;
                 }
             }
-            
+
             // Check for %YAML or %TAG directives
             if (p.pos + 5 < p.len && strncmp(p.s + p.pos, "%YAML", 5) == 0) {
                 p.pos += 5;
@@ -6598,7 +7727,7 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
                 }
                 continue;
             }
-            
+
             if (p.pos + 4 < p.len && strncmp(p.s + p.pos, "%TAG", 4) == 0) {
                 p.pos += 4;
                 yaml_skip_ws_inline(&p);
@@ -6609,17 +7738,22 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
                 size_t handle_len = p.pos - handle_start;
                 yaml_skip_ws_inline(&p);
                 size_t prefix_start = p.pos;
-                while (p.pos < p.len && yaml_peek(&p) != ' ' && yaml_peek(&p) != '\t' && yaml_peek(&p) != '\n') {
+                while (p.pos < p.len && yaml_peek(&p) != ' ' && yaml_peek(&p) != '\t' &&
+                       yaml_peek(&p) != '\n') {
                     yaml_advance(&p);
                 }
                 size_t prefix_len = p.pos - prefix_start;
-                if (handle_len > 0 && prefix_len > 0 && p.tag_directive_count < YAML_MAX_TAG_DIRECTIVES) {
-                    p.tag_directives[p.tag_directive_count].handle = (char*)malloc(handle_len + 1);
-                    p.tag_directives[p.tag_directive_count].prefix = (char*)malloc(prefix_len + 1);
-                    if (p.tag_directives[p.tag_directive_count].handle && p.tag_directives[p.tag_directive_count].prefix) {
-                        memcpy(p.tag_directives[p.tag_directive_count].handle, p.s + handle_start, handle_len);
+                if (handle_len > 0 && prefix_len > 0 &&
+                    p.tag_directive_count < YAML_MAX_TAG_DIRECTIVES) {
+                    p.tag_directives[p.tag_directive_count].handle = (char *)malloc(handle_len + 1);
+                    p.tag_directives[p.tag_directive_count].prefix = (char *)malloc(prefix_len + 1);
+                    if (p.tag_directives[p.tag_directive_count].handle &&
+                        p.tag_directives[p.tag_directive_count].prefix) {
+                        memcpy(p.tag_directives[p.tag_directive_count].handle, p.s + handle_start,
+                               handle_len);
                         p.tag_directives[p.tag_directive_count].handle[handle_len] = '\0';
-                        memcpy(p.tag_directives[p.tag_directive_count].prefix, p.s + prefix_start, prefix_len);
+                        memcpy(p.tag_directives[p.tag_directive_count].prefix, p.s + prefix_start,
+                               prefix_len);
                         p.tag_directives[p.tag_directive_count].prefix[prefix_len] = '\0';
                         p.tag_directive_count++;
                     }
@@ -6632,7 +7766,7 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
                 }
                 continue;
             }
-            
+
             break;
         }
 
@@ -6688,7 +7822,7 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
         // Parse document
         int ok = 1;
         cs_value doc = yaml_parse_value(&p, 0, &ok);
-        
+
         if (!ok) {
             cs_value_release(docs);
             yaml_cleanup(&p);
@@ -6755,9 +7889,10 @@ static int nf_yaml_parse_all(cs_vm* vm, void* ud, int argc, const cs_value* argv
     return 0;
 }
 
-static int nf_yaml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_yaml_stringify(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1) {
         cs_error(vm, "yaml_stringify() requires a value argument");
         return 1;
@@ -6766,11 +7901,13 @@ static int nf_yaml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv
     int indent = 2;
     if (argc >= 2 && argv[1].type == CS_T_INT) {
         indent = (int)argv[1].as.i;
-        if (indent < 0) indent = 0;
-        if (indent > 8) indent = 8;
+        if (indent < 0)
+            indent = 0;
+        if (indent > 8)
+            indent = 8;
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     if (!yaml_stringify_value(vm, argv[0], &buf, &len, &cap, 0, indent)) {
@@ -6778,7 +7915,8 @@ static int nf_yaml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv
         return 1;
     }
 
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(vm, "out of memory");
         return 1;
@@ -6792,30 +7930,32 @@ static int nf_yaml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv
 // ============================================================================
 
 typedef struct {
-    const char* s;
+    const char *s;
     size_t len;
     size_t pos;
-    cs_vm* vm;
+    cs_vm *vm;
 } xml_parser;
 
-static void xml_init(xml_parser* p, const char* s, size_t len, cs_vm* vm) {
+static void xml_init(xml_parser *p, const char *s, size_t len, cs_vm *vm) {
     p->s = s;
     p->len = len;
     p->pos = 0;
     p->vm = vm;
 }
 
-static int xml_peek(xml_parser* p) {
-    if (p->pos >= p->len) return -1;
+static int xml_peek(xml_parser *p) {
+    if (p->pos >= p->len)
+        return -1;
     return (unsigned char)p->s[p->pos];
 }
 
-static int xml_advance(xml_parser* p) {
-    if (p->pos >= p->len) return -1;
+static int xml_advance(xml_parser *p) {
+    if (p->pos >= p->len)
+        return -1;
     return (unsigned char)p->s[p->pos++];
 }
 
-static void xml_skip_ws(xml_parser* p) {
+static void xml_skip_ws(xml_parser *p) {
     while (p->pos < p->len) {
         int ch = xml_peek(p);
         if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
@@ -6826,9 +7966,10 @@ static void xml_skip_ws(xml_parser* p) {
     }
 }
 
-static int xml_match(xml_parser* p, const char* lit) {
+static int xml_match(xml_parser *p, const char *lit) {
     size_t lit_len = strlen(lit);
-    if (p->pos + lit_len > p->len) return 0;
+    if (p->pos + lit_len > p->len)
+        return 0;
     if (strncmp(p->s + p->pos, lit, lit_len) == 0) {
         p->pos += lit_len;
         return 1;
@@ -6844,7 +7985,7 @@ static int xml_is_name_char(int ch) {
     return xml_is_name_start(ch) || (ch >= '0' && ch <= '9') || ch == '-' || ch == '.';
 }
 
-static cs_value xml_parse_name(xml_parser* p, int* ok) {
+static cs_value xml_parse_name(xml_parser *p, int *ok) {
     *ok = 1;
     size_t start = p->pos;
 
@@ -6861,7 +8002,7 @@ static cs_value xml_parse_name(xml_parser* p, int* ok) {
     }
 
     size_t name_len = p->pos - start;
-    char* name = (char*)malloc(name_len + 1);
+    char *name = (char *)malloc(name_len + 1);
     if (!name) {
         cs_error(p->vm, "out of memory");
         *ok = 0;
@@ -6873,14 +8014,19 @@ static cs_value xml_parse_name(xml_parser* p, int* ok) {
     return cs_str_take(p->vm, name, (uint64_t)name_len);
 }
 
-static cs_value xml_decode_entity(xml_parser* p, int* ok) {
+static cs_value xml_decode_entity(xml_parser *p, int *ok) {
     *ok = 1;
 
-    if (xml_match(p, "&lt;")) return cs_str(p->vm, "<");
-    if (xml_match(p, "&gt;")) return cs_str(p->vm, ">");
-    if (xml_match(p, "&amp;")) return cs_str(p->vm, "&");
-    if (xml_match(p, "&quot;")) return cs_str(p->vm, "\"");
-    if (xml_match(p, "&apos;")) return cs_str(p->vm, "'");
+    if (xml_match(p, "&lt;"))
+        return cs_str(p->vm, "<");
+    if (xml_match(p, "&gt;"))
+        return cs_str(p->vm, ">");
+    if (xml_match(p, "&amp;"))
+        return cs_str(p->vm, "&");
+    if (xml_match(p, "&quot;"))
+        return cs_str(p->vm, "\"");
+    if (xml_match(p, "&apos;"))
+        return cs_str(p->vm, "'");
 
     // Numeric entity: &#65; or &#x41;
     if (xml_match(p, "&#")) {
@@ -6911,10 +8057,14 @@ static cs_value xml_decode_entity(xml_parser* p, int* ok) {
             }
 
             int digit = -1;
-            if (ch >= '0' && ch <= '9') digit = ch - '0';
-            else if (is_hex && ch >= 'a' && ch <= 'f') digit = 10 + (ch - 'a');
-            else if (is_hex && ch >= 'A' && ch <= 'F') digit = 10 + (ch - 'A');
-            else break;
+            if (ch >= '0' && ch <= '9')
+                digit = ch - '0';
+            else if (is_hex && ch >= 'a' && ch <= 'f')
+                digit = 10 + (ch - 'a');
+            else if (is_hex && ch >= 'A' && ch <= 'F')
+                digit = 10 + (ch - 'A');
+            else
+                break;
 
             value = value * (is_hex ? 16 : 10) + digit;
             has_digits = 1;
@@ -6927,9 +8077,9 @@ static cs_value xml_decode_entity(xml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value xml_parse_text(xml_parser* p, int* ok) {
+static cs_value xml_parse_text(xml_parser *p, int *ok) {
     *ok = 1;
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     while (p->pos < p->len) {
@@ -6947,7 +8097,7 @@ static cs_value xml_parse_text(xml_parser* p, int* ok) {
             }
 
             if (entity.type == CS_T_STR) {
-                cs_string* s = (cs_string*)entity.as.p;
+                cs_string *s = (cs_string *)entity.as.p;
                 if (!sb_append(&buf, &len, &cap, s->data, s->len)) {
                     cs_value_release(entity);
                     free(buf);
@@ -6970,7 +8120,8 @@ static cs_value xml_parse_text(xml_parser* p, int* ok) {
         }
     }
 
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(p->vm, "out of memory");
         *ok = 0;
@@ -6979,7 +8130,7 @@ static cs_value xml_parse_text(xml_parser* p, int* ok) {
     return cs_str_take(p->vm, buf, (uint64_t)len);
 }
 
-static cs_value xml_parse_cdata(xml_parser* p, int* ok) {
+static cs_value xml_parse_cdata(xml_parser *p, int *ok) {
     *ok = 1;
 
     if (!xml_match(p, "<![CDATA[")) {
@@ -6988,12 +8139,13 @@ static cs_value xml_parse_cdata(xml_parser* p, int* ok) {
         return cs_nil();
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     while (p->pos < p->len) {
         if (xml_match(p, "]]>")) {
-            if (!buf) buf = cs_strdup2_local("");
+            if (!buf)
+                buf = cs_strdup2_local("");
             if (!buf) {
                 cs_error(p->vm, "out of memory");
                 *ok = 0;
@@ -7017,7 +8169,7 @@ static cs_value xml_parse_cdata(xml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value xml_parse_comment(xml_parser* p, int* ok) {
+static cs_value xml_parse_comment(xml_parser *p, int *ok) {
     *ok = 1;
 
     if (!xml_match(p, "<!--")) {
@@ -7026,12 +8178,13 @@ static cs_value xml_parse_comment(xml_parser* p, int* ok) {
         return cs_nil();
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     while (p->pos < p->len) {
         if (xml_match(p, "-->")) {
-            if (!buf) buf = cs_strdup2_local("");
+            if (!buf)
+                buf = cs_strdup2_local("");
             if (!buf) {
                 cs_error(p->vm, "out of memory");
                 *ok = 0;
@@ -7055,10 +8208,10 @@ static cs_value xml_parse_comment(xml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value xml_parse_pi(xml_parser* p, int* ok);
-static cs_value xml_parse_element(xml_parser* p, int* ok);
+static cs_value xml_parse_pi(xml_parser *p, int *ok);
+static cs_value xml_parse_element(xml_parser *p, int *ok);
 
-static cs_value xml_parse_pi(xml_parser* p, int* ok) {
+static cs_value xml_parse_pi(xml_parser *p, int *ok) {
     *ok = 1;
 
     if (!xml_match(p, "<?")) {
@@ -7080,7 +8233,7 @@ static cs_value xml_parse_pi(xml_parser* p, int* ok) {
     return cs_nil();
 }
 
-static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
+static cs_value xml_parse_attributes(xml_parser *p, int *ok) {
     *ok = 1;
 
     cs_value attrs = cs_map(p->vm);
@@ -7129,7 +8282,7 @@ static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
         }
         xml_advance(p);
 
-        char* buf = NULL;
+        char *buf = NULL;
         size_t len = 0, cap = 0;
 
         while (p->pos < p->len) {
@@ -7150,7 +8303,7 @@ static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
                 }
 
                 if (entity.type == CS_T_STR) {
-                    cs_string* s = (cs_string*)entity.as.p;
+                    cs_string *s = (cs_string *)entity.as.p;
                     if (!sb_append(&buf, &len, &cap, s->data, s->len)) {
                         cs_value_release(entity);
                         free(buf);
@@ -7177,7 +8330,8 @@ static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
             }
         }
 
-        if (!buf) buf = cs_strdup2_local("");
+        if (!buf)
+            buf = cs_strdup2_local("");
         if (!buf) {
             cs_value_release(name);
             cs_value_release(attrs);
@@ -7189,7 +8343,7 @@ static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
 
         // Set attribute
         if (name.type == CS_T_STR) {
-            cs_string* name_str = (cs_string*)name.as.p;
+            cs_string *name_str = (cs_string *)name.as.p;
             cs_map_set(attrs, name_str->data, value);
         }
 
@@ -7200,7 +8354,7 @@ static cs_value xml_parse_attributes(xml_parser* p, int* ok) {
     return attrs;
 }
 
-static cs_value xml_parse_element(xml_parser* p, int* ok) {
+static cs_value xml_parse_element(xml_parser *p, int *ok) {
     *ok = 1;
 
     if (xml_peek(p) != '<') {
@@ -7274,7 +8428,8 @@ static cs_value xml_parse_element(xml_parser* p, int* ok) {
     while (p->pos < p->len) {
         xml_skip_ws(p);
 
-        if (p->pos >= p->len) break;
+        if (p->pos >= p->len)
+            break;
 
         // Check for closing tag
         if (p->pos + 1 < p->len && p->s[p->pos] == '<' && p->s[p->pos + 1] == '/') {
@@ -7352,7 +8507,7 @@ static cs_value xml_parse_element(xml_parser* p, int* ok) {
 
             // Trim and check if meaningful
             if (text.type == CS_T_STR) {
-                cs_string* text_str = (cs_string*)text.as.p;
+                cs_string *text_str = (cs_string *)text.as.p;
                 int has_content = 0;
                 for (size_t i = 0; i < text_str->len; i++) {
                     if (text_str->data[i] != ' ' && text_str->data[i] != '\t' &&
@@ -7395,8 +8550,8 @@ static cs_value xml_parse_element(xml_parser* p, int* ok) {
 
     // Verify tag names match
     if (tag_name.type == CS_T_STR && close_name.type == CS_T_STR) {
-        cs_string* open_str = (cs_string*)tag_name.as.p;
-        cs_string* close_str = (cs_string*)close_name.as.p;
+        cs_string *open_str = (cs_string *)tag_name.as.p;
+        cs_string *close_str = (cs_string *)close_name.as.p;
         if (open_str->len != close_str->len ||
             strncmp(open_str->data, close_str->data, open_str->len) != 0) {
             cs_value_release(close_name);
@@ -7459,16 +8614,17 @@ static cs_value xml_parse_element(xml_parser* p, int* ok) {
     return elem;
 }
 
-static int nf_xml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_xml_parse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_STR) {
         cs_error(vm, "xml_parse() requires a string argument");
         return 1;
     }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* text = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *text = str_obj->data;
     size_t text_len = str_obj->len;
 
     xml_parser p;
@@ -7488,8 +8644,10 @@ static int nf_xml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
             int depth = 1;
             while (p.pos < p.len && depth > 0) {
                 int ch = xml_advance(&p);
-                if (ch == '<') depth++;
-                if (ch == '>') depth--;
+                if (ch == '<')
+                    depth++;
+                if (ch == '>')
+                    depth--;
             }
             xml_skip_ws(&p);
         } else if (p.pos + 3 < p.len && strncmp(p.s + p.pos, "<!--", 4) == 0) {
@@ -7497,7 +8655,8 @@ static int nf_xml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
             int ok = 1;
             cs_value comment = xml_parse_comment(&p, &ok);
             cs_value_release(comment);
-            if (!ok) return 1;
+            if (!ok)
+                return 1;
             xml_skip_ws(&p);
         } else {
             break;
@@ -7521,9 +8680,11 @@ static int nf_xml_parse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
 }
 
 // Forward declaration for recursive stringify
-static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* len, size_t* cap, int depth, int indent);
+static int xml_stringify_element(cs_vm *vm, cs_value elem, char **buf, size_t *len, size_t *cap,
+                                 int depth, int indent);
 
-static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* len, size_t* cap, int depth, int indent) {
+static int xml_stringify_element(cs_vm *vm, cs_value elem, char **buf, size_t *len, size_t *cap,
+                                 int depth, int indent) {
     if (elem.type != CS_T_MAP) {
         cs_error(vm, "xml_stringify expects map");
         return 0;
@@ -7536,7 +8697,7 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
         cs_error(vm, "element missing name");
         return 0;
     }
-    cs_string* name = (cs_string*)name_val.as.p;
+    cs_string *name = (cs_string *)name_val.as.p;
 
     // Add indentation
     for (int i = 0; i < depth * indent; i++) {
@@ -7548,8 +8709,7 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
     }
 
     // Opening tag
-    if (!sb_append(buf, len, cap, "<", 1) ||
-        !sb_append(buf, len, cap, name->data, name->len)) {
+    if (!sb_append(buf, len, cap, "<", 1) || !sb_append(buf, len, cap, name->data, name->len)) {
         cs_value_release(name_val);
         cs_error(vm, "out of memory");
         return 0;
@@ -7564,7 +8724,7 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
             for (size_t i = 0; i < num_keys; i++) {
                 cs_value key = cs_list_get(keys, i);
                 if (key.type == CS_T_STR) {
-                    cs_string* key_str = (cs_string*)key.as.p;
+                    cs_string *key_str = (cs_string *)key.as.p;
                     cs_value val = cs_map_get(attrs, key_str->data);
 
                     if (!sb_append(buf, len, cap, " ", 1) ||
@@ -7581,15 +8741,20 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
 
                     // Escape attribute value
                     if (val.type == CS_T_STR) {
-                        cs_string* val_str = (cs_string*)val.as.p;
+                        cs_string *val_str = (cs_string *)val.as.p;
                         for (size_t j = 0; j < val_str->len; j++) {
                             char ch = val_str->data[j];
-                            const char* esc = NULL;
-                            if (ch == '<') esc = "&lt;";
-                            else if (ch == '>') esc = "&gt;";
-                            else if (ch == '&') esc = "&amp;";
-                            else if (ch == '"') esc = "&quot;";
-                            else if (ch == '\'') esc = "&apos;";
+                            const char *esc = NULL;
+                            if (ch == '<')
+                                esc = "&lt;";
+                            else if (ch == '>')
+                                esc = "&gt;";
+                            else if (ch == '&')
+                                esc = "&amp;";
+                            else if (ch == '"')
+                                esc = "&quot;";
+                            else if (ch == '\'')
+                                esc = "&apos;";
 
                             if (esc) {
                                 if (!sb_append(buf, len, cap, esc, strlen(esc))) {
@@ -7664,13 +8829,16 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
 
     // Text content
     if (text.type == CS_T_STR) {
-        cs_string* text_str = (cs_string*)text.as.p;
+        cs_string *text_str = (cs_string *)text.as.p;
         for (size_t i = 0; i < text_str->len; i++) {
             char ch = text_str->data[i];
-            const char* esc = NULL;
-            if (ch == '<') esc = "&lt;";
-            else if (ch == '>') esc = "&gt;";
-            else if (ch == '&') esc = "&amp;";
+            const char *esc = NULL;
+            if (ch == '<')
+                esc = "&lt;";
+            else if (ch == '>')
+                esc = "&gt;";
+            else if (ch == '&')
+                esc = "&amp;";
 
             if (esc) {
                 if (!sb_append(buf, len, cap, esc, strlen(esc))) {
@@ -7741,8 +8909,7 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
     cs_value_release(children);
 
     // Closing tag
-    if (!sb_append(buf, len, cap, "</", 2) ||
-        !sb_append(buf, len, cap, name->data, name->len) ||
+    if (!sb_append(buf, len, cap, "</", 2) || !sb_append(buf, len, cap, name->data, name->len) ||
         !sb_append(buf, len, cap, ">", 1)) {
         cs_value_release(name_val);
         cs_error(vm, "out of memory");
@@ -7753,9 +8920,10 @@ static int xml_stringify_element(cs_vm* vm, cs_value elem, char** buf, size_t* l
     return 1;
 }
 
-static int nf_xml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_xml_stringify(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1) {
         cs_error(vm, "xml_stringify() requires a value argument");
         return 1;
@@ -7764,11 +8932,13 @@ static int nf_xml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     int indent = 2;
     if (argc >= 2 && argv[1].type == CS_T_INT) {
         indent = (int)argv[1].as.i;
-        if (indent < 0) indent = 0;
-        if (indent > 8) indent = 8;
+        if (indent < 0)
+            indent = 0;
+        if (indent > 8)
+            indent = 8;
     }
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
 
     if (!xml_stringify_element(vm, argv[0], &buf, &len, &cap, 0, indent)) {
@@ -7776,7 +8946,8 @@ static int nf_xml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
         return 1;
     }
 
-    if (!buf) buf = cs_strdup2_local("");
+    if (!buf)
+        buf = cs_strdup2_local("");
     if (!buf) {
         cs_error(vm, "out of memory");
         return 1;
@@ -7785,45 +8956,74 @@ static int nf_xml_stringify(cs_vm* vm, void* ud, int argc, const cs_value* argv,
     return 0;
 }
 
-static int nf_fmt(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_fmt(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const char* fmt = ((cs_string*)argv[0].as.p)->data;
-    char* buf = NULL;
+    const char *fmt = ((cs_string *)argv[0].as.p)->data;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
     int ai = 1;
 
     for (size_t i = 0; fmt[i]; i++) {
         if (fmt[i] != '%') {
-            if (!sb_append(&buf, &len, &cap, &fmt[i], 1)) { free(buf); cs_error(vm, "out of memory"); return 1; }
+            if (!sb_append(&buf, &len, &cap, &fmt[i], 1)) {
+                free(buf);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             continue;
         }
         char spec = fmt[++i];
-        if (!spec) break;
+        if (!spec)
+            break;
         if (spec == '%') {
-            if (!sb_append(&buf, &len, &cap, "%", 1)) { free(buf); cs_error(vm, "out of memory"); return 1; }
+            if (!sb_append(&buf, &len, &cap, "%", 1)) {
+                free(buf);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             continue;
         }
-        if (ai >= argc) { free(buf); cs_error(vm, "fmt: not enough arguments"); return 1; }
+        if (ai >= argc) {
+            free(buf);
+            cs_error(vm, "fmt: not enough arguments");
+            return 1;
+        }
 
         char tmp[128];
         tmp[0] = 0;
         const cs_value v = argv[ai++];
-        const char* s = NULL;
+        const char *s = NULL;
         size_t sn = 0;
 
         if (spec == 'd') {
-            if (v.type != CS_T_INT) { free(buf); cs_error(vm, "fmt: %d expects int"); return 1; }
+            if (v.type != CS_T_INT) {
+                free(buf);
+                cs_error(vm, "fmt: %d expects int");
+                return 1;
+            }
             snprintf(tmp, sizeof(tmp), "%lld", (long long)v.as.i);
             s = tmp;
         } else if (spec == 'b') {
-            if (v.type != CS_T_BOOL) { free(buf); cs_error(vm, "fmt: %b expects bool"); return 1; }
+            if (v.type != CS_T_BOOL) {
+                free(buf);
+                cs_error(vm, "fmt: %b expects bool");
+                return 1;
+            }
             s = v.as.b ? "true" : "false";
         } else if (spec == 's') {
-            if (v.type != CS_T_STR) { free(buf); cs_error(vm, "fmt: %s expects string"); return 1; }
-            s = ((cs_string*)v.as.p)->data;
+            if (v.type != CS_T_STR) {
+                free(buf);
+                cs_error(vm, "fmt: %s expects string");
+                return 1;
+            }
+            s = ((cs_string *)v.as.p)->data;
         } else if (spec == 'v') {
             s = value_repr(v, tmp, sizeof(tmp));
         } else {
@@ -7833,21 +9033,36 @@ static int nf_fmt(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
         }
 
         sn = strlen(s);
-        if (!sb_append(&buf, &len, &cap, s, sn)) { free(buf); cs_error(vm, "out of memory"); return 1; }
+        if (!sb_append(&buf, &len, &cap, s, sn)) {
+            free(buf);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
     }
 
-    if (!buf) buf = cs_strdup2_local("");
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    if (!buf)
+        buf = cs_strdup2_local("");
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = cs_str_take(vm, buf, (uint64_t)len);
     return 0;
 }
 
-static int nf_now_ms(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_now_ms(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
 #if !defined(_WIN32)
     struct timeval tv;
-    if (gettimeofday(&tv, NULL) != 0) { *out = cs_int(0); return 0; }
+    if (gettimeofday(&tv, NULL) != 0) {
+        *out = cs_int(0);
+        return 0;
+    }
     int64_t ms = (int64_t)tv.tv_sec * 1000 + (int64_t)(tv.tv_usec / 1000);
     *out = cs_int(ms);
     return 0;
@@ -7860,20 +9075,28 @@ static int nf_now_ms(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
 static uint64_t stdlib_now_ms(void) {
 #if !defined(_WIN32)
     struct timeval tv;
-    if (gettimeofday(&tv, NULL) != 0) return 0;
+    if (gettimeofday(&tv, NULL) != 0)
+        return 0;
     return (uint64_t)tv.tv_sec * 1000 + (uint64_t)(tv.tv_usec / 1000);
 #else
     return (uint64_t)(clock() * 1000 / (uint64_t)CLOCKS_PER_SEC);
 #endif
 }
 
-static int nf_sleep(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_sleep(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_INT) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
     int64_t ms = argv[0].as.i;
     cs_value p = cs_promise_new(vm);
-    if (p.type != CS_T_PROMISE) { cs_error(vm, "out of memory"); return 1; }
+    if (p.type != CS_T_PROMISE) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     if (ms <= 0) {
         cs_promise_resolve(vm, p, cs_nil());
         *out = p;
@@ -7885,47 +9108,65 @@ static int nf_sleep(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_promise(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_promise(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     cs_value p = cs_promise_new(vm);
-    if (p.type != CS_T_PROMISE) { cs_error(vm, "out of memory"); return 1; }
+    if (p.type != CS_T_PROMISE) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = p;
     return 0;
 }
 
-static int nf_resolve(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_resolve(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_bool(0);
-    if (argc < 1) return 0;
+    if (out)
+        *out = cs_bool(0);
+    if (argc < 1)
+        return 0;
     cs_value val = (argc >= 2) ? argv[1] : cs_nil();
     int ok = cs_promise_resolve(vm, argv[0], val);
-    if (out) *out = cs_bool(ok);
+    if (out)
+        *out = cs_bool(ok);
     return 0;
 }
 
-static int nf_reject(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_reject(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_bool(0);
-    if (argc < 1) return 0;
+    if (out)
+        *out = cs_bool(0);
+    if (argc < 1)
+        return 0;
     cs_value val = (argc >= 2) ? argv[1] : cs_nil();
     int ok = cs_promise_reject(vm, argv[0], val);
-    if (out) *out = cs_bool(ok);
+    if (out)
+        *out = cs_bool(ok);
     return 0;
 }
 
-static int nf_is_promise(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_bool(0); return 0; }
+static int nf_is_promise(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_bool(0);
+        return 0;
+    }
     *out = cs_bool(argv[0].type == CS_T_PROMISE);
     return 0;
 }
 
 // Native function: await_all(promises) -> promise<list>
-static int nf_await_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_await_all(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     cs_value result_list = cs_list(vm);
     if (argc < 1 || argv[0].type != CS_T_LIST) {
         cs_value p = cs_promise_new(vm);
@@ -7935,7 +9176,7 @@ static int nf_await_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         return 0;
     }
 
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int ok = 1;
     for (size_t i = 0; i < l->len; i++) {
         cs_value v = l->items[i];
@@ -7960,9 +9201,10 @@ static int nf_await_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
 }
 
 // Native function: await_any(promises) -> promise<T>
-static int nf_await_any(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_await_any(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_LIST) {
         cs_value p = cs_promise_new(vm);
         cs_promise_resolve(vm, p, cs_nil());
@@ -7970,7 +9212,7 @@ static int nf_await_any(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         return 0;
     }
 
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int ok = 1;
     for (size_t i = 0; i < l->len; i++) {
         cs_value v = l->items[i];
@@ -8000,9 +9242,11 @@ static int nf_await_any(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
 }
 
 // Native function: await_all_settled(promises) -> promise<list>
-static int nf_await_all_settled(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_await_all_settled(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     cs_value result_list = cs_list(vm);
     if (argc < 1 || argv[0].type != CS_T_LIST) {
         cs_value p = cs_promise_new(vm);
@@ -8012,7 +9256,7 @@ static int nf_await_all_settled(cs_vm* vm, void* ud, int argc, const cs_value* a
         return 0;
     }
 
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int ok = 1;
     for (size_t i = 0; i < l->len; i++) {
         cs_value entry = cs_map(vm);
@@ -8042,9 +9286,10 @@ static int nf_await_all_settled(cs_vm* vm, void* ud, int argc, const cs_value* a
 }
 
 // Native function: timeout(promise, ms) -> promise
-static int nf_timeout(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_timeout(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_PROMISE || argv[1].type != CS_T_INT) {
         *out = cs_promise_new(vm);
         cs_promise_resolve(vm, *out, cs_nil());
@@ -8069,39 +9314,72 @@ static int nf_timeout(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_va
     return 0;
 }
 
-static int nf_values(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_values(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_MAP) { *out = cs_list(vm); return 0; }
-    cs_map_obj* m = (cs_map_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_MAP) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_map_obj *m = (cs_map_obj *)argv[0].as.p;
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* l = (cs_list_obj*)listv.as.p;
-    if (!list_ensure(l, m->len)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *l = (cs_list_obj *)listv.as.p;
+    if (!list_ensure(l, m->len)) {
+        cs_value_release(listv);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; i < m->cap; i++) {
-        if (!m->entries[i].in_use) continue;
+        if (!m->entries[i].in_use)
+            continue;
         l->items[l->len++] = cs_value_copy(m->entries[i].val);
     }
     *out = listv;
     return 0;
 }
 
-static int nf_items(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_items(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_MAP) { *out = cs_list(vm); return 0; }
-    cs_map_obj* m = (cs_map_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_MAP) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_map_obj *m = (cs_map_obj *)argv[0].as.p;
     cs_value outer = cs_list(vm);
-    if (!outer.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* ol = (cs_list_obj*)outer.as.p;
-    if (!list_ensure(ol, m->len)) { cs_value_release(outer); cs_error(vm, "out of memory"); return 1; }
+    if (!outer.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *ol = (cs_list_obj *)outer.as.p;
+    if (!list_ensure(ol, m->len)) {
+        cs_value_release(outer);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     for (size_t i = 0; i < m->cap; i++) {
-        if (!m->entries[i].in_use) continue;
+        if (!m->entries[i].in_use)
+            continue;
         cs_value pair = cs_list(vm);
-        if (!pair.as.p) { cs_value_release(outer); cs_error(vm, "out of memory"); return 1; }
-        cs_list_obj* pl = (cs_list_obj*)pair.as.p;
-        if (!list_ensure(pl, 2)) { cs_value_release(pair); cs_value_release(outer); cs_error(vm, "out of memory"); return 1; }
+        if (!pair.as.p) {
+            cs_value_release(outer);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
+        cs_list_obj *pl = (cs_list_obj *)pair.as.p;
+        if (!list_ensure(pl, 2)) {
+            cs_value_release(pair);
+            cs_value_release(outer);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
 
         pl->items[pl->len++] = cs_value_copy(m->entries[i].key);
         pl->items[pl->len++] = cs_value_copy(m->entries[i].val);
@@ -8113,16 +9391,27 @@ static int nf_items(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_enumerate(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_enumerate(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     cs_value outer = cs_list(vm);
-    if (!outer.as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!outer.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; l && i < l->len; i++) {
         cs_value pair = cs_list(vm);
-        if (!pair.as.p) { cs_value_release(outer); cs_error(vm, "out of memory"); return 1; }
+        if (!pair.as.p) {
+            cs_value_release(outer);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         if (cs_list_push(pair, cs_int((int64_t)i)) != 0 || cs_list_push(pair, l->items[i]) != 0) {
             cs_value_release(pair);
             cs_value_release(outer);
@@ -8141,18 +9430,29 @@ static int nf_enumerate(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     return 0;
 }
 
-static int nf_zip(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_zip(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    cs_list_obj* a = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* b = (cs_list_obj*)argv[1].as.p;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *a = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *b = (cs_list_obj *)argv[1].as.p;
     size_t n = (a && b) ? (a->len < b->len ? a->len : b->len) : 0;
     cs_value outer = cs_list(vm);
-    if (!outer.as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!outer.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; i < n; i++) {
         cs_value pair = cs_list(vm);
-        if (!pair.as.p) { cs_value_release(outer); cs_error(vm, "out of memory"); return 1; }
+        if (!pair.as.p) {
+            cs_value_release(outer);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         if (cs_list_push(pair, a->items[i]) != 0 || cs_list_push(pair, b->items[i]) != 0) {
             cs_value_release(pair);
             cs_value_release(outer);
@@ -8171,11 +9471,15 @@ static int nf_zip(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     return 0;
 }
 
-static int nf_any(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_any(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_LIST) { *out = cs_bool(0); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_bool(0);
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     cs_value pred = (argc >= 2) ? argv[1] : cs_nil();
     if (argc >= 2 && pred.type != CS_T_FUNC && pred.type != CS_T_NATIVE) {
         cs_error(vm, "any(): predicate must be a function");
@@ -8186,23 +9490,32 @@ static int nf_any(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
         if (pred.type == CS_T_NIL) {
             truth = truthy_local(l->items[i]);
         } else {
-            cs_value args[1] = { l->items[i] };
+            cs_value args[1] = {l->items[i]};
             cs_value ret = cs_nil();
-            if (cs_call_value(vm, pred, 1, args, &ret) != 0) { return 1; }
+            if (cs_call_value(vm, pred, 1, args, &ret) != 0) {
+                return 1;
+            }
             truth = truthy_local(ret);
             cs_value_release(ret);
         }
-        if (truth) { *out = cs_bool(1); return 0; }
+        if (truth) {
+            *out = cs_bool(1);
+            return 0;
+        }
     }
     *out = cs_bool(0);
     return 0;
 }
 
-static int nf_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_all(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_LIST) { *out = cs_bool(0); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_bool(0);
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     cs_value pred = (argc >= 2) ? argv[1] : cs_nil();
     if (argc >= 2 && pred.type != CS_T_FUNC && pred.type != CS_T_NATIVE) {
         cs_error(vm, "all(): predicate must be a function");
@@ -8213,61 +9526,96 @@ static int nf_all(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
         if (pred.type == CS_T_NIL) {
             truth = truthy_local(l->items[i]);
         } else {
-            cs_value args[1] = { l->items[i] };
+            cs_value args[1] = {l->items[i]};
             cs_value ret = cs_nil();
-            if (cs_call_value(vm, pred, 1, args, &ret) != 0) { return 1; }
+            if (cs_call_value(vm, pred, 1, args, &ret) != 0) {
+                return 1;
+            }
             truth = truthy_local(ret);
             cs_value_release(ret);
         }
-        if (!truth) { *out = cs_bool(0); return 0; }
+        if (!truth) {
+            *out = cs_bool(0);
+            return 0;
+        }
     }
     *out = cs_bool(1);
     return 0;
 }
 
-static int nf_filter(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_filter(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) { cs_error(vm, "filter(): predicate must be a function"); return 1; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) {
+        cs_error(vm, "filter(): predicate must be a function");
+        return 1;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     cs_value pred = argv[1];
     cs_value out_list = cs_list(vm);
-    if (!out_list.as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!out_list.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; l && i < l->len; i++) {
-        cs_value args[1] = { l->items[i] };
+        cs_value args[1] = {l->items[i]};
         cs_value ret = cs_nil();
-        if (cs_call_value(vm, pred, 1, args, &ret) != 0) { cs_value_release(out_list); return 1; }
+        if (cs_call_value(vm, pred, 1, args, &ret) != 0) {
+            cs_value_release(out_list);
+            return 1;
+        }
         int truth = truthy_local(ret);
         cs_value_release(ret);
         if (truth) {
-            if (cs_list_push(out_list, l->items[i]) != 0) { cs_value_release(out_list); cs_error(vm, "out of memory"); return 1; }
+            if (cs_list_push(out_list, l->items[i]) != 0) {
+                cs_value_release(out_list);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
         }
     }
     *out = out_list;
     return 0;
 }
 
-static int nf_reduce(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_reduce(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_LIST) { *out = cs_nil(); return 0; }
-    if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) { cs_error(vm, "reduce(): reducer must be a function"); return 1; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
+    }
+    if (argv[1].type != CS_T_FUNC && argv[1].type != CS_T_NATIVE) {
+        cs_error(vm, "reduce(): reducer must be a function");
+        return 1;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     cs_value reducer = argv[1];
     size_t idx = 0;
     cs_value acc = cs_nil();
     if (argc >= 3) {
         acc = cs_value_copy(argv[2]);
     } else {
-        if (!l || l->len == 0) { *out = cs_nil(); return 0; }
+        if (!l || l->len == 0) {
+            *out = cs_nil();
+            return 0;
+        }
         acc = cs_value_copy(l->items[0]);
         idx = 1;
     }
     for (size_t i = idx; l && i < l->len; i++) {
-        cs_value args[2] = { acc, l->items[i] };
+        cs_value args[2] = {acc, l->items[i]};
         cs_value ret = cs_nil();
-        if (cs_call_value(vm, reducer, 2, args, &ret) != 0) { cs_value_release(acc); return 1; }
+        if (cs_call_value(vm, reducer, 2, args, &ret) != 0) {
+            cs_value_release(acc);
+            return 1;
+        }
         cs_value_release(acc);
         acc = ret;
     }
@@ -8275,168 +9623,266 @@ static int nf_reduce(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_val
     return 0;
 }
 
-static int nf_insert(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_insert(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
-    if (argc != 3 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) return 0;
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (out)
+        *out = cs_nil();
+    if (argc != 3 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT)
+        return 0;
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int64_t idx = argv[1].as.i;
-    if (idx < 0) idx = 0;
-    if ((size_t)idx > l->len) idx = (int64_t)l->len;
-    if (!list_ensure(l, l->len + 1)) { cs_error(vm, "out of memory"); return 1; }
-    for (size_t i = l->len; i > (size_t)idx; i--) l->items[i] = l->items[i - 1];
+    if (idx < 0)
+        idx = 0;
+    if ((size_t)idx > l->len)
+        idx = (int64_t)l->len;
+    if (!list_ensure(l, l->len + 1)) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    for (size_t i = l->len; i > (size_t)idx; i--)
+        l->items[i] = l->items[i - 1];
     l->items[(size_t)idx] = cs_value_copy(argv[2]);
     l->len++;
     return 0;
 }
 
-static int nf_remove(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) { *out = cs_nil(); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+static int nf_remove(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int64_t idx = argv[1].as.i;
-    if (idx < 0 || (size_t)idx >= l->len) { *out = cs_nil(); return 0; }
+    if (idx < 0 || (size_t)idx >= l->len) {
+        *out = cs_nil();
+        return 0;
+    }
     size_t u = (size_t)idx;
     cs_value removed = l->items[u];
-    for (size_t i = u + 1; i < l->len; i++) l->items[i - 1] = l->items[i];
+    for (size_t i = u + 1; i < l->len; i++)
+        l->items[i - 1] = l->items[i];
     l->len--;
     l->items[l->len] = cs_nil();
     *out = removed;
     return 0;
 }
 
-static int nf_slice(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_slice(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 3 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT || argv[2].type != CS_T_INT) { *out = cs_list(vm); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 3 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT ||
+        argv[2].type != CS_T_INT) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
     int64_t start = argv[1].as.i;
     int64_t end = argv[2].as.i;
-    if (start < 0) start = 0;
-    if (end < start) end = start;
-    if ((size_t)end > l->len) end = (int64_t)l->len;
+    if (start < 0)
+        start = 0;
+    if (end < start)
+        end = start;
+    if ((size_t)end > l->len)
+        end = (int64_t)l->len;
     cs_value outl = cs_list(vm);
-    if (!outl.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* ol = (cs_list_obj*)outl.as.p;
-    if (!list_ensure(ol, (size_t)(end - start))) { cs_value_release(outl); cs_error(vm, "out of memory"); return 1; }
-    for (int64_t i = start; i < end; i++) ol->items[ol->len++] = cs_value_copy(l->items[(size_t)i]);
+    if (!outl.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *ol = (cs_list_obj *)outl.as.p;
+    if (!list_ensure(ol, (size_t)(end - start))) {
+        cs_value_release(outl);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    for (int64_t i = start; i < end; i++)
+        ol->items[ol->len++] = cs_value_copy(l->items[(size_t)i]);
     *out = outl;
     return 0;
 }
 
-static int nf_substr(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_substr(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT || argv[2].type != CS_T_INT) { *out = cs_nil(); return 0; }
-    cs_string* s = (cs_string*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 3 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT ||
+        argv[2].type != CS_T_INT) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_string *s = (cs_string *)argv[0].as.p;
     int64_t start = argv[1].as.i;
     int64_t n = argv[2].as.i;
-    if (start < 0) start = 0;
-    if (n < 0) n = 0;
-    if ((size_t)start > s->len) start = (int64_t)s->len;
+    if (start < 0)
+        start = 0;
+    if (n < 0)
+        n = 0;
+    if ((size_t)start > s->len)
+        start = (int64_t)s->len;
     size_t maxn = s->len - (size_t)start;
     size_t take = (size_t)n;
-    if (take > maxn) take = maxn;
-    char* buf = (char*)malloc(take + 1);
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    if (take > maxn)
+        take = maxn;
+    char *buf = (char *)malloc(take + 1);
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     memcpy(buf, s->data + start, take);
     buf[take] = 0;
     *out = cs_str_take(vm, buf, (uint64_t)take);
     return 0;
 }
 
-static int nf_to_int(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    if (argv[0].type == CS_T_INT) { *out = cs_int(argv[0].as.i); return 0; }
-    if (argv[0].type == CS_T_BOOL) { *out = cs_int(argv[0].as.b ? 1 : 0); return 0; }
-    if (argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    const char* p = ((cs_string*)argv[0].as.p)->data;
-    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+static int nf_to_int(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+    if (argv[0].type == CS_T_INT) {
+        *out = cs_int(argv[0].as.i);
+        return 0;
+    }
+    if (argv[0].type == CS_T_BOOL) {
+        *out = cs_int(argv[0].as.b ? 1 : 0);
+        return 0;
+    }
+    if (argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    const char *p = ((cs_string *)argv[0].as.p)->data;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+        p++;
     int sign = 1;
-    if (*p == '-') { sign = -1; p++; }
-    else if (*p == '+') { p++; }
+    if (*p == '-') {
+        sign = -1;
+        p++;
+    } else if (*p == '+') {
+        p++;
+    }
     int64_t v = 0;
     int any = 0;
-    while (*p >= '0' && *p <= '9') { any = 1; v = v * 10 + (*p - '0'); p++; }
-    if (!any) { *out = cs_nil(); return 0; }
+    while (*p >= '0' && *p <= '9') {
+        any = 1;
+        v = v * 10 + (*p - '0');
+        p++;
+    }
+    if (!any) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_int(v * sign);
     return 0;
 }
 
-static int nf_to_str(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_to_str(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_str(vm, ""); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_str(vm, "");
+        return 0;
+    }
     char tmp[128];
-    const char* s = value_repr(argv[0], tmp, sizeof(tmp));
+    const char *s = value_repr(argv[0], tmp, sizeof(tmp));
     *out = cs_str(vm, s);
     return 0;
 }
 
-static int nf_join(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_join(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_STR) { *out = cs_nil(); return 0; }
-    cs_list_obj* l = (cs_list_obj*)argv[0].as.p;
-    const char* sep = ((cs_string*)argv[1].as.p)->data;
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_list_obj *l = (cs_list_obj *)argv[0].as.p;
+    const char *sep = ((cs_string *)argv[1].as.p)->data;
     size_t sepn = strlen(sep);
 
-    char* buf = NULL;
+    char *buf = NULL;
     size_t len = 0, cap = 0;
     for (size_t i = 0; i < l->len; i++) {
         if (i > 0) {
-            if (!sb_append(&buf, &len, &cap, sep, sepn)) { free(buf); cs_error(vm, "out of memory"); return 1; }
+            if (!sb_append(&buf, &len, &cap, sep, sepn)) {
+                free(buf);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
         }
         char tmp[128];
-        const char* part = value_repr(l->items[i], tmp, sizeof(tmp));
+        const char *part = value_repr(l->items[i], tmp, sizeof(tmp));
         size_t pn = strlen(part);
-        if (!sb_append(&buf, &len, &cap, part, pn)) { free(buf); cs_error(vm, "out of memory"); return 1; }
+        if (!sb_append(&buf, &len, &cap, part, pn)) {
+            free(buf);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
     }
-    if (!buf) buf = cs_strdup2_local("");
-    if (!buf) { cs_error(vm, "out of memory"); return 1; }
+    if (!buf)
+        buf = cs_strdup2_local("");
+    if (!buf) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = cs_str_take(vm, buf, (uint64_t)len);
     return 0;
 }
 
-static int nf_gc(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_gc(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     *out = cs_int((int64_t)cs_vm_collect_cycles(vm));
     return 0;
 }
 
-static int nf_gc_stats(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
-    
+static int nf_gc_stats(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
+
     cs_value stats_map = cs_map(vm);
     if (stats_map.type != CS_T_MAP) {
         *out = cs_nil();
         return 0;
     }
-    
+
     // Get internal VM GC stats
-    extern size_t vm_get_tracked_count(cs_vm* vm);
-    extern size_t vm_get_gc_collections(cs_vm* vm);
-    extern size_t vm_get_gc_objects_collected(cs_vm* vm);
-    extern size_t vm_get_gc_allocations(cs_vm* vm);
-    
+    extern size_t vm_get_tracked_count(cs_vm * vm);
+    extern size_t vm_get_gc_collections(cs_vm * vm);
+    extern size_t vm_get_gc_objects_collected(cs_vm * vm);
+    extern size_t vm_get_gc_allocations(cs_vm * vm);
+
     cs_map_set(stats_map, "tracked", cs_int((int64_t)vm_get_tracked_count(vm)));
     cs_map_set(stats_map, "collections", cs_int((int64_t)vm_get_gc_collections(vm)));
     cs_map_set(stats_map, "collected", cs_int((int64_t)vm_get_gc_objects_collected(vm)));
     cs_map_set(stats_map, "allocations", cs_int((int64_t)vm_get_gc_allocations(vm)));
-    
+
     *out = stats_map;
     return 0;
 }
 
-static int nf_gc_config(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_gc_config(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
+    if (!out)
+        return 0;
+
     // gc_config() - get current config
     if (argc == 0) {
         cs_value config_map = cs_map(vm);
@@ -8444,17 +9890,17 @@ static int nf_gc_config(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
             *out = cs_nil();
             return 0;
         }
-        
-        extern size_t vm_get_gc_threshold(cs_vm* vm);
-        extern size_t vm_get_gc_alloc_trigger(cs_vm* vm);
-        
+
+        extern size_t vm_get_gc_threshold(cs_vm * vm);
+        extern size_t vm_get_gc_alloc_trigger(cs_vm * vm);
+
         cs_map_set(config_map, "threshold", cs_int((int64_t)vm_get_gc_threshold(vm)));
         cs_map_set(config_map, "alloc_trigger", cs_int((int64_t)vm_get_gc_alloc_trigger(vm)));
-        
+
         *out = config_map;
         return 0;
     }
-    
+
     // gc_config(map) - set config from map
     if (argc == 1 && argv[0].type == CS_T_MAP) {
         cs_value threshold_val = cs_map_get(argv[0], "threshold");
@@ -8462,17 +9908,17 @@ static int nf_gc_config(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
             cs_vm_set_gc_threshold(vm, (size_t)threshold_val.as.i);
         }
         cs_value_release(threshold_val);
-        
+
         cs_value trigger_val = cs_map_get(argv[0], "alloc_trigger");
         if (trigger_val.type == CS_T_INT) {
             cs_vm_set_gc_alloc_trigger(vm, (size_t)trigger_val.as.i);
         }
         cs_value_release(trigger_val);
-        
+
         *out = cs_bool(1);
         return 0;
     }
-    
+
     // gc_config(threshold, alloc_trigger) - set both
     if (argc == 2) {
         if (argv[0].type == CS_T_INT) {
@@ -8484,81 +9930,105 @@ static int nf_gc_config(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
         *out = cs_bool(1);
         return 0;
     }
-    
+
     *out = cs_nil();
     return 0;
 }
 
-static int nf_set_timeout(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_timeout(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
+    if (!out)
+        return 0;
+
     if (argc < 1 || argv[0].type != CS_T_INT) {
         cs_error(vm, "set_timeout() requires an integer (milliseconds)");
         return 1;
     }
-    
+
     cs_vm_set_timeout(vm, (uint64_t)argv[0].as.i);
     *out = cs_bool(1);
     return 0;
 }
 
-static int nf_set_instruction_limit(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_instruction_limit(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                    cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
+    if (!out)
+        return 0;
+
     if (argc < 1 || argv[0].type != CS_T_INT) {
         cs_error(vm, "set_instruction_limit() requires an integer");
         return 1;
     }
-    
+
     cs_vm_set_instruction_limit(vm, (uint64_t)argv[0].as.i);
     *out = cs_bool(1);
     return 0;
 }
 
-static int nf_get_timeout(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
-    
-    extern uint64_t vm_get_timeout(cs_vm* vm);
+static int nf_get_timeout(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
+
+    extern uint64_t vm_get_timeout(cs_vm * vm);
     *out = cs_int((int64_t)vm_get_timeout(vm));
     return 0;
 }
 
-static int nf_get_instruction_limit(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
-    
-    extern uint64_t vm_get_instruction_limit(cs_vm* vm);
+static int nf_get_instruction_limit(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                    cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
+
+    extern uint64_t vm_get_instruction_limit(cs_vm * vm);
     *out = cs_int((int64_t)vm_get_instruction_limit(vm));
     return 0;
 }
 
-static int nf_get_instruction_count(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
-    
+static int nf_get_instruction_count(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                    cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
+
     *out = cs_int((int64_t)cs_vm_get_instruction_count(vm));
     return 0;
 }
 
-static int nf_range(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_range(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    
+    if (!out)
+        return 0;
+
     int64_t start = 0, end = 0, step = 1;
-    
+
     // range(end) or range(start, end) or range(start, end, step)
     if (argc == 1) {
-        if (argv[0].type != CS_T_INT) { *out = cs_nil(); return 0; }
+        if (argv[0].type != CS_T_INT) {
+            *out = cs_nil();
+            return 0;
+        }
         end = argv[0].as.i;
     } else if (argc == 2) {
-        if (argv[0].type != CS_T_INT || argv[1].type != CS_T_INT) { *out = cs_nil(); return 0; }
+        if (argv[0].type != CS_T_INT || argv[1].type != CS_T_INT) {
+            *out = cs_nil();
+            return 0;
+        }
         start = argv[0].as.i;
         end = argv[1].as.i;
     } else if (argc >= 3) {
-        if (argv[0].type != CS_T_INT || argv[1].type != CS_T_INT || argv[2].type != CS_T_INT) { *out = cs_nil(); return 0; }
+        if (argv[0].type != CS_T_INT || argv[1].type != CS_T_INT || argv[2].type != CS_T_INT) {
+            *out = cs_nil();
+            return 0;
+        }
         start = argv[0].as.i;
         end = argv[1].as.i;
         step = argv[2].as.i;
@@ -8566,14 +10036,17 @@ static int nf_range(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
         *out = cs_nil();
         return 0;
     }
-    
+
     if (step == 0) {
         cs_error(vm, "range() step cannot be zero");
         return 1;
     }
-    
-    cs_range_obj* r = (cs_range_obj*)calloc(1, sizeof(cs_range_obj));
-    if (!r) { cs_error(vm, "out of memory"); return 1; }
+
+    cs_range_obj *r = (cs_range_obj *)calloc(1, sizeof(cs_range_obj));
+    if (!r) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     r->ref = 1;
     r->start = start;
     r->end = end;
@@ -8585,80 +10058,102 @@ static int nf_range(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
 }
 
 // Type predicates
-static int nf_is_nil(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_nil(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_NIL);
     return 0;
 }
 
-static int nf_is_bool(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_bool(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_BOOL);
     return 0;
 }
 
-static int nf_is_int(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_int(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_INT);
     return 0;
 }
 
-static int nf_is_float(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_float(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_FLOAT);
     return 0;
 }
 
-static int nf_is_string(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_string(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_STR);
     return 0;
 }
 
-static int nf_is_set(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_set(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_SET);
     return 0;
 }
 
-static int nf_is_bytes(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_bytes(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_BYTES);
     return 0;
 }
 
-static int nf_is_list(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_list(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_LIST);
     return 0;
 }
 
-static int nf_is_map(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_map(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && argv[0].type == CS_T_MAP);
     return 0;
 }
 
-static int nf_is_function(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_function(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     *out = cs_bool(argc > 0 && (argv[0].type == CS_T_FUNC || argv[0].type == CS_T_NATIVE));
     return 0;
 }
 
 // Math functions
 static double to_number(cs_value v) {
-    if (v.type == CS_T_INT) return (double)v.as.i;
-    if (v.type == CS_T_FLOAT) return v.as.f;
+    if (v.type == CS_T_INT)
+        return (double)v.as.i;
+    if (v.type == CS_T_FLOAT)
+        return v.as.f;
     return 0.0;
 }
 
@@ -8666,11 +10161,16 @@ static int is_number(cs_value v) {
     return v.type == CS_T_INT || v.type == CS_T_FLOAT;
 }
 
-static int nf_abs(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_abs(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     if (argv[0].type == CS_T_INT) {
         int64_t v = argv[0].as.i;
         *out = cs_int(v < 0 ? -v : v);
@@ -8682,11 +10182,16 @@ static int nf_abs(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     return 0;
 }
 
-static int nf_min(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc < 2) { *out = argc == 1 ? argv[0] : cs_nil(); return 0; }
-    
+static int nf_min(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc < 2) {
+        *out = argc == 1 ? argv[0] : cs_nil();
+        return 0;
+    }
+
     cs_value min_val = argv[0];
     double min_num = to_number(argv[0]);
     for (int i = 1; i < argc; i++) {
@@ -8700,11 +10205,16 @@ static int nf_min(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     return 0;
 }
 
-static int nf_max(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc < 2) { *out = argc == 1 ? argv[0] : cs_nil(); return 0; }
-    
+static int nf_max(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc < 2) {
+        *out = argc == 1 ? argv[0] : cs_nil();
+        return 0;
+    }
+
     cs_value max_val = argv[0];
     double max_num = to_number(argv[0]);
     for (int i = 1; i < argc; i++) {
@@ -8718,121 +10228,187 @@ static int nf_max(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value*
     return 0;
 }
 
-static int nf_floor(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_floor(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double v = to_number(argv[0]);
     *out = cs_int((int64_t)floor(v));
     return 0;
 }
 
-static int nf_ceil(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_ceil(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double v = to_number(argv[0]);
     *out = cs_int((int64_t)ceil(v));
     return 0;
 }
 
-static int nf_round(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_round(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double v = to_number(argv[0]);
     *out = cs_int((int64_t)round(v));
     return 0;
 }
 
-static int nf_sqrt(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_sqrt(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double v = to_number(argv[0]);
     *out = cs_float(sqrt(v));
     return 0;
 }
 
-static int nf_pow(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2) { *out = cs_nil(); return 0; }
-    
+static int nf_pow(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double base = to_number(argv[0]);
     double exp = to_number(argv[1]);
     *out = cs_float(pow(base, exp));
     return 0;
 }
 
-static int nf_sin(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_sin(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(sin(to_number(argv[0])));
     return 0;
 }
 
-static int nf_cos(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_cos(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(cos(to_number(argv[0])));
     return 0;
 }
 
-static int nf_tan(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_tan(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(tan(to_number(argv[0])));
     return 0;
 }
 
-static int nf_log(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_log(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(log(to_number(argv[0])));
     return 0;
 }
 
-static int nf_exp(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_exp(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(exp(to_number(argv[0])));
     return 0;
 }
 
-static int nf_random(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud; (void)argv;
-    if (!out) return 0;
-    if (argc != 0) { *out = cs_nil(); return 0; }
+static int nf_random(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    (void)argv;
+    if (!out)
+        return 0;
+    if (argc != 0) {
+        *out = cs_nil();
+        return 0;
+    }
     static int seeded = 0;
-    if (!seeded) { srand((unsigned int)time(NULL)); seeded = 1; }
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
     double r = (double)rand() / ((double)RAND_MAX + 1.0);
     *out = cs_float(r);
     return 0;
 }
 
-static int nf_clamp(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 3) { *out = cs_nil(); return 0; }
-    
+static int nf_clamp(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 3) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double value = to_number(argv[0]);
     double min_val = to_number(argv[1]);
     double max_val = to_number(argv[2]);
-    
+
     double result = value;
-    if (result < min_val) result = min_val;
-    if (result > max_val) result = max_val;
-    
+    if (result < min_val)
+        result = min_val;
+    if (result > max_val)
+        result = max_val;
+
     // Return same type as input
     if (argv[0].type == CS_T_INT && argv[1].type == CS_T_INT && argv[2].type == CS_T_INT) {
         *out = cs_int((int64_t)result);
@@ -8842,46 +10418,68 @@ static int nf_clamp(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_trunc(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1) { *out = cs_nil(); return 0; }
-    
+static int nf_trunc(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1) {
+        *out = cs_nil();
+        return 0;
+    }
+
     double v = to_number(argv[0]);
     *out = cs_int((int64_t)trunc(v));
     return 0;
 }
 
-static int nf_asin(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_asin(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(asin(to_number(argv[0])));
     return 0;
 }
 
-static int nf_acos(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_acos(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(acos(to_number(argv[0])));
     return 0;
 }
 
-static int nf_atan(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_atan(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(atan(to_number(argv[0])));
     return 0;
 }
 
-static int nf_atan2(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || !is_number(argv[0]) || !is_number(argv[1])) { 
-        *out = cs_nil(); 
-        return 0; 
+static int nf_atan2(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || !is_number(argv[0]) || !is_number(argv[1])) {
+        *out = cs_nil();
+        return 0;
     }
     double y = to_number(argv[0]);
     double x = to_number(argv[1]);
@@ -8889,87 +10487,112 @@ static int nf_atan2(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     return 0;
 }
 
-static int nf_log10(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_log10(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(log10(to_number(argv[0])));
     return 0;
 }
 
-static int nf_log2(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || !is_number(argv[0])) { *out = cs_nil(); return 0; }
+static int nf_log2(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || !is_number(argv[0])) {
+        *out = cs_nil();
+        return 0;
+    }
     *out = cs_float(log2(to_number(argv[0])));
     return 0;
 }
 
-static int nf_random_int(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || !is_number(argv[0]) || !is_number(argv[1])) { 
-        *out = cs_nil(); 
-        return 0; 
+static int nf_random_int(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 2 || !is_number(argv[0]) || !is_number(argv[1])) {
+        *out = cs_nil();
+        return 0;
     }
-    
+
     static int seeded = 0;
-    if (!seeded) { srand((unsigned int)time(NULL)); seeded = 1; }
-    
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+
     int64_t min_val = (int64_t)to_number(argv[0]);
     int64_t max_val = (int64_t)to_number(argv[1]);
-    
+
     if (min_val > max_val) {
         int64_t temp = min_val;
         min_val = max_val;
         max_val = temp;
     }
-    
+
     int64_t range = max_val - min_val + 1;
     int64_t result = min_val + (int64_t)(rand() % range);
     *out = cs_int(result);
     return 0;
 }
 
-static int nf_random_choice(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { 
-        *out = cs_nil(); 
-        return 0; 
+static int nf_random_choice(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
     }
-    
-    cs_list_obj* list = (cs_list_obj*)argv[0].as.p;
+
+    cs_list_obj *list = (cs_list_obj *)argv[0].as.p;
     if (list->len == 0) {
         *out = cs_nil();
         return 0;
     }
-    
+
     static int seeded = 0;
-    if (!seeded) { srand((unsigned int)time(NULL)); seeded = 1; }
-    
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+
     size_t idx = (size_t)(rand() % list->len);
     *out = cs_value_copy(list->items[idx]);
     return 0;
 }
 
-static int nf_shuffle(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { 
-        *out = cs_nil(); 
-        return 0; 
+static int nf_shuffle(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
     }
-    
-    cs_list_obj* list = (cs_list_obj*)argv[0].as.p;
+
+    cs_list_obj *list = (cs_list_obj *)argv[0].as.p;
     if (list->len <= 1) {
         *out = cs_nil();
         return 0;
     }
-    
+
     static int seeded = 0;
-    if (!seeded) { srand((unsigned int)time(NULL)); seeded = 1; }
-    
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = 1;
+    }
+
     // Fisher-Yates shuffle
     for (size_t i = list->len - 1; i > 0; i--) {
         size_t j = (size_t)(rand() % (i + 1));
@@ -8977,24 +10600,30 @@ static int nf_shuffle(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_va
         list->items[i] = list->items[j];
         list->items[j] = temp;
     }
-    
+
     *out = cs_nil();
     return 0;
 }
 
-static int nf_str_trim(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_trim(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { cs_error(vm, "str_trim() requires a string argument"); return 1; }
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        cs_error(vm, "str_trim() requires a string argument");
+        return 1;
+    }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* s = str_obj->data;
-    const char* orig_s = s;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *s = str_obj->data;
+    const char *orig_s = s;
 
-    while (*s && isspace((unsigned char)*s)) s++;
+    while (*s && isspace((unsigned char)*s))
+        s++;
 
-    const char* end = s + strlen(s);
-    while (end > s && isspace((unsigned char)*(end - 1))) end--;
+    const char *end = s + strlen(s);
+    while (end > s && isspace((unsigned char)*(end - 1)))
+        end--;
 
     size_t len = (size_t)(end - s);
 
@@ -9004,8 +10633,11 @@ static int nf_str_trim(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
         return 0;
     }
 
-    char* trimmed = (char*)malloc(len + 1);
-    if (!trimmed) { cs_error(vm, "out of memory"); return 1; }
+    char *trimmed = (char *)malloc(len + 1);
+    if (!trimmed) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     memcpy(trimmed, s, len);
     trimmed[len] = '\0';
 
@@ -9013,49 +10645,69 @@ static int nf_str_trim(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     return 0;
 }
 
-static int nf_str_ltrim(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_ltrim(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { cs_error(vm, "str_ltrim() requires a string argument"); return 1; }
-    
-    const char* s = cs_to_cstr(argv[0]);
-    while (*s && isspace((unsigned char)*s)) s++;
-    
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        cs_error(vm, "str_ltrim() requires a string argument");
+        return 1;
+    }
+
+    const char *s = cs_to_cstr(argv[0]);
+    while (*s && isspace((unsigned char)*s))
+        s++;
+
     *out = cs_str(vm, s);
     return 0;
 }
 
-static int nf_str_rtrim(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_rtrim(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { cs_error(vm, "str_rtrim() requires a string argument"); return 1; }
-    
-    const char* s = cs_to_cstr(argv[0]);
-    const char* end = s + strlen(s);
-    while (end > s && isspace((unsigned char)*(end - 1))) end--;
-    
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        cs_error(vm, "str_rtrim() requires a string argument");
+        return 1;
+    }
+
+    const char *s = cs_to_cstr(argv[0]);
+    const char *end = s + strlen(s);
+    while (end > s && isspace((unsigned char)*(end - 1)))
+        end--;
+
     size_t len = (size_t)(end - s);
-    char* trimmed = (char*)malloc(len + 1);
-    if (!trimmed) { cs_error(vm, "out of memory"); return 1; }
+    char *trimmed = (char *)malloc(len + 1);
+    if (!trimmed) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     memcpy(trimmed, s, len);
     trimmed[len] = '\0';
-    
+
     *out = cs_str(vm, trimmed);
     free(trimmed);
     return 0;
 }
 
-static int nf_str_lower(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_lower(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { cs_error(vm, "str_lower() requires a string argument"); return 1; }
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        cs_error(vm, "str_lower() requires a string argument");
+        return 1;
+    }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* s = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *s = str_obj->data;
     size_t len = str_obj->len;
 
-    char* lower = (char*)malloc(len + 1);
-    if (!lower) { cs_error(vm, "out of memory"); return 1; }
+    char *lower = (char *)malloc(len + 1);
+    if (!lower) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     for (size_t i = 0; i < len; i++) {
         lower[i] = (char)tolower((unsigned char)s[i]);
@@ -9066,17 +10718,24 @@ static int nf_str_lower(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     return 0;
 }
 
-static int nf_str_upper(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_upper(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_STR) { cs_error(vm, "str_upper() requires a string argument"); return 1; }
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_STR) {
+        cs_error(vm, "str_upper() requires a string argument");
+        return 1;
+    }
 
-    cs_string* str_obj = (cs_string*)argv[0].as.p;
-    const char* s = str_obj->data;
+    cs_string *str_obj = (cs_string *)argv[0].as.p;
+    const char *s = str_obj->data;
     size_t len = str_obj->len;
 
-    char* upper = (char*)malloc(len + 1);
-    if (!upper) { cs_error(vm, "out of memory"); return 1; }
+    char *upper = (char *)malloc(len + 1);
+    if (!upper) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     for (size_t i = 0; i < len; i++) {
         upper[i] = (char)toupper((unsigned char)s[i]);
@@ -9087,62 +10746,65 @@ static int nf_str_upper(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_
     return 0;
 }
 
-static int nf_str_startswith(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_startswith(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { 
-        cs_error(vm, "str_startswith() requires 2 string arguments"); 
-        return 1; 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        cs_error(vm, "str_startswith() requires 2 string arguments");
+        return 1;
     }
-    
-    const char* s = cs_to_cstr(argv[0]);
-    const char* prefix = cs_to_cstr(argv[1]);
+
+    const char *s = cs_to_cstr(argv[0]);
+    const char *prefix = cs_to_cstr(argv[1]);
     size_t prefix_len = strlen(prefix);
-    
+
     *out = cs_bool(strncmp(s, prefix, prefix_len) == 0);
     return 0;
 }
 
-static int nf_str_endswith(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_endswith(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) { 
-        cs_error(vm, "str_endswith() requires 2 string arguments"); 
-        return 1; 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_STR) {
+        cs_error(vm, "str_endswith() requires 2 string arguments");
+        return 1;
     }
-    
-    const char* s = cs_to_cstr(argv[0]);
-    const char* suffix = cs_to_cstr(argv[1]);
-    
+
+    const char *s = cs_to_cstr(argv[0]);
+    const char *suffix = cs_to_cstr(argv[1]);
+
     size_t s_len = strlen(s);
     size_t suffix_len = strlen(suffix);
-    
+
     if (suffix_len > s_len) {
         *out = cs_bool(0);
         return 0;
     }
-    
+
     *out = cs_bool(strcmp(s + s_len - suffix_len, suffix) == 0);
     return 0;
 }
 
-static int nf_str_repeat(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_repeat(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) { 
-        cs_error(vm, "str_repeat() requires a string and an integer"); 
-        return 1; 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) {
+        cs_error(vm, "str_repeat() requires a string and an integer");
+        return 1;
     }
-    
-    const char* s = cs_to_cstr(argv[0]);
+
+    const char *s = cs_to_cstr(argv[0]);
     int64_t count = argv[1].as.i;
-    
+
     if (count <= 0) {
         *out = cs_str(vm, "");
         return 0;
     }
-    
-    const cs_string* string = (const cs_string*)argv[0].as.p;
+
+    const cs_string *string = (const cs_string *)argv[0].as.p;
     size_t s_len = string ? string->len : 0;
     if (!s_len) {
         *out = cs_str(vm, "");
@@ -9153,9 +10815,12 @@ static int nf_str_repeat(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
         return 1;
     }
     size_t total_len = s_len * (size_t)count;
-    char* result = (char*)malloc(total_len + 1);
-    if (!result) { cs_error(vm, "out of memory"); return 1; }
-    char* p = result;
+    char *result = (char *)malloc(total_len + 1);
+    if (!result) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    char *p = result;
     for (int64_t i = 0; i < count; i++) {
         memcpy(p, s, s_len);
         p += s_len;
@@ -9165,69 +10830,110 @@ static int nf_str_repeat(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
     return 0;
 }
 
-static int nf_split_lines(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_split_lines(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_STR) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_STR) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    const cs_string* s = (const cs_string*)argv[0].as.p;
-    const char* data = s ? s->data : "";
+    const cs_string *s = (const cs_string *)argv[0].as.p;
+    const char *data = s ? s->data : "";
     size_t n = s ? s->len : 0;
 
     cs_value listv = cs_list(vm);
-    if (listv.type != CS_T_LIST) { *out = cs_nil(); return 0; }
+    if (listv.type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
+    }
 
     size_t start = 0;
     for (size_t i = 0; i < n; i++) {
         char c = data[i];
         if (c == '\n' || c == '\r') {
             size_t line_len = i - start;
-            char* buf = (char*)malloc(line_len + 1);
-            if (!buf) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
-            if (line_len) memcpy(buf, data + start, line_len);
+            char *buf = (char *)malloc(line_len + 1);
+            if (!buf) {
+                cs_value_release(listv);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
+            if (line_len)
+                memcpy(buf, data + start, line_len);
             buf[line_len] = 0;
             cs_value sv = cs_str_take(vm, buf, (uint64_t)line_len);
-            if (cs_list_push(listv, sv) != 0) { cs_value_release(sv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+            if (cs_list_push(listv, sv) != 0) {
+                cs_value_release(sv);
+                cs_value_release(listv);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             cs_value_release(sv);
 
-            if (c == '\r' && i + 1 < n && data[i + 1] == '\n') i++;
+            if (c == '\r' && i + 1 < n && data[i + 1] == '\n')
+                i++;
             start = i + 1;
         }
     }
 
     size_t tail_len = (start <= n) ? (n - start) : 0;
-    char* tbuf = (char*)malloc(tail_len + 1);
-    if (!tbuf) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
-    if (tail_len) memcpy(tbuf, data + start, tail_len);
+    char *tbuf = (char *)malloc(tail_len + 1);
+    if (!tbuf) {
+        cs_value_release(listv);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    if (tail_len)
+        memcpy(tbuf, data + start, tail_len);
     tbuf[tail_len] = 0;
     cs_value tv = cs_str_take(vm, tbuf, (uint64_t)tail_len);
-    if (cs_list_push(listv, tv) != 0) { cs_value_release(tv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+    if (cs_list_push(listv, tv) != 0) {
+        cs_value_release(tv);
+        cs_value_release(listv);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     cs_value_release(tv);
 
     *out = listv;
     return 0;
 }
 
-static int list_contains_value_local(cs_list_obj* l, cs_value v) {
-    if (!l) return 0;
+static int list_contains_value_local(cs_list_obj *l, cs_value v) {
+    if (!l)
+        return 0;
     for (size_t i = 0; i < l->len; i++) {
-        if (cs_value_equals(&l->items[i], &v)) return 1;
+        if (cs_value_equals(&l->items[i], &v))
+            return 1;
     }
     return 0;
 }
 
-static int nf_list_unique(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_unique(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)listv.as.p;
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)listv.as.p;
     for (size_t i = 0; i < src->len; i++) {
         cs_value item = src->items[i];
         if (!list_contains_value_local(outl, item)) {
-            if (!list_ensure(outl, outl->len + 1)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(listv);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
@@ -9235,24 +10941,39 @@ static int nf_list_unique(cs_vm* vm, void* ud, int argc, const cs_value* argv, c
     return 0;
 }
 
-static int nf_list_flatten(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_flatten(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)listv.as.p;
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)listv.as.p;
     for (size_t i = 0; i < src->len; i++) {
         cs_value item = src->items[i];
         if (item.type == CS_T_LIST) {
-            cs_list_obj* sub = (cs_list_obj*)item.as.p;
+            cs_list_obj *sub = (cs_list_obj *)item.as.p;
             for (size_t j = 0; j < sub->len; j++) {
-                if (!list_ensure(outl, outl->len + 1)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+                if (!list_ensure(outl, outl->len + 1)) {
+                    cs_value_release(listv);
+                    cs_error(vm, "out of memory");
+                    return 1;
+                }
                 outl->items[outl->len++] = cs_value_copy(sub->items[j]);
             }
         } else {
-            if (!list_ensure(outl, outl->len + 1)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(listv);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
@@ -9260,141 +10981,220 @@ static int nf_list_flatten(cs_vm* vm, void* ud, int argc, const cs_value* argv, 
     return 0;
 }
 
-static int nf_list_chunk(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_chunk(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) { *out = cs_list(vm); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) {
+        *out = cs_list(vm);
+        return 0;
+    }
     int64_t size = argv[1].as.i;
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    if (size <= 0) { *out = listv; return 0; }
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* outl = (cs_list_obj*)listv.as.p;
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    if (size <= 0) {
+        *out = listv;
+        return 0;
+    }
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *outl = (cs_list_obj *)listv.as.p;
     for (size_t i = 0; i < src->len; i += (size_t)size) {
         cs_value chunkv = cs_list(vm);
-        if (!chunkv.as.p) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
-        cs_list_obj* chunk = (cs_list_obj*)chunkv.as.p;
+        if (!chunkv.as.p) {
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
+        cs_list_obj *chunk = (cs_list_obj *)chunkv.as.p;
         size_t end = i + (size_t)size;
-        if (end > src->len) end = src->len;
+        if (end > src->len)
+            end = src->len;
         for (size_t j = i; j < end; j++) {
-            if (!list_ensure(chunk, chunk->len + 1)) { cs_value_release(chunkv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+            if (!list_ensure(chunk, chunk->len + 1)) {
+                cs_value_release(chunkv);
+                cs_value_release(listv);
+                cs_error(vm, "out of memory");
+                return 1;
+            }
             chunk->items[chunk->len++] = cs_value_copy(src->items[j]);
         }
-        if (!list_ensure(outl, outl->len + 1)) { cs_value_release(chunkv); cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (!list_ensure(outl, outl->len + 1)) {
+            cs_value_release(chunkv);
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         outl->items[outl->len++] = chunkv;
     }
     *out = listv;
     return 0;
 }
 
-static int nf_list_compact(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_compact(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_list(vm); return 0; }
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_list(vm);
+        return 0;
+    }
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     cs_value listv = cs_list(vm);
-    if (!listv.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)listv.as.p;
+    if (!listv.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)listv.as.p;
     for (size_t i = 0; i < src->len; i++) {
-        if (src->items[i].type == CS_T_NIL) continue;
-        if (!list_ensure(outl, outl->len + 1)) { cs_value_release(listv); cs_error(vm, "out of memory"); return 1; }
+        if (src->items[i].type == CS_T_NIL)
+            continue;
+        if (!list_ensure(outl, outl->len + 1)) {
+            cs_value_release(listv);
+            cs_error(vm, "out of memory");
+            return 1;
+        }
         outl->items[outl->len++] = cs_value_copy(src->items[i]);
     }
     *out = listv;
     return 0;
 }
 
-static int nf_list_sum(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_LIST) { *out = cs_nil(); return 0; }
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+static int nf_list_sum(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_LIST) {
+        *out = cs_nil();
+        return 0;
+    }
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     double sum = 0.0;
     int has_float = 0;
     for (size_t i = 0; i < src->len; i++) {
         cs_value v = src->items[i];
-        if (v.type == CS_T_NIL) continue;
-        if (v.type == CS_T_INT) sum += (double)v.as.i;
-        else if (v.type == CS_T_FLOAT) { sum += v.as.f; has_float = 1; }
-        else { *out = cs_nil(); return 0; }
+        if (v.type == CS_T_NIL)
+            continue;
+        if (v.type == CS_T_INT)
+            sum += (double)v.as.i;
+        else if (v.type == CS_T_FLOAT) {
+            sum += v.as.f;
+            has_float = 1;
+        } else {
+            *out = cs_nil();
+            return 0;
+        }
     }
-    if (has_float) *out = cs_float(sum);
-    else *out = cs_int((int64_t)sum);
+    if (has_float)
+        *out = cs_float(sum);
+    else
+        *out = cs_int((int64_t)sum);
     return 0;
 }
 
 // Data quality-of-life functions
-static int nf_map_values(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_map_values(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_MAP) { cs_error(vm, "map_values() requires a map argument"); return 1; }
-    
-    cs_map_obj* m = (cs_map_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_MAP) {
+        cs_error(vm, "map_values() requires a map argument");
+        return 1;
+    }
+
+    cs_map_obj *m = (cs_map_obj *)argv[0].as.p;
     cs_value values_list = cs_list(vm);
-    if (!values_list.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* l = (cs_list_obj*)values_list.as.p;
-    
-    if (!list_ensure(l, m->len)) { cs_value_release(values_list); cs_error(vm, "out of memory"); return 1; }
+    if (!values_list.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *l = (cs_list_obj *)values_list.as.p;
+
+    if (!list_ensure(l, m->len)) {
+        cs_value_release(values_list);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     for (size_t i = 0; i < m->cap; i++) {
-        if (!m->entries[i].in_use) continue;
+        if (!m->entries[i].in_use)
+            continue;
         l->items[l->len++] = cs_value_copy(m->entries[i].val);
     }
-    
+
     *out = values_list;
     return 0;
 }
 
-static int nf_copy(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_copy(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1) { cs_error(vm, "copy() requires 1 argument"); return 1; }
-    
+    if (!out)
+        return 0;
+    if (argc < 1) {
+        cs_error(vm, "copy() requires 1 argument");
+        return 1;
+    }
+
     cs_value src = argv[0];
-    
+
     switch (src.type) {
         case CS_T_LIST: {
             cs_value new_list = cs_list(vm);
-            if (!new_list.as.p) { cs_error(vm, "out of memory"); return 1; }
-            cs_list_obj* src_list = (cs_list_obj*)src.as.p;
-            cs_list_obj* dst_list = (cs_list_obj*)new_list.as.p;
-            
+            if (!new_list.as.p) {
+                cs_error(vm, "out of memory");
+                return 1;
+            }
+            cs_list_obj *src_list = (cs_list_obj *)src.as.p;
+            cs_list_obj *dst_list = (cs_list_obj *)new_list.as.p;
+
             if (!list_ensure(dst_list, src_list->len)) {
                 cs_value_release(new_list);
                 cs_error(vm, "out of memory");
                 return 1;
             }
-            
+
             for (size_t i = 0; i < src_list->len; i++) {
                 dst_list->items[dst_list->len++] = cs_value_copy(src_list->items[i]);
             }
-            
+
             *out = new_list;
             return 0;
         }
-        
+
         case CS_T_MAP: {
             cs_value new_map = cs_map(vm);
-            if (!new_map.as.p) { cs_error(vm, "out of memory"); return 1; }
-            cs_map_obj* src_map = (cs_map_obj*)src.as.p;
+            if (!new_map.as.p) {
+                cs_error(vm, "out of memory");
+                return 1;
+            }
+            cs_map_obj *src_map = (cs_map_obj *)src.as.p;
             for (size_t i = 0; i < src_map->cap; i++) {
-                if (!src_map->entries[i].in_use) continue;
-                if (cs_map_set_value(new_map, src_map->entries[i].key, src_map->entries[i].val) != 0) {
+                if (!src_map->entries[i].in_use)
+                    continue;
+                if (cs_map_set_value(new_map, src_map->entries[i].key, src_map->entries[i].val) !=
+                    0) {
                     cs_value_release(new_map);
                     cs_error(vm, "out of memory");
                     return 1;
                 }
             }
-            
+
             *out = new_map;
             return 0;
         }
 
         case CS_T_SET: {
             cs_value new_set = cs_set(vm);
-            if (!new_set.as.p) { cs_error(vm, "out of memory"); return 1; }
-            cs_map_obj* src_map = (cs_map_obj*)src.as.p;
+            if (!new_set.as.p) {
+                cs_error(vm, "out of memory");
+                return 1;
+            }
+            cs_map_obj *src_map = (cs_map_obj *)src.as.p;
             for (size_t i = 0; i < src_map->cap; i++) {
-                if (!src_map->entries[i].in_use) continue;
+                if (!src_map->entries[i].in_use)
+                    continue;
                 if (cs_map_set_value(new_set, src_map->entries[i].key, cs_bool(1)) != 0) {
                     cs_value_release(new_set);
                     cs_error(vm, "out of memory");
@@ -9404,157 +11204,212 @@ static int nf_copy(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value
             *out = new_set;
             return 0;
         }
-        
+
         default:
             *out = cs_value_copy(src);
             return 0;
     }
 }
 
-static cs_value deepcopy_impl(cs_vm* vm, cs_value src, cs_value visited_map);
+static cs_value deepcopy_impl(cs_vm *vm, cs_value src, cs_value visited_map);
 
-static cs_value deepcopy_impl(cs_vm* vm, cs_value src, cs_value visited_map) {
+static cs_value deepcopy_impl(cs_vm *vm, cs_value src, cs_value visited_map) {
     // Check for cycles
     if (src.type == CS_T_LIST || src.type == CS_T_MAP || src.type == CS_T_SET) {
         char ptr_str[32];
         snprintf(ptr_str, sizeof(ptr_str), "%p", src.as.p);
 
         cs_value hit = cs_map_get(visited_map, ptr_str);
-        if (hit.type != CS_T_NIL) return hit;
+        if (hit.type != CS_T_NIL)
+            return hit;
         cs_value_release(hit);
     }
-    
+
     switch (src.type) {
-	        case CS_T_LIST: {
-	            cs_value new_list = cs_list(vm);
-	            cs_list_obj* src_list = (cs_list_obj*)src.as.p;
-	            cs_list_obj* dst_list = (cs_list_obj*)new_list.as.p;
-            
+        case CS_T_LIST: {
+            cs_value new_list = cs_list(vm);
+            cs_list_obj *src_list = (cs_list_obj *)src.as.p;
+            cs_list_obj *dst_list = (cs_list_obj *)new_list.as.p;
+
             // Register in visited map
             char ptr_str[32];
             snprintf(ptr_str, sizeof(ptr_str), "%p", src.as.p);
-            if (cs_map_set(visited_map, ptr_str, new_list) != 0) { cs_value_release(new_list); return cs_nil(); }
-            
-	            if (!list_ensure(dst_list, src_list->len)) { cs_value_release(new_list); return cs_nil(); }
-	            for (size_t i = 0; i < src_list->len; i++) {
-	                cs_value item = deepcopy_impl(vm, src_list->items[i], visited_map);
-	                if (item.type == CS_T_NIL && src_list->items[i].type != CS_T_NIL) { cs_value_release(new_list); return cs_nil(); }
-	                dst_list->items[dst_list->len++] = item;
-	            }
-	            
-	            return new_list;
-	        }
-        
+            if (cs_map_set(visited_map, ptr_str, new_list) != 0) {
+                cs_value_release(new_list);
+                return cs_nil();
+            }
+
+            if (!list_ensure(dst_list, src_list->len)) {
+                cs_value_release(new_list);
+                return cs_nil();
+            }
+            for (size_t i = 0; i < src_list->len; i++) {
+                cs_value item = deepcopy_impl(vm, src_list->items[i], visited_map);
+                if (item.type == CS_T_NIL && src_list->items[i].type != CS_T_NIL) {
+                    cs_value_release(new_list);
+                    return cs_nil();
+                }
+                dst_list->items[dst_list->len++] = item;
+            }
+
+            return new_list;
+        }
+
         case CS_T_MAP: {
             cs_value new_map = cs_map(vm);
-            cs_map_obj* src_map = (cs_map_obj*)src.as.p;
-            
+            cs_map_obj *src_map = (cs_map_obj *)src.as.p;
+
             // Register in visited map
             char ptr_str[32];
             snprintf(ptr_str, sizeof(ptr_str), "%p", src.as.p);
-            if (cs_map_set(visited_map, ptr_str, new_map) != 0) { cs_value_release(new_map); return cs_nil(); }
-            
+            if (cs_map_set(visited_map, ptr_str, new_map) != 0) {
+                cs_value_release(new_map);
+                return cs_nil();
+            }
+
             for (size_t i = 0; i < src_map->cap; i++) {
-                if (!src_map->entries[i].in_use) continue;
+                if (!src_map->entries[i].in_use)
+                    continue;
                 cs_value val = deepcopy_impl(vm, src_map->entries[i].val, visited_map);
-                if (val.type == CS_T_NIL && src_map->entries[i].val.type != CS_T_NIL) { cs_value_release(new_map); return cs_nil(); }
-                if (cs_map_set_value(new_map, src_map->entries[i].key, val) != 0) { cs_value_release(val); cs_value_release(new_map); return cs_nil(); }
+                if (val.type == CS_T_NIL && src_map->entries[i].val.type != CS_T_NIL) {
+                    cs_value_release(new_map);
+                    return cs_nil();
+                }
+                if (cs_map_set_value(new_map, src_map->entries[i].key, val) != 0) {
+                    cs_value_release(val);
+                    cs_value_release(new_map);
+                    return cs_nil();
+                }
                 cs_value_release(val);
             }
-            
+
             return new_map;
         }
 
         case CS_T_SET: {
             cs_value new_set = cs_set(vm);
-            cs_map_obj* src_map = (cs_map_obj*)src.as.p;
+            cs_map_obj *src_map = (cs_map_obj *)src.as.p;
 
             char ptr_str[32];
             snprintf(ptr_str, sizeof(ptr_str), "%p", src.as.p);
-            if (cs_map_set(visited_map, ptr_str, new_set) != 0) { cs_value_release(new_set); return cs_nil(); }
+            if (cs_map_set(visited_map, ptr_str, new_set) != 0) {
+                cs_value_release(new_set);
+                return cs_nil();
+            }
 
             for (size_t i = 0; i < src_map->cap; i++) {
-                if (!src_map->entries[i].in_use) continue;
+                if (!src_map->entries[i].in_use)
+                    continue;
                 cs_value key = deepcopy_impl(vm, src_map->entries[i].key, visited_map);
-                if (key.type == CS_T_NIL && src_map->entries[i].key.type != CS_T_NIL) { cs_value_release(new_set); return cs_nil(); }
-                if (cs_map_set_value(new_set, key, cs_bool(1)) != 0) { cs_value_release(key); cs_value_release(new_set); return cs_nil(); }
+                if (key.type == CS_T_NIL && src_map->entries[i].key.type != CS_T_NIL) {
+                    cs_value_release(new_set);
+                    return cs_nil();
+                }
+                if (cs_map_set_value(new_set, key, cs_bool(1)) != 0) {
+                    cs_value_release(key);
+                    cs_value_release(new_set);
+                    return cs_nil();
+                }
                 cs_value_release(key);
             }
 
             return new_set;
         }
-        
+
         default:
             return cs_value_copy(src);
     }
 }
 
-static int nf_deepcopy(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_deepcopy(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1) { cs_error(vm, "deepcopy() requires 1 argument"); return 1; }
-    
+    if (!out)
+        return 0;
+    if (argc < 1) {
+        cs_error(vm, "deepcopy() requires 1 argument");
+        return 1;
+    }
+
     cs_value visited = cs_map(vm);
-    if (!visited.as.p) { cs_error(vm, "out of memory"); return 1; }
+    if (!visited.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
     *out = deepcopy_impl(vm, argv[0], visited);
     cs_value_release(visited);
-    
+
     return 0;
 }
 
-static int nf_reverse(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_LIST) { cs_error(vm, "reverse() requires a list argument"); return 1; }
-    
-    cs_list_obj* list = (cs_list_obj*)argv[0].as.p;
-    
+static int nf_reverse(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_LIST) {
+        cs_error(vm, "reverse() requires a list argument");
+        return 1;
+    }
+
+    cs_list_obj *list = (cs_list_obj *)argv[0].as.p;
+
     for (size_t i = 0; i < list->len / 2; i++) {
         size_t j = list->len - 1 - i;
         cs_value temp = list->items[i];
         list->items[i] = list->items[j];
         list->items[j] = temp;
     }
-    
+
     *out = cs_nil();
     return 0;
 }
 
-static int nf_reversed(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_reversed(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1 || argv[0].type != CS_T_LIST) { cs_error(vm, "reversed() requires a list argument"); return 1; }
-    
-    cs_list_obj* src_list = (cs_list_obj*)argv[0].as.p;
+    if (!out)
+        return 0;
+    if (argc < 1 || argv[0].type != CS_T_LIST) {
+        cs_error(vm, "reversed() requires a list argument");
+        return 1;
+    }
+
+    cs_list_obj *src_list = (cs_list_obj *)argv[0].as.p;
     cs_value rev_list = cs_list(vm);
-    if (!rev_list.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* dst_list = (cs_list_obj*)rev_list.as.p;
-    
+    if (!rev_list.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *dst_list = (cs_list_obj *)rev_list.as.p;
+
     if (!list_ensure(dst_list, src_list->len)) {
         cs_value_release(rev_list);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     for (size_t i = src_list->len; i > 0; i--) {
         dst_list->items[dst_list->len++] = cs_value_copy(src_list->items[i - 1]);
     }
-    
+
     *out = rev_list;
     return 0;
 }
 
-static int nf_contains(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_contains(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2) { cs_error(vm, "contains() requires 2 arguments"); return 1; }
-    
+    if (!out)
+        return 0;
+    if (argc < 2) {
+        cs_error(vm, "contains() requires 2 arguments");
+        return 1;
+    }
+
     cs_value container = argv[0];
     cs_value item = argv[1];
-    
+
     switch (container.type) {
         case CS_T_LIST: {
-            cs_list_obj* list = (cs_list_obj*)container.as.p;
+            cs_list_obj *list = (cs_list_obj *)container.as.p;
             for (size_t i = 0; i < list->len; i++) {
                 if (cs_value_equals(&list->items[i], &item)) {
                     *out = cs_bool(1);
@@ -9564,7 +11419,7 @@ static int nf_contains(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
             *out = cs_bool(0);
             return 0;
         }
-        
+
         case CS_T_MAP: {
             *out = cs_bool(cs_map_has_value(container, item) != 0);
             return 0;
@@ -9574,28 +11429,32 @@ static int nf_contains(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
             *out = cs_bool(cs_map_has_value(container, item) != 0);
             return 0;
         }
-        
+
         case CS_T_STR: {
             if (item.type != CS_T_STR) {
                 *out = cs_bool(0);
                 return 0;
             }
-            const char* haystack = cs_to_cstr(container);
-            const char* needle = cs_to_cstr(item);
+            const char *haystack = cs_to_cstr(container);
+            const char *needle = cs_to_cstr(item);
             *out = cs_bool(strstr(haystack, needle) != NULL);
             return 0;
         }
-        
+
         default:
             cs_error(vm, "contains() requires a list, map, set, or string");
             return 1;
     }
 }
 
-static int nf_set_add(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_add(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_SET) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_SET) {
+        *out = cs_bool(0);
+        return 0;
+    }
 
     int has = cs_map_has_value(argv[0], argv[1]);
     if (!has) {
@@ -9608,38 +11467,58 @@ static int nf_set_add(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_va
     return 0;
 }
 
-static int nf_set_has(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_has(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)vm;
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_SET) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_SET) {
+        *out = cs_bool(0);
+        return 0;
+    }
     *out = cs_bool(cs_map_has_value(argv[0], argv[1]) != 0);
     return 0;
 }
 
-static int nf_set_del(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_del(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)vm;
     (void)ud;
-    if (!out) return 0;
-    if (argc != 2 || argv[0].type != CS_T_SET) { *out = cs_bool(0); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 2 || argv[0].type != CS_T_SET) {
+        *out = cs_bool(0);
+        return 0;
+    }
     *out = cs_bool(cs_map_del_value(argv[0], argv[1]) == 0);
     return 0;
 }
 
-static int nf_set_values(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_set_values(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc != 1 || argv[0].type != CS_T_SET) { *out = cs_nil(); return 0; }
+    if (!out)
+        return 0;
+    if (argc != 1 || argv[0].type != CS_T_SET) {
+        *out = cs_nil();
+        return 0;
+    }
 
-    cs_map_obj* m = (cs_map_obj*)argv[0].as.p;
+    cs_map_obj *m = (cs_map_obj *)argv[0].as.p;
     cs_value list_val = cs_list(vm);
-    cs_list_obj* list = (cs_list_obj*)list_val.as.p;
-    if (!list) { cs_error(vm, "out of memory"); return 1; }
+    cs_list_obj *list = (cs_list_obj *)list_val.as.p;
+    if (!list) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
-    if (!list_ensure(list, m ? m->len : 0)) { cs_value_release(list_val); cs_error(vm, "out of memory"); return 1; }
+    if (!list_ensure(list, m ? m->len : 0)) {
+        cs_value_release(list_val);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
 
     for (size_t i = 0; m && i < m->cap; i++) {
-        if (!m->entries[i].in_use) continue;
+        if (!m->entries[i].in_use)
+            continue;
         list->items[list->len++] = cs_value_copy(m->entries[i].key);
     }
 
@@ -9648,19 +11527,30 @@ static int nf_set_values(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs
 }
 
 // Error object functions
-static int nf_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_error(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 1) { cs_error(vm, "error() requires at least 1 argument"); return 1; }
-    
+    if (!out)
+        return 0;
+    if (argc < 1) {
+        cs_error(vm, "error() requires at least 1 argument");
+        return 1;
+    }
+
     cs_value err_map = cs_map(vm);
-    if (!err_map.as.p) { cs_error(vm, "out of memory"); return 1; }
-    
+    if (!err_map.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
     // Set message (required)
-    const char* msg = (argv[0].type == CS_T_STR) ? cs_to_cstr(argv[0]) : "Error";
+    const char *msg = (argv[0].type == CS_T_STR) ? cs_to_cstr(argv[0]) : "Error";
     cs_value msg_val = cs_str(vm, msg);
-    if (!msg_val.as.p) { cs_value_release(err_map); cs_error(vm, "out of memory"); return 1; }
-    
+    if (!msg_val.as.p) {
+        cs_value_release(err_map);
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
     cs_value args[3];
     args[0] = err_map;
     args[1] = cs_str(vm, "msg");
@@ -9668,7 +11558,7 @@ static int nf_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     nf_mset(vm, NULL, 3, args, NULL);
     cs_value_release(msg_val);
     cs_value_release(args[1]);
-    
+
     // Set code (optional, default to "ERROR")
     if (argc >= 2 && argv[1].type == CS_T_STR) {
         args[1] = cs_str(vm, "code");
@@ -9684,7 +11574,7 @@ static int nf_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
         cs_value_release(args[1]);
         cs_value_release(code_val);
     }
-    
+
     // Capture stack trace
     cs_value stack = cs_capture_stack_trace(vm);
     args[1] = cs_str(vm, "stack");
@@ -9692,87 +11582,100 @@ static int nf_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_valu
     nf_mset(vm, NULL, 3, args, NULL);
     cs_value_release(args[1]);
     cs_value_release(stack);
-    
+
     *out = err_map;
     return 0;
 }
 
-static int nf_is_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)vm; (void)ud;
-    if (!out) return 0;
+static int nf_is_error(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)vm;
+    (void)ud;
+    if (!out)
+        return 0;
     if (argc < 1) {
         *out = cs_bool(0);
         return 0;
     }
-    
+
     // Error objects are maps with "msg" and "code" keys
     if (argv[0].type != CS_T_MAP) {
         *out = cs_bool(0);
         return 0;
     }
-    
+
     cs_value args[2];
     args[0] = argv[0];
     args[1] = cs_str(vm, "msg");
     cs_value has_msg;
     nf_mhas(vm, NULL, 2, args, &has_msg);
     cs_value_release(args[1]);
-    
+
     args[1] = cs_str(vm, "code");
     cs_value has_code;
     nf_mhas(vm, NULL, 2, args, &has_code);
     cs_value_release(args[1]);
-    
+
     int is_err = has_msg.as.b && has_code.as.b;
     *out = cs_bool(is_err);
     return 0;
 }
 
-static int nf_format_error(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_format_error(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 1 || argv[0].type != CS_T_MAP) {
         *out = cs_str(vm, "Error");
         return 0;
     }
-    
+
     // Format: "[code] message"
     cs_value msg_val = cs_map_get(argv[0], "msg");
     cs_value code_val = cs_map_get(argv[0], "code");
-    
-    const char* msg = (msg_val.type == CS_T_STR) ? cs_to_cstr(msg_val) : "Unknown error";
-    const char* code = (code_val.type == CS_T_STR) ? cs_to_cstr(code_val) : "ERROR";
-    
+
+    const char *msg = (msg_val.type == CS_T_STR) ? cs_to_cstr(msg_val) : "Unknown error";
+    const char *code = (code_val.type == CS_T_STR) ? cs_to_cstr(code_val) : "ERROR";
+
     char buf[512];
     snprintf(buf, sizeof(buf), "[%s] %s", code, msg);
-    
+
     cs_value_release(msg_val);
     cs_value_release(code_val);
-    
+
     *out = cs_str(vm, buf);
     return 0;
 }
 
 #if defined(__linux__)
-static int nf_event_loop_start(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_event_loop_start(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     int result = cs_event_loop_start(vm);
     *out = cs_bool(result);
     return 0;
 }
 
-static int nf_event_loop_stop(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_event_loop_stop(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     int result = cs_event_loop_stop(vm);
     *out = cs_bool(result);
     return 0;
 }
 
-static int nf_event_loop_running(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
-    (void)ud; (void)argc; (void)argv;
-    if (!out) return 0;
+static int nf_event_loop_running(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                 cs_value *out) {
+    (void)ud;
+    (void)argc;
+    (void)argv;
+    if (!out)
+        return 0;
     int result = cs_event_loop_running(vm);
     *out = cs_bool(result);
     return 0;
@@ -9780,126 +11683,140 @@ static int nf_event_loop_running(cs_vm* vm, void* ud, int argc, const cs_value* 
 #endif
 
 // Advanced list utilities
-static int nf_list_intersection(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_intersection(cs_vm *vm, void *ud, int argc, const cs_value *argv,
+                                cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) { 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) {
         *out = cs_list(vm);
         return 0;
     }
-    
-    cs_list_obj* list1 = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* list2 = (cs_list_obj*)argv[1].as.p;
+
+    cs_list_obj *list1 = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *list2 = (cs_list_obj *)argv[1].as.p;
     cs_value result = cs_list(vm);
-    if (!result.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)result.as.p;
-    
+    if (!result.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)result.as.p;
+
     for (size_t i = 0; i < list1->len; i++) {
         cs_value item = list1->items[i];
         // Check if item exists in list2 and not already in result
         int found_in_list2 = list_contains_value_local(list2, item);
         int found_in_result = list_contains_value_local(outl, item);
-        
+
         if (found_in_list2 && !found_in_result) {
-            if (!list_ensure(outl, outl->len + 1)) { 
-                cs_value_release(result); 
-                cs_error(vm, "out of memory"); 
-                return 1; 
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(result);
+                cs_error(vm, "out of memory");
+                return 1;
             }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
-    
+
     *out = result;
     return 0;
 }
 
-static int nf_list_difference(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_difference(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) { 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) {
         *out = cs_list(vm);
         return 0;
     }
-    
-    cs_list_obj* list1 = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* list2 = (cs_list_obj*)argv[1].as.p;
+
+    cs_list_obj *list1 = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *list2 = (cs_list_obj *)argv[1].as.p;
     cs_value result = cs_list(vm);
-    if (!result.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)result.as.p;
-    
+    if (!result.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)result.as.p;
+
     for (size_t i = 0; i < list1->len; i++) {
         cs_value item = list1->items[i];
         // Add to result if not in list2
         if (!list_contains_value_local(list2, item)) {
-            if (!list_ensure(outl, outl->len + 1)) { 
-                cs_value_release(result); 
-                cs_error(vm, "out of memory"); 
-                return 1; 
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(result);
+                cs_error(vm, "out of memory");
+                return 1;
             }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
-    
+
     *out = result;
     return 0;
 }
 
-static int nf_list_union(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_union(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
-    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) { 
+    if (!out)
+        return 0;
+    if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_LIST) {
         *out = cs_list(vm);
         return 0;
     }
-    
-    cs_list_obj* list1 = (cs_list_obj*)argv[0].as.p;
-    cs_list_obj* list2 = (cs_list_obj*)argv[1].as.p;
+
+    cs_list_obj *list1 = (cs_list_obj *)argv[0].as.p;
+    cs_list_obj *list2 = (cs_list_obj *)argv[1].as.p;
     cs_value result = cs_list(vm);
-    if (!result.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)result.as.p;
-    
+    if (!result.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)result.as.p;
+
     // Add all items from list1
     for (size_t i = 0; i < list1->len; i++) {
         cs_value item = list1->items[i];
         if (!list_contains_value_local(outl, item)) {
-            if (!list_ensure(outl, outl->len + 1)) { 
-                cs_value_release(result); 
-                cs_error(vm, "out of memory"); 
-                return 1; 
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(result);
+                cs_error(vm, "out of memory");
+                return 1;
             }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
-    
+
     // Add items from list2 that aren't already in result
     for (size_t i = 0; i < list2->len; i++) {
         cs_value item = list2->items[i];
         if (!list_contains_value_local(outl, item)) {
-            if (!list_ensure(outl, outl->len + 1)) { 
-                cs_value_release(result); 
-                cs_error(vm, "out of memory"); 
-                return 1; 
+            if (!list_ensure(outl, outl->len + 1)) {
+                cs_value_release(result);
+                cs_error(vm, "out of memory");
+                return 1;
             }
             outl->items[outl->len++] = cs_value_copy(item);
         }
     }
-    
+
     *out = result;
     return 0;
 }
 
-static int nf_list_partition(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_list_partition(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_FUNC) {
         *out = cs_nil();
         return 0;
     }
-    
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     cs_value predicate = argv[1];
-    
+
     // Create two lists: [truthy, falsy]
     cs_value truthy_list = cs_list(vm);
     cs_value falsy_list = cs_list(vm);
@@ -9909,27 +11826,26 @@ static int nf_list_partition(cs_vm* vm, void* ud, int argc, const cs_value* argv
         cs_error(vm, "out of memory");
         return 1;
     }
-    
-    cs_list_obj* truthy = (cs_list_obj*)truthy_list.as.p;
-    cs_list_obj* falsy = (cs_list_obj*)falsy_list.as.p;
-    
+
+    cs_list_obj *truthy = (cs_list_obj *)truthy_list.as.p;
+    cs_list_obj *falsy = (cs_list_obj *)falsy_list.as.p;
+
     for (size_t i = 0; i < src->len; i++) {
         cs_value item = src->items[i];
-        cs_value call_args[1] = { item };
+        cs_value call_args[1] = {item};
         cs_value result;
-        
+
         int rc = cs_call_value(vm, predicate, 1, call_args, &result);
         if (rc != 0) {
             cs_value_release(truthy_list);
             cs_value_release(falsy_list);
             return 1;
         }
-        
-        int is_truthy = (result.type != CS_T_NIL && 
-                        (result.type != CS_T_BOOL || result.as.b));
+
+        int is_truthy = (result.type != CS_T_NIL && (result.type != CS_T_BOOL || result.as.b));
         cs_value_release(result);
-        
-        cs_list_obj* target = is_truthy ? truthy : falsy;
+
+        cs_list_obj *target = is_truthy ? truthy : falsy;
         if (!list_ensure(target, target->len + 1)) {
             cs_value_release(truthy_list);
             cs_value_release(falsy_list);
@@ -9938,7 +11854,7 @@ static int nf_list_partition(cs_vm* vm, void* ud, int argc, const cs_value* argv
         }
         target->items[target->len++] = cs_value_copy(item);
     }
-    
+
     // Return [truthy, falsy] as a list
     cs_value result_list = cs_list(vm);
     if (!result_list.as.p) {
@@ -9947,8 +11863,8 @@ static int nf_list_partition(cs_vm* vm, void* ud, int argc, const cs_value* argv
         cs_error(vm, "out of memory");
         return 1;
     }
-    
-    cs_list_obj* result = (cs_list_obj*)result_list.as.p;
+
+    cs_list_obj *result = (cs_list_obj *)result_list.as.p;
     if (!list_ensure(result, 2)) {
         cs_value_release(result_list);
         cs_value_release(truthy_list);
@@ -9956,248 +11872,267 @@ static int nf_list_partition(cs_vm* vm, void* ud, int argc, const cs_value* argv
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     result->items[result->len++] = truthy_list;
     result->items[result->len++] = falsy_list;
-    
+
     *out = result_list;
     return 0;
 }
 
-static int nf_take(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_take(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) {
         *out = cs_list(vm);
         return 0;
     }
-    
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     int64_t n = argv[1].as.i;
-    
+
     if (n <= 0) {
         *out = cs_list(vm);
         return 0;
     }
-    
+
     size_t take_count = (size_t)n;
-    if (take_count > src->len) take_count = src->len;
-    
+    if (take_count > src->len)
+        take_count = src->len;
+
     cs_value result = cs_list(vm);
-    if (!result.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)result.as.p;
-    
+    if (!result.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)result.as.p;
+
     if (!list_ensure(outl, take_count)) {
         cs_value_release(result);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     for (size_t i = 0; i < take_count; i++) {
         outl->items[outl->len++] = cs_value_copy(src->items[i]);
     }
-    
+
     *out = result;
     return 0;
 }
 
-static int nf_drop(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_drop(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_LIST || argv[1].type != CS_T_INT) {
         *out = cs_list(vm);
         return 0;
     }
-    
-    cs_list_obj* src = (cs_list_obj*)argv[0].as.p;
+
+    cs_list_obj *src = (cs_list_obj *)argv[0].as.p;
     int64_t n = argv[1].as.i;
-    
+
     if (n <= 0) {
         // Return copy of entire list
         return nf_copy(vm, ud, 1, argv, out);
     }
-    
+
     size_t drop_count = (size_t)n;
     if (drop_count >= src->len) {
         *out = cs_list(vm);
         return 0;
     }
-    
+
     cs_value result = cs_list(vm);
-    if (!result.as.p) { cs_error(vm, "out of memory"); return 1; }
-    cs_list_obj* outl = (cs_list_obj*)result.as.p;
-    
+    if (!result.as.p) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+    cs_list_obj *outl = (cs_list_obj *)result.as.p;
+
     size_t remaining = src->len - drop_count;
     if (!list_ensure(outl, remaining)) {
         cs_value_release(result);
         cs_error(vm, "out of memory");
         return 1;
     }
-    
+
     for (size_t i = drop_count; i < src->len; i++) {
         outl->items[outl->len++] = cs_value_copy(src->items[i]);
     }
-    
+
     *out = result;
     return 0;
 }
 
 // String padding with custom fill character
-static int nf_str_pad_left(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_pad_left(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) {
         cs_error(vm, "str_pad_left() requires a string and an integer");
         return 1;
     }
-    
-    const char* s = cs_to_cstr(argv[0]);
+
+    const char *s = cs_to_cstr(argv[0]);
     int64_t width = argv[1].as.i;
     char fill = ' ';
-    
+
     if (argc >= 3 && argv[2].type == CS_T_STR) {
-        const char* fill_str = cs_to_cstr(argv[2]);
-        if (fill_str && fill_str[0]) fill = fill_str[0];
+        const char *fill_str = cs_to_cstr(argv[2]);
+        if (fill_str && fill_str[0])
+            fill = fill_str[0];
     }
-    
+
     size_t s_len = strlen(s);
     if ((int64_t)s_len >= width) {
         *out = cs_value_copy(argv[0]);
         return 0;
     }
-    
+
     size_t pad_len = (size_t)width - s_len;
     size_t total_len = (size_t)width;
-    char* result = (char*)malloc(total_len + 1);
-    if (!result) { cs_error(vm, "out of memory"); return 1; }
-    
+    char *result = (char *)malloc(total_len + 1);
+    if (!result) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
     memset(result, fill, pad_len);
     memcpy(result + pad_len, s, s_len);
     result[total_len] = '\0';
-    
+
     *out = cs_str_take(vm, result, (uint64_t)total_len);
     return 0;
 }
 
-static int nf_str_pad_right(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int nf_str_pad_right(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (!out) return 0;
+    if (!out)
+        return 0;
     if (argc < 2 || argv[0].type != CS_T_STR || argv[1].type != CS_T_INT) {
         cs_error(vm, "str_pad_right() requires a string and an integer");
         return 1;
     }
-    
-    const char* s = cs_to_cstr(argv[0]);
+
+    const char *s = cs_to_cstr(argv[0]);
     int64_t width = argv[1].as.i;
     char fill = ' ';
-    
+
     if (argc >= 3 && argv[2].type == CS_T_STR) {
-        const char* fill_str = cs_to_cstr(argv[2]);
-        if (fill_str && fill_str[0]) fill = fill_str[0];
+        const char *fill_str = cs_to_cstr(argv[2]);
+        if (fill_str && fill_str[0])
+            fill = fill_str[0];
     }
-    
+
     size_t s_len = strlen(s);
     if ((int64_t)s_len >= width) {
         *out = cs_value_copy(argv[0]);
         return 0;
     }
-    
+
     size_t pad_len = (size_t)width - s_len;
     size_t total_len = (size_t)width;
-    char* result = (char*)malloc(total_len + 1);
-    if (!result) { cs_error(vm, "out of memory"); return 1; }
-    
+    char *result = (char *)malloc(total_len + 1);
+    if (!result) {
+        cs_error(vm, "out of memory");
+        return 1;
+    }
+
     memcpy(result, s, s_len);
     memset(result + s_len, fill, pad_len);
     result[total_len] = '\0';
-    
+
     *out = cs_str_take(vm, result, (uint64_t)total_len);
     return 0;
 }
 
-void cs_register_stdlib(cs_vm* vm) {
-    cs_register_native(vm, "print",  nf_print,  NULL);
-    cs_register_native(vm, "println",  nf_print,  NULL);  // alias for print (already adds newline)
+void cs_register_stdlib(cs_vm *vm) {
+    cs_register_native(vm, "print", nf_print, NULL);
+    cs_register_native(vm, "println", nf_print, NULL); // alias for print (already adds newline)
     cs_register_native(vm, "typeof", nf_typeof, NULL);
     cs_register_native(vm, "getenv", nf_getenv, NULL);
     cs_register_native(vm, "assert", nf_assert, NULL);
     cs_register_native(vm, "subprocess", nf_subprocess, NULL);
-    cs_register_native(vm, "load",   nf_load,   NULL);
+    cs_register_native(vm, "load", nf_load, NULL);
     cs_register_native(vm, "require", nf_require, NULL);
     cs_register_native(vm, "require_optional", nf_require_optional, NULL);
-    cs_register_native(vm, "list",   nf_list,   NULL);
-    cs_register_native(vm, "map",    nf_map,    NULL);
-    cs_register_native(vm, "set",    nf_set,    NULL);
+    cs_register_native(vm, "list", nf_list, NULL);
+    cs_register_native(vm, "map", nf_map, NULL);
+    cs_register_native(vm, "set", nf_set, NULL);
     cs_register_native(vm, "strbuf", nf_strbuf, NULL);
-    cs_register_native(vm, "bytes",  nf_bytes,  NULL);
-    cs_register_native(vm, "len",    nf_len,    NULL);
-    cs_register_native(vm, "push",   nf_push,   NULL);
-    cs_register_native(vm, "pop",    nf_pop,    NULL);
+    cs_register_native(vm, "bytes", nf_bytes, NULL);
+    cs_register_native(vm, "len", nf_len, NULL);
+    cs_register_native(vm, "push", nf_push, NULL);
+    cs_register_native(vm, "pop", nf_pop, NULL);
     cs_register_native(vm, "extend", nf_extend, NULL);
     cs_register_native(vm, "index_of", nf_index_of, NULL);
-    cs_register_native(vm, "sort",   nf_sort,   NULL);
-    cs_register_native(vm, "mget",   nf_mget,   NULL);
-    cs_register_native(vm, "mset",   nf_mset,   NULL);
-    cs_register_native(vm, "mhas",   nf_mhas,   NULL);
-    cs_register_native(vm, "mdel",   nf_mdel,   NULL);
-    cs_register_native(vm, "keys",   nf_keys,   NULL);
+    cs_register_native(vm, "sort", nf_sort, NULL);
+    cs_register_native(vm, "mget", nf_mget, NULL);
+    cs_register_native(vm, "mset", nf_mset, NULL);
+    cs_register_native(vm, "mhas", nf_mhas, NULL);
+    cs_register_native(vm, "mdel", nf_mdel, NULL);
+    cs_register_native(vm, "keys", nf_keys, NULL);
     cs_register_native(vm, "values", nf_values, NULL);
-    cs_register_native(vm, "items",  nf_items,  NULL);
+    cs_register_native(vm, "items", nf_items, NULL);
     cs_register_native(vm, "enumerate", nf_enumerate, NULL);
-    cs_register_native(vm, "zip",       nf_zip,       NULL);
-    cs_register_native(vm, "any",       nf_any,       NULL);
-    cs_register_native(vm, "all",       nf_all,       NULL);
-    cs_register_native(vm, "filter",    nf_filter,    NULL);
-    cs_register_native(vm, "map",       nf_map,       NULL);
-    cs_register_native(vm, "reduce",    nf_reduce,    NULL);
+    cs_register_native(vm, "zip", nf_zip, NULL);
+    cs_register_native(vm, "any", nf_any, NULL);
+    cs_register_native(vm, "all", nf_all, NULL);
+    cs_register_native(vm, "filter", nf_filter, NULL);
+    cs_register_native(vm, "map", nf_map, NULL);
+    cs_register_native(vm, "reduce", nf_reduce, NULL);
     cs_register_native(vm, "insert", nf_insert, NULL);
     cs_register_native(vm, "remove", nf_remove, NULL);
-    cs_register_native(vm, "slice",  nf_slice,  NULL);
-    cs_register_native(vm, "list_unique",  nf_list_unique,  NULL);
+    cs_register_native(vm, "slice", nf_slice, NULL);
+    cs_register_native(vm, "list_unique", nf_list_unique, NULL);
     cs_register_native(vm, "list_flatten", nf_list_flatten, NULL);
-    cs_register_native(vm, "list_chunk",   nf_list_chunk,   NULL);
+    cs_register_native(vm, "list_chunk", nf_list_chunk, NULL);
     cs_register_native(vm, "list_compact", nf_list_compact, NULL);
-    cs_register_native(vm, "list_sum",     nf_list_sum,     NULL);
+    cs_register_native(vm, "list_sum", nf_list_sum, NULL);
     cs_register_native(vm, "substr", nf_substr, NULL);
-    cs_register_native(vm, "join",   nf_join,   NULL);
+    cs_register_native(vm, "join", nf_join, NULL);
     cs_register_native(vm, "to_int", nf_to_int, NULL);
     cs_register_native(vm, "to_str", nf_to_str, NULL);
-    cs_register_native(vm, "gc",     nf_gc,     NULL);
-    cs_register_native(vm, "range",  nf_range,  NULL);
-    
+    cs_register_native(vm, "gc", nf_gc, NULL);
+    cs_register_native(vm, "range", nf_range, NULL);
+
     // Type predicates
-    cs_register_native(vm, "is_nil",      nf_is_nil,      NULL);
-    cs_register_native(vm, "is_bool",     nf_is_bool,     NULL);
-    cs_register_native(vm, "is_int",      nf_is_int,      NULL);
-    cs_register_native(vm, "is_float",    nf_is_float,    NULL);
-    cs_register_native(vm, "is_string",   nf_is_string,   NULL);
-    cs_register_native(vm, "is_set",      nf_is_set,      NULL);
-    cs_register_native(vm, "is_bytes",    nf_is_bytes,    NULL);
-    cs_register_native(vm, "is_list",     nf_is_list,     NULL);
-    cs_register_native(vm, "is_map",      nf_is_map,      NULL);
+    cs_register_native(vm, "is_nil", nf_is_nil, NULL);
+    cs_register_native(vm, "is_bool", nf_is_bool, NULL);
+    cs_register_native(vm, "is_int", nf_is_int, NULL);
+    cs_register_native(vm, "is_float", nf_is_float, NULL);
+    cs_register_native(vm, "is_string", nf_is_string, NULL);
+    cs_register_native(vm, "is_set", nf_is_set, NULL);
+    cs_register_native(vm, "is_bytes", nf_is_bytes, NULL);
+    cs_register_native(vm, "is_list", nf_is_list, NULL);
+    cs_register_native(vm, "is_map", nf_is_map, NULL);
     cs_register_native(vm, "is_function", nf_is_function, NULL);
-    
+
     // Math functions
-    cs_register_native(vm, "abs",   nf_abs,   NULL);
-    cs_register_native(vm, "min",   nf_min,   NULL);
-    cs_register_native(vm, "max",   nf_max,   NULL);
+    cs_register_native(vm, "abs", nf_abs, NULL);
+    cs_register_native(vm, "min", nf_min, NULL);
+    cs_register_native(vm, "max", nf_max, NULL);
     cs_register_native(vm, "clamp", nf_clamp, NULL);
     cs_register_native(vm, "floor", nf_floor, NULL);
-    cs_register_native(vm, "ceil",  nf_ceil,  NULL);
+    cs_register_native(vm, "ceil", nf_ceil, NULL);
     cs_register_native(vm, "round", nf_round, NULL);
     cs_register_native(vm, "trunc", nf_trunc, NULL);
-    cs_register_native(vm, "sqrt",  nf_sqrt,  NULL);
-    cs_register_native(vm, "pow",   nf_pow,   NULL);
-    cs_register_native(vm, "exp",   nf_exp,   NULL);
-    cs_register_native(vm, "log",   nf_log,   NULL);
+    cs_register_native(vm, "sqrt", nf_sqrt, NULL);
+    cs_register_native(vm, "pow", nf_pow, NULL);
+    cs_register_native(vm, "exp", nf_exp, NULL);
+    cs_register_native(vm, "log", nf_log, NULL);
     cs_register_native(vm, "log10", nf_log10, NULL);
-    cs_register_native(vm, "log2",  nf_log2,  NULL);
-    cs_register_native(vm, "sin",   nf_sin,   NULL);
-    cs_register_native(vm, "cos",   nf_cos,   NULL);
-    cs_register_native(vm, "tan",   nf_tan,   NULL);
-    cs_register_native(vm, "asin",  nf_asin,  NULL);
-    cs_register_native(vm, "acos",  nf_acos,  NULL);
-    cs_register_native(vm, "atan",  nf_atan,  NULL);
+    cs_register_native(vm, "log2", nf_log2, NULL);
+    cs_register_native(vm, "sin", nf_sin, NULL);
+    cs_register_native(vm, "cos", nf_cos, NULL);
+    cs_register_native(vm, "tan", nf_tan, NULL);
+    cs_register_native(vm, "asin", nf_asin, NULL);
+    cs_register_native(vm, "acos", nf_acos, NULL);
+    cs_register_native(vm, "atan", nf_atan, NULL);
     cs_register_native(vm, "atan2", nf_atan2, NULL);
     cs_register_native(vm, "random", nf_random, NULL);
     cs_register_native(vm, "random_int", nf_random_int, NULL);
@@ -10206,185 +12141,227 @@ void cs_register_stdlib(cs_vm* vm) {
 
     // Math constants
     cs_register_global(vm, "PI", cs_float(3.14159265358979323846));
-    cs_register_global(vm, "E",  cs_float(2.71828182845904523536));
-    
-    cs_register_native(vm, "str_find",    nf_str_find,    NULL);
+    cs_register_global(vm, "E", cs_float(2.71828182845904523536));
+
+    cs_register_native(vm, "str_find", nf_str_find, NULL);
     cs_register_native(vm, "str_replace", nf_str_replace, NULL);
-    cs_register_native(vm, "str_split",   nf_str_split,   NULL);
+    cs_register_native(vm, "str_split", nf_str_split, NULL);
     cs_register_native(vm, "str_contains", nf_str_contains, NULL);
-    cs_register_native(vm, "str_count",    nf_str_count,    NULL);
+    cs_register_native(vm, "str_count", nf_str_count, NULL);
     cs_register_native(vm, "str_pad_start", nf_str_pad_start, NULL);
-    cs_register_native(vm, "str_pad_end",   nf_str_pad_end,   NULL);
-    cs_register_native(vm, "str_reverse",   nf_str_reverse,   NULL);
+    cs_register_native(vm, "str_pad_end", nf_str_pad_end, NULL);
+    cs_register_native(vm, "str_reverse", nf_str_reverse, NULL);
     cs_register_native(vm, "regex_is_match", nf_regex_is_match, NULL);
-    cs_register_native(vm, "regex_match",    nf_regex_match,    NULL);
-    cs_register_native(vm, "regex_find",     nf_regex_find,     NULL);
+    cs_register_native(vm, "regex_match", nf_regex_match, NULL);
+    cs_register_native(vm, "regex_find", nf_regex_find, NULL);
     cs_register_native(vm, "regex_find_all", nf_regex_find_all, NULL);
-    cs_register_native(vm, "regex_replace",  nf_regex_replace,  NULL);
-    cs_register_native(vm, "path_join",   nf_path_join,   NULL);
+    cs_register_native(vm, "regex_replace", nf_regex_replace, NULL);
+    cs_register_native(vm, "path_join", nf_path_join, NULL);
     cs_register_native(vm, "path_dirname", nf_path_dirname, NULL);
     cs_register_native(vm, "path_basename", nf_path_basename, NULL);
-    cs_register_native(vm, "path_ext",    nf_path_ext,    NULL);
-    cs_register_native(vm, "json_parse",    nf_json_parse,    NULL);
+    cs_register_native(vm, "path_ext", nf_path_ext, NULL);
+    cs_register_native(vm, "json_parse", nf_json_parse, NULL);
     cs_register_native(vm, "json_stringify", nf_json_stringify, NULL);
-    cs_register_native(vm, "csv_parse",     nf_csv_parse,     NULL);
-    cs_register_native(vm, "csv_stringify",  nf_csv_stringify,  NULL);
-    cs_register_native(vm, "yaml_parse",    nf_yaml_parse,    NULL);
+    cs_register_native(vm, "csv_parse", nf_csv_parse, NULL);
+    cs_register_native(vm, "csv_stringify", nf_csv_stringify, NULL);
+    cs_register_native(vm, "yaml_parse", nf_yaml_parse, NULL);
     cs_register_native(vm, "yaml_parse_all", nf_yaml_parse_all, NULL);
     cs_register_native(vm, "yaml_stringify", nf_yaml_stringify, NULL);
-    cs_register_native(vm, "xml_parse",     nf_xml_parse,     NULL);
-    cs_register_native(vm, "xml_stringify",  nf_xml_stringify,  NULL);
-    cs_register_native(vm, "read_file",  nf_read_file,  NULL);
-    cs_register_native(vm, "read_file_bytes",  nf_read_file_bytes,  NULL);
+    cs_register_native(vm, "xml_parse", nf_xml_parse, NULL);
+    cs_register_native(vm, "xml_stringify", nf_xml_stringify, NULL);
+    cs_register_native(vm, "read_file", nf_read_file, NULL);
+    cs_register_native(vm, "read_file_bytes", nf_read_file_bytes, NULL);
     cs_register_native(vm, "write_file", nf_write_file, NULL);
     cs_register_native(vm, "write_file_bytes", nf_write_file_bytes, NULL);
-    cs_register_native(vm, "exists",     nf_exists,     NULL);
-    cs_register_native(vm, "is_dir",     nf_is_dir,     NULL);
-    cs_register_native(vm, "is_file",    nf_is_file,    NULL);
-    cs_register_native(vm, "list_dir",   nf_list_dir,   NULL);
-    cs_register_native(vm, "mkdir",      nf_mkdir,      NULL);
-    cs_register_native(vm, "rm",         nf_rm,         NULL);
-    cs_register_native(vm, "rename",     nf_rename,     NULL);
-    cs_register_native(vm, "cwd",        nf_cwd,        NULL);
-    cs_register_native(vm, "chdir",      nf_chdir,      NULL);
-    cs_register_native(vm, "fmt",         nf_fmt,         NULL);
+    cs_register_native(vm, "exists", nf_exists, NULL);
+    cs_register_native(vm, "is_dir", nf_is_dir, NULL);
+    cs_register_native(vm, "is_file", nf_is_file, NULL);
+    cs_register_native(vm, "list_dir", nf_list_dir, NULL);
+    cs_register_native(vm, "mkdir", nf_mkdir, NULL);
+    cs_register_native(vm, "rm", nf_rm, NULL);
+    cs_register_native(vm, "rename", nf_rename, NULL);
+    cs_register_native(vm, "cwd", nf_cwd, NULL);
+    cs_register_native(vm, "chdir", nf_chdir, NULL);
+    cs_register_native(vm, "fmt", nf_fmt, NULL);
 
 #if defined(__linux__)
     // Advanced file handling
-    cs_register_native(vm, "glob",              nf_glob,              NULL);
-    cs_register_native(vm, "watch_file",        nf_watch_file,        NULL);
-    cs_register_native(vm, "watch_dir",         nf_watch_dir,         NULL);
-    cs_register_native(vm, "unwatch",           nf_unwatch,           NULL);
+    cs_register_native(vm, "glob", nf_glob, NULL);
+    cs_register_native(vm, "watch_file", nf_watch_file, NULL);
+    cs_register_native(vm, "watch_dir", nf_watch_dir, NULL);
+    cs_register_native(vm, "unwatch", nf_unwatch, NULL);
     cs_register_native(vm, "process_file_watches", nf_process_file_watches, NULL);
-    cs_register_native(vm, "temp_file",         nf_temp_file,         NULL);
-    cs_register_native(vm, "temp_dir",          nf_temp_dir,          NULL);
-    cs_register_native(vm, "gzip_compress",     nf_gzip_compress,     NULL);
-    cs_register_native(vm, "gzip_decompress",   nf_gzip_decompress,   NULL);
-    cs_register_native(vm, "tar_create",        nf_tar_create,        NULL);
-    cs_register_native(vm, "tar_list",          nf_tar_list,          NULL);
-    cs_register_native(vm, "tar_extract",       nf_tar_extract,       NULL);
+    cs_register_native(vm, "temp_file", nf_temp_file, NULL);
+    cs_register_native(vm, "temp_dir", nf_temp_dir, NULL);
+    cs_register_native(vm, "gzip_compress", nf_gzip_compress, NULL);
+    cs_register_native(vm, "gzip_decompress", nf_gzip_decompress, NULL);
+    cs_register_native(vm, "tar_create", nf_tar_create, NULL);
+    cs_register_native(vm, "tar_list", nf_tar_list, NULL);
+    cs_register_native(vm, "tar_extract", nf_tar_extract, NULL);
 #endif
-    
-    cs_register_native(vm, "now_ms",      nf_now_ms,      NULL);
-    cs_register_native(vm, "unix_ms",     nf_unix_ms,     NULL);
-    cs_register_native(vm, "unix_s",      nf_unix_s,      NULL);
-    cs_register_native(vm, "datetime_now",            nf_datetime_now,            NULL);
-    cs_register_native(vm, "datetime_utc",            nf_datetime_utc,            NULL);
-    cs_register_native(vm, "datetime_from_unix_ms",    nf_datetime_from_unix_ms,   NULL);
+
+    cs_register_native(vm, "now_ms", nf_now_ms, NULL);
+    cs_register_native(vm, "unix_ms", nf_unix_ms, NULL);
+    cs_register_native(vm, "unix_s", nf_unix_s, NULL);
+    cs_register_native(vm, "datetime_now", nf_datetime_now, NULL);
+    cs_register_native(vm, "datetime_utc", nf_datetime_utc, NULL);
+    cs_register_native(vm, "datetime_from_unix_ms", nf_datetime_from_unix_ms, NULL);
     cs_register_native(vm, "datetime_from_unix_ms_utc", nf_datetime_from_unix_ms_utc, NULL);
-    cs_register_native(vm, "sleep",       nf_sleep,       NULL);
-    cs_register_native(vm, "delay",       nf_sleep,       NULL);
-    cs_register_native(vm, "promise",     nf_promise,     NULL);
-    cs_register_native(vm, "resolve",     nf_resolve,     NULL);
-    cs_register_native(vm, "reject",      nf_reject,      NULL);
-    cs_register_native(vm, "is_promise",  nf_is_promise,  NULL);
-    cs_register_native(vm, "await_all",   nf_await_all,   NULL);
-    cs_register_native(vm, "await_any",   nf_await_any,   NULL);
+    cs_register_native(vm, "sleep", nf_sleep, NULL);
+    cs_register_native(vm, "delay", nf_sleep, NULL);
+    cs_register_native(vm, "promise", nf_promise, NULL);
+    cs_register_native(vm, "resolve", nf_resolve, NULL);
+    cs_register_native(vm, "reject", nf_reject, NULL);
+    cs_register_native(vm, "is_promise", nf_is_promise, NULL);
+    cs_register_native(vm, "await_all", nf_await_all, NULL);
+    cs_register_native(vm, "await_any", nf_await_any, NULL);
     cs_register_native(vm, "await_all_settled", nf_await_all_settled, NULL);
-    cs_register_native(vm, "timeout",     nf_timeout,     NULL);
+    cs_register_native(vm, "timeout", nf_timeout, NULL);
 
 #if defined(__linux__)
-    cs_register_native(vm, "event_loop_start",   nf_event_loop_start,   NULL);
-    cs_register_native(vm, "event_loop_stop",    nf_event_loop_stop,    NULL);
+    cs_register_native(vm, "event_loop_start", nf_event_loop_start, NULL);
+    cs_register_native(vm, "event_loop_stop", nf_event_loop_stop, NULL);
     cs_register_native(vm, "event_loop_running", nf_event_loop_running, NULL);
 #endif
-    
+
     // String ergonomics
-    cs_register_native(vm, "str_trim",       nf_str_trim,       NULL);
-    cs_register_native(vm, "str_ltrim",      nf_str_ltrim,      NULL);
-    cs_register_native(vm, "str_rtrim",      nf_str_rtrim,      NULL);
-    cs_register_native(vm, "str_lower",      nf_str_lower,      NULL);
-    cs_register_native(vm, "str_upper",      nf_str_upper,      NULL);
+    cs_register_native(vm, "str_trim", nf_str_trim, NULL);
+    cs_register_native(vm, "str_ltrim", nf_str_ltrim, NULL);
+    cs_register_native(vm, "str_rtrim", nf_str_rtrim, NULL);
+    cs_register_native(vm, "str_lower", nf_str_lower, NULL);
+    cs_register_native(vm, "str_upper", nf_str_upper, NULL);
     cs_register_native(vm, "str_startswith", nf_str_startswith, NULL);
-    cs_register_native(vm, "str_endswith",   nf_str_endswith,   NULL);
-    cs_register_native(vm, "str_repeat",     nf_str_repeat,     NULL);
-    cs_register_native(vm, "split_lines",    nf_split_lines,    NULL);
-    cs_register_native(vm, "str_pad_left",   nf_str_pad_left,   NULL);
-    cs_register_native(vm, "str_pad_right",  nf_str_pad_right,  NULL);
+    cs_register_native(vm, "str_endswith", nf_str_endswith, NULL);
+    cs_register_native(vm, "str_repeat", nf_str_repeat, NULL);
+    cs_register_native(vm, "split_lines", nf_split_lines, NULL);
+    cs_register_native(vm, "str_pad_left", nf_str_pad_left, NULL);
+    cs_register_native(vm, "str_pad_right", nf_str_pad_right, NULL);
 
     // String ergonomics aliases
-    cs_register_native(vm, "trim",        nf_str_trim,       NULL);
-    cs_register_native(vm, "ltrim",       nf_str_ltrim,      NULL);
-    cs_register_native(vm, "rtrim",       nf_str_rtrim,      NULL);
-    cs_register_native(vm, "lower",       nf_str_lower,      NULL);
-    cs_register_native(vm, "upper",       nf_str_upper,      NULL);
+    cs_register_native(vm, "trim", nf_str_trim, NULL);
+    cs_register_native(vm, "ltrim", nf_str_ltrim, NULL);
+    cs_register_native(vm, "rtrim", nf_str_rtrim, NULL);
+    cs_register_native(vm, "lower", nf_str_lower, NULL);
+    cs_register_native(vm, "upper", nf_str_upper, NULL);
     cs_register_native(vm, "starts_with", nf_str_startswith, NULL);
-    cs_register_native(vm, "ends_with",   nf_str_endswith,   NULL);
-    
+    cs_register_native(vm, "ends_with", nf_str_endswith, NULL);
+
     // Data quality-of-life
     cs_register_native(vm, "map_values", nf_map_values, NULL);
-    cs_register_native(vm, "copy",       nf_copy,       NULL);
-    cs_register_native(vm, "deepcopy",   nf_deepcopy,   NULL);
-    cs_register_native(vm, "reverse",    nf_reverse,    NULL);
-    cs_register_native(vm, "reversed",   nf_reversed,   NULL);
-    cs_register_native(vm, "contains",   nf_contains,   NULL);
-    cs_register_native(vm, "set_add",    nf_set_add,    NULL);
-    cs_register_native(vm, "set_has",    nf_set_has,    NULL);
-    cs_register_native(vm, "set_del",    nf_set_del,    NULL);
+    cs_register_native(vm, "copy", nf_copy, NULL);
+    cs_register_native(vm, "deepcopy", nf_deepcopy, NULL);
+    cs_register_native(vm, "reverse", nf_reverse, NULL);
+    cs_register_native(vm, "reversed", nf_reversed, NULL);
+    cs_register_native(vm, "contains", nf_contains, NULL);
+    cs_register_native(vm, "set_add", nf_set_add, NULL);
+    cs_register_native(vm, "set_has", nf_set_has, NULL);
+    cs_register_native(vm, "set_del", nf_set_del, NULL);
     cs_register_native(vm, "set_values", nf_set_values, NULL);
-    
+
     // Advanced list utilities
-    cs_register_native(vm, "list_unique",       nf_list_unique,       NULL);
-    cs_register_native(vm, "list_flatten",      nf_list_flatten,      NULL);
-    cs_register_native(vm, "list_chunk",        nf_list_chunk,        NULL);
-    cs_register_native(vm, "list_compact",      nf_list_compact,      NULL);
-    cs_register_native(vm, "list_sum",          nf_list_sum,          NULL);
+    cs_register_native(vm, "list_unique", nf_list_unique, NULL);
+    cs_register_native(vm, "list_flatten", nf_list_flatten, NULL);
+    cs_register_native(vm, "list_chunk", nf_list_chunk, NULL);
+    cs_register_native(vm, "list_compact", nf_list_compact, NULL);
+    cs_register_native(vm, "list_sum", nf_list_sum, NULL);
     cs_register_native(vm, "list_intersection", nf_list_intersection, NULL);
-    cs_register_native(vm, "list_difference",   nf_list_difference,   NULL);
-    cs_register_native(vm, "list_union",        nf_list_union,        NULL);
-    cs_register_native(vm, "list_partition",    nf_list_partition,    NULL);
-    cs_register_native(vm, "take",              nf_take,              NULL);
-    cs_register_native(vm, "drop",              nf_drop,              NULL);
-    
+    cs_register_native(vm, "list_difference", nf_list_difference, NULL);
+    cs_register_native(vm, "list_union", nf_list_union, NULL);
+    cs_register_native(vm, "list_partition", nf_list_partition, NULL);
+    cs_register_native(vm, "take", nf_take, NULL);
+    cs_register_native(vm, "drop", nf_drop, NULL);
+
     // Random utilities
-    cs_register_native(vm, "random_choice",     nf_random_choice,     NULL);
-    cs_register_native(vm, "shuffle",           nf_shuffle,           NULL);
-    cs_register_native(vm, "random_int",        nf_random_int,        NULL);
-    
+    cs_register_native(vm, "random_choice", nf_random_choice, NULL);
+    cs_register_native(vm, "shuffle", nf_shuffle, NULL);
+    cs_register_native(vm, "random_int", nf_random_int, NULL);
+
     // Error objects
-    cs_register_native(vm, "error",    nf_error,    NULL);
+    cs_register_native(vm, "error", nf_error, NULL);
     cs_register_native(vm, "is_error", nf_is_error, NULL);
     cs_register_native(vm, "format_error", nf_format_error, NULL);
-    
+
     // GC functions
-    cs_register_native(vm, "gc_stats",  nf_gc_stats,  NULL);
+    cs_register_native(vm, "gc_stats", nf_gc_stats, NULL);
     cs_register_native(vm, "gc_config", nf_gc_config, NULL);
-    
+
     // Safety control functions
-    cs_register_native(vm, "set_timeout",            nf_set_timeout,            NULL);
-    cs_register_native(vm, "set_instruction_limit",  nf_set_instruction_limit,  NULL);
-    cs_register_native(vm, "get_timeout",            nf_get_timeout,            NULL);
-    cs_register_native(vm, "get_instruction_limit",  nf_get_instruction_limit,  NULL);
-    cs_register_native(vm, "get_instruction_count",  nf_get_instruction_count,  NULL);
-    
+    cs_register_native(vm, "set_timeout", nf_set_timeout, NULL);
+    cs_register_native(vm, "set_instruction_limit", nf_set_instruction_limit, NULL);
+    cs_register_native(vm, "get_timeout", nf_get_timeout, NULL);
+    cs_register_native(vm, "get_instruction_limit", nf_get_instruction_limit, NULL);
+    cs_register_native(vm, "get_instruction_count", nf_get_instruction_count, NULL);
+
     // Error code constants (ERR.*)
     cs_value err_map = cs_map(vm);
     if (err_map.as.p) {
         cs_value tmp;
-        tmp = cs_str(vm, "INVALID_ARG");    cs_map_set(err_map, "INVALID_ARG", tmp);    cs_value_release(tmp);
-        tmp = cs_str(vm, "TYPE_ERROR");     cs_map_set(err_map, "TYPE_ERROR", tmp);     cs_value_release(tmp);
-        tmp = cs_str(vm, "DIV_ZERO");       cs_map_set(err_map, "DIV_ZERO", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "OUT_OF_BOUNDS");  cs_map_set(err_map, "OUT_OF_BOUNDS", tmp);  cs_value_release(tmp);
-        tmp = cs_str(vm, "NOT_FOUND");      cs_map_set(err_map, "NOT_FOUND", tmp);      cs_value_release(tmp);
-        tmp = cs_str(vm, "ASSERTION");      cs_map_set(err_map, "ASSERTION", tmp);      cs_value_release(tmp);
-        tmp = cs_str(vm, "ERROR");          cs_map_set(err_map, "GENERIC", tmp);        cs_value_release(tmp);
+        tmp = cs_str(vm, "INVALID_ARG");
+        cs_map_set(err_map, "INVALID_ARG", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TYPE_ERROR");
+        cs_map_set(err_map, "TYPE_ERROR", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "DIV_ZERO");
+        cs_map_set(err_map, "DIV_ZERO", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "OUT_OF_BOUNDS");
+        cs_map_set(err_map, "OUT_OF_BOUNDS", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NOT_FOUND");
+        cs_map_set(err_map, "NOT_FOUND", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "ASSERTION");
+        cs_map_set(err_map, "ASSERTION", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "ERROR");
+        cs_map_set(err_map, "GENERIC", tmp);
+        cs_value_release(tmp);
 
         // Network error codes
-        tmp = cs_str(vm, "NET_RESOLVE");    cs_map_set(err_map, "NET_RESOLVE", tmp);    cs_value_release(tmp);
-        tmp = cs_str(vm, "NET_CONNECT");    cs_map_set(err_map, "NET_CONNECT", tmp);    cs_value_release(tmp);
-        tmp = cs_str(vm, "NET_TIMEOUT");    cs_map_set(err_map, "NET_TIMEOUT", tmp);    cs_value_release(tmp);
-        tmp = cs_str(vm, "NET_CLOSED");     cs_map_set(err_map, "NET_CLOSED", tmp);     cs_value_release(tmp);
-        tmp = cs_str(vm, "NET_SEND");       cs_map_set(err_map, "NET_SEND", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "NET_RECV");       cs_map_set(err_map, "NET_RECV", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "HTTP_PARSE");     cs_map_set(err_map, "HTTP_PARSE", tmp);     cs_value_release(tmp);
-        tmp = cs_str(vm, "HTTP_REDIRECT");  cs_map_set(err_map, "HTTP_REDIRECT", tmp);  cs_value_release(tmp);
-        tmp = cs_str(vm, "HTTP_NO_TLS");    cs_map_set(err_map, "HTTP_NO_TLS", tmp);    cs_value_release(tmp);
-        tmp = cs_str(vm, "TLS_INIT");       cs_map_set(err_map, "TLS_INIT", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "TLS_HANDSHAKE");  cs_map_set(err_map, "TLS_HANDSHAKE", tmp);  cs_value_release(tmp);
-        tmp = cs_str(vm, "TLS_CERT");       cs_map_set(err_map, "TLS_CERT", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "TLS_READ");       cs_map_set(err_map, "TLS_READ", tmp);       cs_value_release(tmp);
-        tmp = cs_str(vm, "TLS_WRITE");      cs_map_set(err_map, "TLS_WRITE", tmp);      cs_value_release(tmp);
-        
+        tmp = cs_str(vm, "NET_RESOLVE");
+        cs_map_set(err_map, "NET_RESOLVE", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NET_CONNECT");
+        cs_map_set(err_map, "NET_CONNECT", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NET_TIMEOUT");
+        cs_map_set(err_map, "NET_TIMEOUT", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NET_CLOSED");
+        cs_map_set(err_map, "NET_CLOSED", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NET_SEND");
+        cs_map_set(err_map, "NET_SEND", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "NET_RECV");
+        cs_map_set(err_map, "NET_RECV", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "HTTP_PARSE");
+        cs_map_set(err_map, "HTTP_PARSE", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "HTTP_REDIRECT");
+        cs_map_set(err_map, "HTTP_REDIRECT", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "HTTP_NO_TLS");
+        cs_map_set(err_map, "HTTP_NO_TLS", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TLS_INIT");
+        cs_map_set(err_map, "TLS_INIT", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TLS_HANDSHAKE");
+        cs_map_set(err_map, "TLS_HANDSHAKE", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TLS_CERT");
+        cs_map_set(err_map, "TLS_CERT", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TLS_READ");
+        cs_map_set(err_map, "TLS_READ", tmp);
+        cs_value_release(tmp);
+        tmp = cs_str(vm, "TLS_WRITE");
+        cs_map_set(err_map, "TLS_WRITE", tmp);
+        cs_value_release(tmp);
+
         // Register as global ERR constant
         cs_register_global(vm, "ERR", err_map);
         cs_value_release(err_map);

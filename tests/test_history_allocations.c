@@ -2,29 +2,48 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 /* Inject failures only while the production bookkeeping calls are running. */
 static long fail_after = -1;
 static int allocation_failed;
+
 static int should_fail(void) {
-    if (fail_after < 0) return 0;
-    if (fail_after-- == 0) { allocation_failed = 1; fail_after = -1; return 1; }
+    if (fail_after < 0)
+        return 0;
+    if (fail_after-- == 0) {
+        allocation_failed = 1;
+        fail_after = -1;
+        return 1;
+    }
     return 0;
 }
+
 void *__real_malloc(size_t);
 void *__real_calloc(size_t, size_t);
 void *__real_realloc(void *, size_t);
 char *__real_strdup(const char *);
-void *__wrap_malloc(size_t n) { return should_fail() ? NULL : __real_malloc(n); }
-void *__wrap_calloc(size_t n, size_t size) { return should_fail() ? NULL : __real_calloc(n, size); }
-void *__wrap_realloc(void *ptr, size_t n) { return should_fail() ? NULL : __real_realloc(ptr, n); }
-char *__wrap_strdup(const char *s) { return should_fail() ? NULL : __real_strdup(s); }
 
-#include "../src/core/utils.c"
+void *__wrap_malloc(size_t n) {
+    return should_fail() ? NULL : __real_malloc(n);
+}
+
+void *__wrap_calloc(size_t n, size_t size) {
+    return should_fail() ? NULL : __real_calloc(n, size);
+}
+
+void *__wrap_realloc(void *ptr, size_t n) {
+    return should_fail() ? NULL : __real_realloc(ptr, n);
+}
+
+char *__wrap_strdup(const char *s) {
+    return should_fail() ? NULL : __real_strdup(s);
+}
+
 #include "../src/core/undo.c"
+#include "../src/core/utils.c"
 
 static void test_paste_log_failures(void) {
     for (long point = 0; point < 8; ++point) {
@@ -89,8 +108,8 @@ static void test_undo_history_failures(void) {
             const char *destinations[] = {"c", "d"};
             fail_after = point;
             allocation_failed = 0;
-            bool ok = multi ? undo_state_set_multi(&state, UNDO_OP_MOVE, sources, destinations, 2) :
-                              undo_state_set_single(&state, UNDO_OP_MOVE, "a", "c");
+            bool ok = multi ? undo_state_set_multi(&state, UNDO_OP_MOVE, sources, destinations, 2)
+                            : undo_state_set_single(&state, UNDO_OP_MOVE, "a", "c");
             fail_after = -1;
             if (allocation_failed) {
                 assert(!ok);

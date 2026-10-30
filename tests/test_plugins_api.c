@@ -94,8 +94,7 @@ static bool test_exec_closes_partial_pipe_failure(void) {
 
     ASSERT_EQ(rc, 0, "Execution setup failure should return cleanly");
     ASSERT_EQ(pipe_errno, EMFILE, "Pipe setup should fail with EMFILE");
-    ASSERT_EQ(after_count, before_count,
-              "Partial pipe setup must not leak descriptors");
+    ASSERT_EQ(after_count, before_count, "Partial pipe setup must not leak descriptors");
     return true;
 }
 
@@ -137,10 +136,13 @@ static bool test_exec_rejects_missing_working_directory(void) {
     int result = nf_fm_exec(vm, &pm, 3, args, &out);
     cs_value code = cs_map_get(out, "code");
     cs_value output = cs_map_get(out, "stdout");
-    bool ok = result == 0 && code.type == CS_T_INT && code.as.i == 126 &&
-              output.type == CS_T_STR && !strcmp(cs_to_cstr(output), "");
-    cs_value_release(code); cs_value_release(output); cs_value_release(out);
-    for (size_t i=0;i<3;i++) cs_value_release(args[i]);
+    bool ok = result == 0 && code.type == CS_T_INT && code.as.i == 126 && output.type == CS_T_STR &&
+              !strcmp(cs_to_cstr(output), "");
+    cs_value_release(code);
+    cs_value_release(output);
+    cs_value_release(out);
+    for (size_t i = 0; i < 3; i++)
+        cs_value_release(args[i]);
     cs_vm_free(vm);
     ASSERT_TRUE(ok, "Invalid working directory must prevent command execution");
     return true;

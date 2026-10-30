@@ -19,14 +19,16 @@ int app_input_next_key(void) {
     return getch();
 }
 
-bool app_input_defer_scroll_frame(int key, int up, int down,
-                                  const struct timespec *last_frame) {
-    if (!last_frame || (key != up && key != down)) return false;
+bool app_input_defer_scroll_frame(int key, int up, int down, const struct timespec *last_frame) {
+    if (!last_frame || (key != up && key != down))
+        return false;
     struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now)) return false;
-    long long elapsed = (long long)(now.tv_sec - last_frame->tv_sec) * 1000000000LL +
-                        now.tv_nsec - last_frame->tv_nsec;
-    if (elapsed < 0 || elapsed >= 16000000LL) return false;
+    if (clock_gettime(CLOCK_MONOTONIC, &now))
+        return false;
+    long long elapsed = (long long)(now.tv_sec - last_frame->tv_sec) * 1000000000LL + now.tv_nsec -
+                        last_frame->tv_nsec;
+    if (elapsed < 0 || elapsed >= 16000000LL)
+        return false;
     if (pending_key == ERR) {
         int delay = wgetdelay(stdscr);
         wtimeout(stdscr, 0);
@@ -54,22 +56,38 @@ const char *keycode_to_string(int keycode) {
     }
 
     switch (keycode) {
-        case KEY_UP: return "Up";
-        case KEY_DOWN: return "Down";
-        case KEY_LEFT: return "Left";
-        case KEY_RIGHT: return "Right";
-        case '\t': return "Tab";
-        case KEY_BACKSPACE: return "Backspace";
-        case 127: return "Backspace";
-        case KEY_DC: return "Delete";
-        case KEY_HOME: return "Home";
-        case KEY_END: return "End";
-        case KEY_PPAGE: return "PgUp";
-        case KEY_NPAGE: return "PgDn";
-        case KEY_ENTER: return "Enter";
-        case '\n': return "Enter";
-        case '\r': return "Enter";
-        case 27: return "Esc";
+        case KEY_UP:
+            return "Up";
+        case KEY_DOWN:
+            return "Down";
+        case KEY_LEFT:
+            return "Left";
+        case KEY_RIGHT:
+            return "Right";
+        case '\t':
+            return "Tab";
+        case KEY_BACKSPACE:
+            return "Backspace";
+        case 127:
+            return "Backspace";
+        case KEY_DC:
+            return "Delete";
+        case KEY_HOME:
+            return "Home";
+        case KEY_END:
+            return "End";
+        case KEY_PPAGE:
+            return "PgUp";
+        case KEY_NPAGE:
+            return "PgDn";
+        case KEY_ENTER:
+            return "Enter";
+        case '\n':
+            return "Enter";
+        case '\r':
+            return "Enter";
+        case 27:
+            return "Esc";
         default:
             // Handle uppercase letters (A-Z) to show as Shift+<letter>
             if (keycode >= 'A' && keycode <= 'Z') {

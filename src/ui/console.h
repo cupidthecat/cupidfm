@@ -8,4 +8,3 @@ void console_clear(void);
 void console_show(void);
 
 #endif // CONSOLE_H
-

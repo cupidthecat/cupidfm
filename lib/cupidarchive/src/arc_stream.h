@@ -7,13 +7,13 @@
 
 /**
  * Stream abstraction for reading archive data.
- * 
+ *
  * Provides a unified interface that can be backed by:
  * - File descriptors (pread, read)
  * - Memory buffers
  * - Substreams (bounded reads for entries)
  * - Decompression filters
- * 
+ *
  * Key safety feature: Hard byte limits per stream to prevent zip bombs.
  */
 typedef struct ArcStream ArcStream;
@@ -27,20 +27,20 @@ struct ArcStreamVtable {
      * Returns number of bytes read, 0 on EOF, -1 on error.
      */
     ssize_t (*read)(ArcStream *stream, void *buf, size_t n);
-    
+
     /**
      * Seek to offset (optional, may be NULL).
      * whence: SEEK_SET, SEEK_CUR, SEEK_END
      * Returns 0 on success, -1 on error.
      */
     int (*seek)(ArcStream *stream, int64_t off, int whence);
-    
+
     /**
      * Get current position (optional, may be NULL).
      * Returns current offset, -1 on error.
      */
     int64_t (*tell)(ArcStream *stream);
-    
+
     /**
      * Close and free the stream.
      */
@@ -52,15 +52,15 @@ struct ArcStreamVtable {
  */
 struct ArcStream {
     const struct ArcStreamVtable *vtable;
-    int64_t byte_limit;      // Hard limit on total bytes that can be read
-    int64_t bytes_read;      // Total bytes read so far
-    void *user_data;         // Implementation-specific data
+    int64_t byte_limit; // Hard limit on total bytes that can be read
+    int64_t bytes_read; // Total bytes read so far
+    void *user_data;    // Implementation-specific data
 };
 
 /**
  * Read from a stream.
  * Automatically enforces byte_limit to prevent zip bombs.
- * 
+ *
  * @param stream The stream to read from
  * @param buf Buffer to read into
  * @param n Maximum bytes to read
@@ -73,7 +73,7 @@ ssize_t arc_stream_read_fully(ArcStream *stream, void *buf, size_t n);
 
 /**
  * Seek in a stream (if supported).
- * 
+ *
  * @param stream The stream to seek in
  * @param off Offset to seek to
  * @param whence SEEK_SET, SEEK_CUR, or SEEK_END
@@ -83,7 +83,7 @@ int arc_stream_seek(ArcStream *stream, int64_t off, int whence);
 
 /**
  * Get current position in stream (if supported).
- * 
+ *
  * @param stream The stream
  * @return Current offset, -1 on error or not supported
  */
@@ -91,14 +91,14 @@ int64_t arc_stream_tell(ArcStream *stream);
 
 /**
  * Close and free a stream.
- * 
+ *
  * @param stream The stream to close
  */
 void arc_stream_close(ArcStream *stream);
 
 /**
  * Create a file-backed stream.
- * 
+ *
  * The stream starts at the descriptor's current position and owns it on success.
  *
  * @param fd File descriptor (must be open)
@@ -109,7 +109,7 @@ ArcStream *arc_stream_from_fd(int fd, int64_t byte_limit);
 
 /**
  * Create a memory-backed stream.
- * 
+ *
  * @param data Memory buffer (must remain valid for stream lifetime)
  * @param size Size of buffer
  * @param byte_limit Maximum bytes that can be read (0 = size)
@@ -119,7 +119,7 @@ ArcStream *arc_stream_from_memory(const void *data, size_t size, int64_t byte_li
 
 /**
  * Create a substream (bounded view of another stream).
- * 
+ *
  * @param parent Parent stream (must remain valid for substream lifetime)
  * @param offset Offset in parent stream to start from
  * @param length Maximum length to read
@@ -133,4 +133,3 @@ ArcStream *arc_stream_view(ArcStream *parent);
 ArcStream *arc_stream_with_parent(ArcStream *stream, ArcStream *parent);
 
 #endif // ARC_STREAM_H
-

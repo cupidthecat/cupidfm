@@ -12,4 +12,3 @@ const char *plugins_keycode_to_name_local(int keycode, char buf[32]);
 int plugins_parse_key_name_local(const char *s);
 
 #endif // PLUGINS_KEYS_H
-

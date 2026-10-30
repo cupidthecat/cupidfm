@@ -8,6 +8,7 @@
 volatile sig_atomic_t is_editing = 1;
 
 static TextBuffer buffer;
+
 static void setup(void) {
     buffer = (TextBuffer){.num_lines = 2, .capacity = 2};
     buffer.lines = calloc(2, sizeof(char *));
@@ -20,27 +21,29 @@ static void setup(void) {
     g_editor_cursor_col = 0;
     g_editor_dirty = false;
 }
+
 static void teardown(void) {
-    for (int i = 0; i < buffer.num_lines; ++i) free(buffer.lines[i]);
+    for (int i = 0; i < buffer.num_lines; ++i)
+        free(buffer.lines[i]);
     free(buffer.lines);
     free(buffer.eols);
     g_editor_buffer = NULL;
 }
+
 static void invalid_ranges(void) {
-    const int ranges[][4] = {
-        {1, 1, 2, 999}, {1, 999, 2, 1}, {1, 0, 1, 2},
-        {1, -1, 2, 2}, {1, 1, 2, 0}, {0, 1, 1, 1},
-        {1, 1, 3, 1}, {2, 1, 1, 1}, {1, 3, 1, 2},
-        {INT_MIN, 1, 1, 1}, {1, INT_MIN, 1, 1},
-        {1, 1, INT_MIN, 1}, {1, 1, 1, INT_MIN},
-        {1, INT_MAX, 2, INT_MAX}
-    };
+    const int ranges[][4] = {{1, 1, 2, 999},     {1, 999, 2, 1},
+                             {1, 0, 1, 2},       {1, -1, 2, 2},
+                             {1, 1, 2, 0},       {0, 1, 1, 1},
+                             {1, 1, 3, 1},       {2, 1, 1, 1},
+                             {1, 3, 1, 2},       {INT_MIN, 1, 1, 1},
+                             {1, INT_MIN, 1, 1}, {1, 1, INT_MIN, 1},
+                             {1, 1, 1, INT_MIN}, {1, INT_MAX, 2, INT_MAX}};
     for (size_t i = 0; i < sizeof(ranges) / sizeof(ranges[0]); ++i) {
         for (int replace = 0; replace < 2; ++replace) {
             setup();
             const int *r = ranges[i];
-            bool ok = replace ? editor_replace_text(r[0], r[1], r[2], r[3], "X") :
-                                editor_delete_range(r[0], r[1], r[2], r[3]);
+            bool ok = replace ? editor_replace_text(r[0], r[1], r[2], r[3], "X")
+                              : editor_delete_range(r[0], r[1], r[2], r[3]);
             assert(!ok);
             assert(buffer.num_lines == 2);
             assert(strcmp(buffer.lines[0], "abc") == 0);
@@ -51,6 +54,7 @@ static void invalid_ranges(void) {
         }
     }
 }
+
 int main(void) {
     invalid_ranges();
     setup();

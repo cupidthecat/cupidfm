@@ -33,11 +33,16 @@ void redraw_all_windows(AppState *state) {
     SIZE dir_win_width = MAX(new_cols / 3, 20);
     SIZE preview_win_width = new_cols - dir_win_width - 2;
 
-    if (dirwin) delwin(dirwin);
-    if (previewwin) delwin(previewwin);
-    if (mainwin) delwin(mainwin);
-    if (bannerwin) delwin(bannerwin);
-    if (notifwin) delwin(notifwin);
+    if (dirwin)
+        delwin(dirwin);
+    if (previewwin)
+        delwin(previewwin);
+    if (mainwin)
+        delwin(mainwin);
+    if (bannerwin)
+        delwin(bannerwin);
+    if (notifwin)
+        delwin(notifwin);
 
     bannerwin = newwin(banner_height, new_cols, 0, 0);
     box(bannerwin, 0, 0);
@@ -67,27 +72,15 @@ void redraw_all_windows(AppState *state) {
     box(dirwin, 0, 0);
     box(previewwin, 0, 0);
 
-    draw_directory_window(
-        dirwin,
-        state->current_directory,
-        active_files(state),
-        &state->dir_window_cas
-    );
+    draw_directory_window(dirwin, state->current_directory, active_files(state),
+                          &state->dir_window_cas);
 
     if (state->preview_override_active) {
-        draw_preview_window_path(
-            previewwin,
-            state->preview_override_path,
-            NULL,
-            state->preview_start_line
-        );
+        draw_preview_window_path(previewwin, state->preview_override_path, NULL,
+                                 state->preview_start_line);
     } else {
-        draw_preview_window(
-            previewwin,
-            state->current_directory,
-            state->selected_entry,
-            state->preview_start_line
-        );
+        draw_preview_window(previewwin, state->current_directory, state->selected_entry,
+                            state->preview_start_line);
     }
 
     refresh();
@@ -98,12 +91,10 @@ void redraw_all_windows(AppState *state) {
     wrefresh(notifwin);
 }
 
-void redraw_frame_after_edit(AppState *state,
-                             WINDOW *dirwin_local,
-                             WINDOW *previewwin_local,
-                             WINDOW *mainwin_local,
-                             WINDOW *notifwin_local) {
-    if (!state) return;
+void redraw_frame_after_edit(AppState *state, WINDOW *dirwin_local, WINDOW *previewwin_local,
+                             WINDOW *mainwin_local, WINDOW *notifwin_local) {
+    if (!state)
+        return;
     if (bannerwin) {
         box(bannerwin, 0, 0);
         wrefresh(bannerwin);
@@ -113,13 +104,16 @@ void redraw_frame_after_edit(AppState *state,
         wrefresh(mainwin_local);
     }
     if (dirwin_local) {
-        draw_directory_window(dirwin_local, state->current_directory, active_files(state), &state->dir_window_cas);
+        draw_directory_window(dirwin_local, state->current_directory, active_files(state),
+                              &state->dir_window_cas);
     }
     if (previewwin_local) {
         if (state->preview_override_active) {
-            draw_preview_window_path(previewwin_local, state->preview_override_path, NULL, state->preview_start_line);
+            draw_preview_window_path(previewwin_local, state->preview_override_path, NULL,
+                                     state->preview_start_line);
         } else {
-            draw_preview_window(previewwin_local, state->current_directory, state->selected_entry, state->preview_start_line);
+            draw_preview_window(previewwin_local, state->current_directory, state->selected_entry,
+                                state->preview_start_line);
         }
     }
     if (notifwin_local) {

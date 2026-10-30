@@ -25,8 +25,7 @@ void plugin_notify(const char *msg) {
     }
 }
 
-static void banner_tick_for_modal(struct timespec *last_banner_update,
-                                  int total_scroll_length) {
+static void banner_tick_for_modal(struct timespec *last_banner_update, int total_scroll_length) {
     if (!last_banner_update)
         return;
     struct timespec now;
@@ -75,17 +74,15 @@ cs_value plugin_modal_prompt_text(cs_vm *vm, const char *title, const char *msg,
     wtimeout(popup, 10);
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) +
-                              (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     bool cancelled = false;
     for (;;) {
         werase(popup);
         box(popup, 0, 0);
-        mvwprintw(popup, 0, 2, "[ %.*s ]", popup_width - 6,
-                  title ? title : "Prompt");
+        mvwprintw(popup, 0, 2, "[ %.*s ]", popup_width - 6, title ? title : "Prompt");
 
         mvwprintw(popup, 2, 2, "> %.*s", popup_width - 6, buf);
         mvwprintw(popup, 4, 2, "Enter=OK  Esc=Cancel  Backspace=Delete");
@@ -152,17 +149,15 @@ bool plugin_modal_confirm(const char *title, const char *msg) {
     wtimeout(popup, 10);
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) +
-                              (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     bool result = false;
     for (;;) {
         werase(popup);
         box(popup, 0, 0);
-        mvwprintw(popup, 0, 2, "[ %.*s ]", popup_width - 6,
-                  title ? title : "Confirm");
+        mvwprintw(popup, 0, 2, "[ %.*s ]", popup_width - 6, title ? title : "Confirm");
 
         mvwprintw(popup, 2, 2, "%.*s", popup_width - 4, msg ? msg : "");
         mvwprintw(popup, 4, 2, "Y=Yes  N/Esc=No");
@@ -239,10 +234,9 @@ int plugin_modal_menu(const char *title, char **items, size_t count) {
     wtimeout(popup, 10);
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) +
-                              (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     int sel = 0;
     int start = 0;

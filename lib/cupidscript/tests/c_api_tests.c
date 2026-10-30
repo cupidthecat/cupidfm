@@ -1,14 +1,15 @@
-#include "cupidscript.h"
-#include "cs_vm.h"
 #include "cs_parser.h"
+#include "cs_vm.h"
+#include "cupidscript.h"
 #include <stdio.h>
 #include <string.h>
 
 static cs_value g_stored = {0};
 
-static int store_value(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_value* out) {
+static int store_value(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
     (void)ud;
-    if (out) *out = cs_nil();
+    if (out)
+        *out = cs_nil();
     if (argc != 1) {
         cs_error(vm, "store_value expects 1 arg");
         return 1;
@@ -20,7 +21,7 @@ static int store_value(cs_vm* vm, void* ud, int argc, const cs_value* argv, cs_v
     return 0;
 }
 
-static int expect_true(int cond, const char* msg) {
+static int expect_true(int cond, const char *msg) {
     if (!cond) {
         fprintf(stderr, "FAIL: %s\n", msg);
         return 1;
@@ -30,8 +31,9 @@ static int expect_true(int cond, const char* msg) {
 
 static int test_tuple_api(void) {
     int rc = 0;
-    cs_vm* vm = cs_vm_new();
-    if (!vm) return 1;
+    cs_vm *vm = cs_vm_new();
+    if (!vm)
+        return 1;
     cs_value tuple = cs_tuple(vm, 2);
     cs_value text = cs_str(vm, "owned field");
     rc |= expect_true(tuple.type == CS_T_TUPLE && cs_tuple_len(tuple) == 2, "tuple allocation");
@@ -71,8 +73,9 @@ static int test_tuple_api(void) {
 
 static int test_cycle_roots(void) {
     int rc = 0;
-    cs_vm* vm = cs_vm_new();
-    if (!vm) return 1;
+    cs_vm *vm = cs_vm_new();
+    if (!vm)
+        return 1;
     cs_vm_set_gc_threshold(vm, 1);
     cs_vm_set_gc_alloc_trigger(vm, 1);
     cs_value list = cs_list(vm);
@@ -96,27 +99,36 @@ static int test_cycle_roots(void) {
 
 static int test_cleanup_errors(void) {
     int rc = 0;
-    cs_vm* vm = cs_vm_new();
-    if (!vm) return 1;
+    cs_vm *vm = cs_vm_new();
+    if (!vm)
+        return 1;
     cs_register_native(vm, "store", store_value, NULL);
-    const char* cases[] = {
+    const char *cases[] = {
         "try { let value = 1 / 0; } catch (e) { store(99); } finally { store(1); }",
         "try { throw 7; } catch (e) { let value = 1 / 0; } finally { store(2); }",
-        "try { try { let value = 1 / 0; } catch (e) {} finally { store(3); } } catch (e) {} finally { store(4); }",
-        "defer { store(5); } let value = 1 / 0;"
-    };
+        "try { try { let value = 1 / 0; } catch (e) {} finally { store(3); } } catch (e) {} "
+        "finally { store(4); }",
+        "defer { store(5); } let value = 1 / 0;"};
     const int expected[] = {1, 2, 4, 5};
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        cs_value_release(g_stored); g_stored = cs_nil();
-        rc |= expect_true(cs_vm_run_string(vm, cases[i], "<cleanup errors>") != 0, "runtime error propagates");
-        rc |= expect_true(strstr(cs_vm_last_error(vm), "division by zero") != NULL, "original runtime error retained");
-        rc |= expect_true(g_stored.type == CS_T_INT && g_stored.as.i == expected[i], "cleanup runs after runtime error");
+        cs_value_release(g_stored);
+        g_stored = cs_nil();
+        rc |= expect_true(cs_vm_run_string(vm, cases[i], "<cleanup errors>") != 0,
+                          "runtime error propagates");
+        rc |= expect_true(strstr(cs_vm_last_error(vm), "division by zero") != NULL,
+                          "original runtime error retained");
+        rc |= expect_true(g_stored.type == CS_T_INT && g_stored.as.i == expected[i],
+                          "cleanup runs after runtime error");
     }
-    rc |= expect_true(cs_vm_run_string(vm,
-        "try { let value = 1 / 0; } catch (e) {} finally { missing_cleanup(); }",
-        "<cleanup override>") != 0, "cleanup failure propagates");
-    rc |= expect_true(strstr(cs_vm_last_error(vm), "undefined variable") != NULL, "cleanup error replaces prior error");
-    cs_value_release(g_stored); g_stored = cs_nil();
+    rc |= expect_true(
+        cs_vm_run_string(vm,
+                         "try { let value = 1 / 0; } catch (e) {} finally { missing_cleanup(); }",
+                         "<cleanup override>") != 0,
+        "cleanup failure propagates");
+    rc |= expect_true(strstr(cs_vm_last_error(vm), "undefined variable") != NULL,
+                      "cleanup error replaces prior error");
+    cs_value_release(g_stored);
+    g_stored = cs_nil();
     cs_vm_free(vm);
     return rc;
 }
@@ -124,9 +136,10 @@ static int test_cleanup_errors(void) {
 int main(void) {
     int rc = test_tuple_api() | test_cycle_roots() | test_cleanup_errors();
 
-    cs_vm* vm = cs_vm_new();
+    cs_vm *vm = cs_vm_new();
     rc |= expect_true(vm != NULL, "cs_vm_new");
-    if (!vm) return 1;
+    if (!vm)
+        return 1;
 
     cs_register_stdlib(vm);
 
@@ -134,8 +147,10 @@ int main(void) {
     (void)cs_vm_last_error(vm);
     (void)cs_vm_last_error(NULL);
     cs_error(vm, "hello-error");
-    rc |= expect_true(strcmp(cs_vm_last_error(vm), "hello-error") == 0, "cs_vm_last_error reflects cs_error");
-    rc |= expect_true(strcmp(cs_last_error(vm), "hello-error") == 0, "cs_last_error reflects cs_error");
+    rc |= expect_true(strcmp(cs_vm_last_error(vm), "hello-error") == 0,
+                      "cs_vm_last_error reflects cs_error");
+    rc |= expect_true(strcmp(cs_last_error(vm), "hello-error") == 0,
+                      "cs_last_error reflects cs_error");
     cs_error(vm, NULL);
     rc |= expect_true(strcmp(cs_vm_last_error(vm), "error") == 0, "cs_error NULL msg");
 
@@ -190,16 +205,15 @@ int main(void) {
     // Exercise cs_call_value by capturing a function value from script.
     cs_register_native(vm, "store", store_value, NULL);
 
-    const char* code =
-        "fn add(a, b) { return a + b; }\n"
-        "store(add);\n";
+    const char *code = "fn add(a, b) { return a + b; }\n"
+                       "store(add);\n";
 
     if (cs_vm_run_string(vm, code, "<c_api_tests>") != 0) {
         fprintf(stderr, "script error: %s\n", cs_vm_last_error(vm));
         rc |= 1;
     } else {
         cs_value out = cs_nil();
-        cs_value argv[2] = { cs_int(2), cs_int(3) };
+        cs_value argv[2] = {cs_int(2), cs_int(3)};
         int call_rc = cs_call_value(vm, g_stored, 2, argv, &out);
         rc |= expect_true(call_rc == 0, "cs_call_value rc");
         rc |= expect_true(out.type == CS_T_INT && out.as.i == 5, "cs_call_value result");
@@ -229,7 +243,7 @@ int main(void) {
     {
         parser P;
         parser_init(&P, "let a = 1;", NULL);
-        ast* prog = parse_program(&P);
+        ast *prog = parse_program(&P);
         rc |= expect_true(P.error == NULL, "parser_init default source name");
         parse_free_error(&P);
         ast_free(prog);
@@ -238,7 +252,7 @@ int main(void) {
     {
         parser P;
         parser_init(&P, "fn broken() {", NULL);
-        ast* prog = parse_program(&P);
+        ast *prog = parse_program(&P);
         rc |= expect_true(P.error != NULL, "parser reports unterminated block");
         parse_free_error(&P);
         ast_free(prog);

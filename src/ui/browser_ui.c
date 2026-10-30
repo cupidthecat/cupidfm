@@ -6,6 +6,7 @@
 
 #include "browser_ui.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -18,16 +19,15 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#include <ctype.h>
 
+#include "cupidarchive.h"
+#include "cupidimage.h"
 #include "files.h"
 #include "git.h"
 #include "globals.h"
+#include "mime.h"
 #include "syntax.h"
 #include "text_preview.h"
-#include "mime.h"
-#include "cupidimage.h"
-#include "cupidarchive.h"
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
@@ -36,7 +36,8 @@ static bool tree_limit_hit = false;
 
 static void count_directory_tree_lines(const char *dir_path, int level, int *line_count) {
     DIR *dir = opendir(dir_path);
-    if (!dir) return;
+    if (!dir)
+        return;
 
     struct dirent *entry;
     struct stat statbuf;
@@ -44,10 +45,12 @@ static void count_directory_tree_lines(const char *dir_path, int level, int *lin
     size_t dir_path_len = strlen(dir_path);
 
     while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
 
         size_t name_len = strlen(entry->d_name);
-        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
+        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH)
+            continue;
 
         strcpy(full_path, dir_path);
         if (full_path[dir_path_len - 1] != '/') {
@@ -55,15 +58,15 @@ static void count_directory_tree_lines(const char *dir_path, int level, int *lin
         }
         strcat(full_path, entry->d_name);
 
-        if (lstat(full_path, &statbuf) == -1) continue;
+        if (lstat(full_path, &statbuf) == -1)
+            continue;
 
         (*line_count)++; // Count this entry
         if (*line_count >= DIRECTORY_TREE_MAX_TOTAL) {
             break;
         }
 
-        if (S_ISDIR(statbuf.st_mode) &&
-            level < DIRECTORY_TREE_MAX_DEPTH) {
+        if (S_ISDIR(statbuf.st_mode) && level < DIRECTORY_TREE_MAX_DEPTH) {
             count_directory_tree_lines(full_path, level + 1, line_count);
             if (*line_count >= DIRECTORY_TREE_MAX_TOTAL) {
                 break;
@@ -94,12 +97,16 @@ static char last_sixel_image_path[MAX_PATH_LENGTH] = {0};
 static const int image_palette_reserved_start = 32;
 
 static bool supports_truecolor(void) {
-    if (!isatty(fileno(stdout))) return false;
+    if (!isatty(fileno(stdout)))
+        return false;
     const char *ct = getenv("COLORTERM");
-    if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) return true;
-    if (getenv("KITTY_WINDOW_ID")) return true;
+    if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit")))
+        return true;
+    if (getenv("KITTY_WINDOW_ID"))
+        return true;
     const char *term = getenv("TERM");
-    if (term && (strstr(term, "kitty") || strstr(term, "direct"))) return true;
+    if (term && (strstr(term, "kitty") || strstr(term, "direct")))
+        return true;
     return false;
 }
 
@@ -108,7 +115,8 @@ static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
-    if (content_width <= 0 || content_height <= 0) return;
+    if (content_width <= 0 || content_height <= 0)
+        return;
 
     int win_y = 0, win_x = 0;
     getbegyx(window, win_y, win_x);
@@ -130,7 +138,8 @@ static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
-    if (content_width <= 0 || content_height <= 0) return;
+    if (content_width <= 0 || content_height <= 0)
+        return;
 
     int win_y = 0, win_x = 0;
     getbegyx(window, win_y, win_x);
@@ -140,24 +149,26 @@ static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
     const int cell_height_px = 16;
     int pixel_width = content_width * cell_width_px;
     int pixel_height = content_height * cell_height_px;
-    
+
     /* Limit size to prevent huge allocations */
-    if (pixel_width > 2000) pixel_width = 2000;
-    if (pixel_height > 2000) pixel_height = 2000;
+    if (pixel_width > 2000)
+        pixel_width = 2000;
+    if (pixel_height > 2000)
+        pixel_height = 2000;
 
     /* Position cursor at content area */
     int abs_row = win_y + content_top;
     int abs_col = win_x + content_left;
     printf("\x1b[%d;%dH", abs_row + 1, abs_col + 1);
-    
+
     /* Output a black Sixel image that covers the content area
-     * Sixel encodes 6 vertical pixels per row, character '?' (0x3F) = all 6 pixels off (black with color 0)
-     * Format: DCS q "1;1;W;H (raster attributes) #0;2;0;0;0 (color 0 = black) <data> ST */
+     * Sixel encodes 6 vertical pixels per row, character '?' (0x3F) = all 6 pixels off (black with
+     * color 0) Format: DCS q "1;1;W;H (raster attributes) #0;2;0;0;0 (color 0 = black) <data> ST */
     printf("\x1bPq");
-    printf("\"1;1;%d;%d", pixel_width, pixel_height);  /* Raster attributes */
-    printf("#0;2;0;0;0");  /* Define color 0 as black (RGB 0,0,0) */
-    printf("#0");  /* Select color 0 */
-    
+    printf("\"1;1;%d;%d", pixel_width, pixel_height); /* Raster attributes */
+    printf("#0;2;0;0;0");                             /* Define color 0 as black (RGB 0,0,0) */
+    printf("#0");                                     /* Select color 0 */
+
     /* Output Sixel data - '?' means all 6 pixels are off (transparent/background)
      * We need to cover pixel_height/6 sixel rows */
     int sixel_rows = (pixel_height + 5) / 6;
@@ -173,12 +184,12 @@ static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
         }
         /* Move to next sixel row (except for last row) */
         if (row + 1 < sixel_rows) {
-            putchar('-');  /* Graphics newline */
+            putchar('-'); /* Graphics newline */
         }
     }
-    
-    printf("\x1b\\");  /* String Terminator - end Sixel sequence */
-    
+
+    printf("\x1b\\"); /* String Terminator - end Sixel sequence */
+
     /* Also clear the text layer */
     for (int row = 0; row < content_height; row++) {
         abs_row = win_y + content_top + row;
@@ -188,36 +199,40 @@ static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
             fputc(' ', stdout);
         }
     }
-    
+
     fflush(stdout);
 }
 
 static bool is_image_extension(const char *path) {
-    if (!path) return false;
+    if (!path)
+        return false;
     const char *ext = strrchr(path, '.');
-    if (!ext) return false;
-    return strcasecmp(ext, ".png") == 0 ||
-           strcasecmp(ext, ".jpg") == 0 ||
-           strcasecmp(ext, ".jpeg") == 0 ||
-           strcasecmp(ext, ".webp") == 0 ||
-           strcasecmp(ext, ".gif") == 0 ||
-           strcasecmp(ext, ".bmp") == 0 ||
-           strcasecmp(ext, ".ico") == 0 ||
-           strcasecmp(ext, ".tif") == 0 ||
+    if (!ext)
+        return false;
+    return strcasecmp(ext, ".png") == 0 || strcasecmp(ext, ".jpg") == 0 ||
+           strcasecmp(ext, ".jpeg") == 0 || strcasecmp(ext, ".webp") == 0 ||
+           strcasecmp(ext, ".gif") == 0 || strcasecmp(ext, ".bmp") == 0 ||
+           strcasecmp(ext, ".ico") == 0 || strcasecmp(ext, ".tif") == 0 ||
            strcasecmp(ext, ".tiff") == 0;
 }
 
-static int load_cupidimage_image(const char *path, cupidimage_image *out, char *err, size_t errcap) {
-    if (!path || !out) return 0;
-    if (err && errcap > 0) err[0] = '\0';
+static int load_cupidimage_image(const char *path, cupidimage_image *out, char *err,
+                                 size_t errcap) {
+    if (!path || !out)
+        return 0;
+    if (err && errcap > 0)
+        err[0] = '\0';
 
     int rc = cupidimage_load_image_file(path, out, err, errcap);
-    if (rc != 0) return 1;
+    if (rc != 0)
+        return 1;
 
     const char *ext = strrchr(path, '.');
-    if (!ext) return 0;
+    if (!ext)
+        return 0;
 
-    if (err && errcap > 0) err[0] = '\0';
+    if (err && errcap > 0)
+        err[0] = '\0';
     if (strcasecmp(ext, ".png") == 0) {
         return cupidimage_load_png_file(path, out, err, errcap) != 0;
     }
@@ -244,14 +259,18 @@ static int load_cupidimage_image(const char *path, cupidimage_image *out, char *
 }
 
 static bool is_image_file(const char *path) {
-    if (!path || !*path) return false;
+    if (!path || !*path)
+        return false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
-        const char *mime_type = mime_file_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK, mime_buffer, sizeof(mime_buffer));
+        const char *mime_type =
+            mime_file_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+                             mime_buffer, sizeof(mime_buffer));
         bool is_image = (mime_type != NULL && strncmp(mime_type, "image/", 6) == 0);
         magic_close(magic_cookie);
-        if (is_image) return true;
+        if (is_image)
+            return true;
     } else if (magic_cookie) {
         magic_close(magic_cookie);
     }
@@ -261,11 +280,10 @@ static bool is_image_file(const char *path) {
 static void ansi256_to_rgb(int idx, int *r, int *g, int *b) {
     if (idx < 16) {
         static const int base16[16][3] = {
-            {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
-            {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
-            {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
-            {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255}
-        };
+            {0, 0, 0},       {205, 0, 0},   {0, 205, 0},   {205, 205, 0},
+            {0, 0, 238},     {205, 0, 205}, {0, 205, 205}, {229, 229, 229},
+            {127, 127, 127}, {255, 0, 0},   {0, 255, 0},   {255, 255, 0},
+            {92, 92, 255},   {255, 0, 255}, {0, 255, 255}, {255, 255, 255}};
         *r = base16[idx][0];
         *g = base16[idx][1];
         *b = base16[idx][2];
@@ -273,7 +291,8 @@ static void ansi256_to_rgb(int idx, int *r, int *g, int *b) {
     }
     if (idx >= 232) {
         int v = 8 + (idx - 232) * 10;
-        if (v > 255) v = 255;
+        if (v > 255)
+            v = 255;
         *r = v;
         *g = v;
         *b = v;
@@ -291,8 +310,10 @@ static void ansi256_to_rgb(int idx, int *r, int *g, int *b) {
 
 static int rgb_to_ansi256(uint8_t r, uint8_t g, uint8_t b) {
     if (r == g && g == b) {
-        if (r < 8) return 16;
-        if (r > 248) return 231;
+        if (r < 8)
+            return 16;
+        if (r > 248)
+            return 231;
         return 232 + (int)((r - 8) / 10);
     }
     int r6 = (r * 5 + 127) / 255;
@@ -307,11 +328,9 @@ static int rgb_to_palette_index(uint8_t r, uint8_t g, uint8_t b, int palette_siz
     }
 
     static const uint8_t palette16[16][3] = {
-        {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
-        {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
-        {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
-        {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255}
-    };
+        {0, 0, 0},     {205, 0, 0},     {0, 205, 0},     {205, 205, 0},  {0, 0, 238}, {205, 0, 205},
+        {0, 205, 205}, {229, 229, 229}, {127, 127, 127}, {255, 0, 0},    {0, 255, 0}, {255, 255, 0},
+        {92, 92, 255}, {255, 0, 255},   {0, 255, 255},   {255, 255, 255}};
 
     int best_idx = 0;
     int best_dist = INT32_MAX;
@@ -330,10 +349,12 @@ static int rgb_to_palette_index(uint8_t r, uint8_t g, uint8_t b, int palette_siz
 }
 
 static void ensure_image_palette(void) {
-    if (image_palette.initialized) return;
+    if (image_palette.initialized)
+        return;
     image_palette.initialized = true;
 
-    if (!has_colors()) return;
+    if (!has_colors())
+        return;
 
     int max_colors = COLORS;
     int max_pairs = COLOR_PAIRS;
@@ -346,7 +367,8 @@ static void ensure_image_palette(void) {
         desired = 8;
     }
 
-    if (desired <= 0 || max_pairs <= 1) return;
+    if (desired <= 0 || max_pairs <= 1)
+        return;
 
     int base = image_palette_reserved_start;
     if (base <= COLOR_SYNTAX_ESCAPE) {
@@ -358,20 +380,20 @@ static void ensure_image_palette(void) {
         }
     }
 
-    if (desired <= 0) return;
+    if (desired <= 0)
+        return;
 
     image_palette.base_pair = base;
     image_palette.size = desired;
 
     if (can_change_color() && max_colors >= 256) {
         int max_idx = max_colors - 1;
-        if (max_idx > 255) max_idx = 255;
+        if (max_idx > 255)
+            max_idx = 255;
         for (int i = 16; i <= max_idx; i++) {
             int r = 0, g = 0, b = 0;
             ansi256_to_rgb(i, &r, &g, &b);
-            init_color((short)i,
-                       (short)(r * 1000 / 255),
-                       (short)(g * 1000 / 255),
+            init_color((short)i, (short)(r * 1000 / 255), (short)(g * 1000 / 255),
                        (short)(b * 1000 / 255));
         }
     }
@@ -383,8 +405,7 @@ static void ensure_image_palette(void) {
 
 static const double image_cell_aspect = 2.0;
 
-static void compute_ansi_scaled_dims(uint32_t src_w, uint32_t src_h,
-                                     int max_width, int max_height,
+static void compute_ansi_scaled_dims(uint32_t src_w, uint32_t src_h, int max_width, int max_height,
                                      int *out_w, int *out_h) {
     if (src_w == 0 || src_h == 0) {
         *out_w = 0;
@@ -397,22 +418,25 @@ static void compute_ansi_scaled_dims(uint32_t src_w, uint32_t src_h,
     double scale = 1.0;
     if (max_width > 0 && width > max_width) {
         double s = (double)max_width / (double)width;
-        if (s < scale) scale = s;
+        if (s < scale)
+            scale = s;
     }
     if (max_height > 0 && height > max_height) {
         double s = (double)max_height / (double)height;
-        if (s < scale) scale = s;
+        if (s < scale)
+            scale = s;
     }
     int outw = (int)(width * scale);
     int outh = (int)(height * scale);
-    if (outw < 1) outw = 1;
-    if (outh < 1) outh = 1;
+    if (outw < 1)
+        outw = 1;
+    if (outh < 1)
+        outh = 1;
     *out_w = outw;
     *out_h = outh;
 }
 
-static void scale_image_to_fit(uint32_t src_w, uint32_t src_h,
-                               int max_width, int max_height,
+static void scale_image_to_fit(uint32_t src_w, uint32_t src_h, int max_width, int max_height,
                                int *out_w, int *out_h) {
     if (src_w == 0 || src_h == 0 || max_width <= 0 || max_height <= 0) {
         *out_w = 0;
@@ -423,7 +447,8 @@ static void scale_image_to_fit(uint32_t src_w, uint32_t src_h,
     double scale_w = (double)max_width / (double)src_w;
     double scale_h = ((double)max_height * image_cell_aspect) / (double)src_h;
     double scale = scale_w < scale_h ? scale_w : scale_h;
-    if (scale > 1.0) scale = 1.0;
+    if (scale > 1.0)
+        scale = 1.0;
     if (scale <= 0.0) {
         *out_w = 0;
         *out_h = 0;
@@ -432,17 +457,21 @@ static void scale_image_to_fit(uint32_t src_w, uint32_t src_h,
 
     int target_w = (int)(src_w * scale + 0.5);
     int target_h = (int)(src_h * scale / image_cell_aspect + 0.5);
-    if (target_w < 1) target_w = 1;
-    if (target_h < 1) target_h = 1;
-    if (target_w > max_width) target_w = max_width;
-    if (target_h > max_height) target_h = max_height;
+    if (target_w < 1)
+        target_w = 1;
+    if (target_h < 1)
+        target_h = 1;
+    if (target_w > max_width)
+        target_w = max_width;
+    if (target_h > max_height)
+        target_h = max_height;
 
     *out_w = target_w;
     *out_h = target_h;
 }
 
-static void draw_image_preview(WINDOW *window, const char *full_path, int start_line,
-                               int max_y, int max_x) {
+static void draw_image_preview(WINDOW *window, const char *full_path, int start_line, int max_y,
+                               int max_x) {
     int content_top = 7;
     int content_left = 2;
     int content_width = max_x - 4;
@@ -482,8 +511,10 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
         return;
     }
 
-    if (start_line < 0) start_line = 0;
-    if (start_line >= target_h) start_line = target_h - 1;
+    if (start_line < 0)
+        start_line = 0;
+    if (start_line >= target_h)
+        start_line = target_h - 1;
 
     int rows_to_draw = MIN(content_height, target_h - start_line);
     int cols_to_draw = MIN(content_width, target_w);
@@ -495,13 +526,18 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
     bool alpha_seen_opaque = false;
     size_t total_pixels = (size_t)img.width * (size_t)img.height;
     size_t step = total_pixels / 10000;
-    if (step < 1) step = 1;
+    if (step < 1)
+        step = 1;
     for (size_t i = 0; i < total_pixels; i += step) {
         uint8_t a = img.rgba[i * 4 + 3];
-        if (a != 0) alpha_all_zero = false;
-        if (a != 255) alpha_all_opaque = false;
-        if (a == 0) alpha_seen_zero = true;
-        if (a == 255) alpha_seen_opaque = true;
+        if (a != 0)
+            alpha_all_zero = false;
+        if (a != 255)
+            alpha_all_opaque = false;
+        if (a == 0)
+            alpha_seen_zero = true;
+        if (a == 255)
+            alpha_seen_opaque = true;
         if (a > 0 && a < 255) {
             use_alpha = true;
             break;
@@ -517,7 +553,7 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
     for (int row = 0; row < rows_to_draw; row++) {
         int out_y = content_top + row;
         int render_y = start_line + row;
-            int src_y = (int)(((uint64_t)render_y * img.height) / target_h);
+        int src_y = (int)(((uint64_t)render_y * img.height) / target_h);
 
         wmove(window, out_y, content_left);
 
@@ -533,7 +569,8 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
             int pair = -1;
             if (!use_alpha || a > 16) {
                 int palette_idx = rgb_to_palette_index(r, g, b, image_palette.size);
-                if (palette_idx >= image_palette.size) palette_idx = image_palette.size - 1;
+                if (palette_idx >= image_palette.size)
+                    palette_idx = image_palette.size - 1;
                 pair = image_palette.base_pair + palette_idx;
             }
 
@@ -591,14 +628,17 @@ static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, 
     }
 
     int ansi_max_h = (int)((double)content_height / image_cell_aspect + 0.5);
-    if (ansi_max_h < 1) ansi_max_h = 1;
+    if (ansi_max_h < 1)
+        ansi_max_h = 1;
 
     int out_w = 0;
     int out_h = 0;
     compute_ansi_scaled_dims(img.width, img.height, content_width, ansi_max_h, &out_w, &out_h);
 
-    if (start_line < 0) start_line = 0;
-    if (start_line >= out_h) start_line = out_h - 1;
+    if (start_line < 0)
+        start_line = 0;
+    if (start_line >= out_h)
+        start_line = out_h - 1;
 
     char *buf = NULL;
     size_t buf_len = 0;
@@ -661,9 +701,9 @@ static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, 
 }
 
 static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int start_line,
-                                    int max_y, int max_x) {
-    (void)start_line;  /* Kitty renders full image, no line scrolling needed */
-    
+                                     int max_y, int max_x) {
+    (void)start_line; /* Kitty renders full image, no line scrolling needed */
+
     int content_top = 7;
     int content_left = 2;
     int content_width = max_x - 4;
@@ -713,7 +753,7 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
 
     /* Hide cursor during image rendering */
     curs_set(0);
-    printf("\x1b[?25l");   /* Also hide via escape sequence for terminals that need it */
+    printf("\x1b[?25l"); /* Also hide via escape sequence for terminals that need it */
     fflush(stdout);
 
     /* Move cursor to content area */
@@ -724,12 +764,12 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
 
     /* Render using Kitty graphics protocol */
     cupidimage_kitty_options opts = {0};
-    opts.compression = 1;  /* Enable compression */
-    opts.delete_previous = 0;  /* Don't delete other images */
-    
+    opts.compression = 1;     /* Enable compression */
+    opts.delete_previous = 0; /* Don't delete other images */
+
     /* Use content dimensions as display size in character cells */
-    if (!cupidimage_render_kitty_with_options(&img, stdout, content_width, content_height,
-                                             &opts, err, sizeof(err))) {
+    if (!cupidimage_render_kitty_with_options(&img, stdout, content_width, content_height, &opts,
+                                              err, sizeof(err))) {
         /* Reset cursor to safe position */
         printf("\x1b[%d;%dH", 1, 1);
         fflush(stdout);
@@ -737,7 +777,7 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
         wrefresh(window);
         curs_set(0);
         cupidimage_free(&img);
-        mvwprintw(window, content_top, 2, "Kitty preview failed: %s", 
+        mvwprintw(window, content_top, 2, "Kitty preview failed: %s",
                   err[0] ? err : "Render error");
         wrefresh(window);
         return;
@@ -746,23 +786,23 @@ static void draw_image_preview_kitty(WINDOW *window, const char *full_path, int 
     /* Reset cursor to top-left of window to prevent it getting stuck */
     printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
     fflush(stdout);
-    
+
     /* Sync ncurses cursor position and refresh */
     wmove(window, 0, 0);
     wrefresh(window);
-    curs_set(0);  /* Keep cursor hidden */
+    curs_set(0); /* Keep cursor hidden */
 
     /* Track this image path to avoid re-rendering */
     snprintf(last_kitty_image_path, sizeof(last_kitty_image_path), "%s", full_path);
-    
+
     cupidimage_free(&img);
     last_truecolor_active = true;
 }
 
 static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int start_line,
                                      int max_y, int max_x) {
-    (void)start_line;  /* Sixel renders full image, no line scrolling needed */
-    
+    (void)start_line; /* Sixel renders full image, no line scrolling needed */
+
     int content_top = 7;
     int content_left = 2;
     int content_width = max_x - 4;
@@ -798,7 +838,7 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
     }
 
     wrefresh(window);
-    
+
     /* Clear any previous Sixel image before rendering new one */
     if (last_sixel_image_path[0] != '\0') {
         clear_sixel_overlay(window, max_y, max_x);
@@ -823,12 +863,15 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
         double scale_w = (double)max_pixel_width / (double)src_w;
         double scale_h = (double)max_pixel_height / (double)src_h;
         double scale = scale_w < scale_h ? scale_w : scale_h;
-        if (scale > 1.0) scale = 1.0;
-        
+        if (scale > 1.0)
+            scale = 1.0;
+
         target_w = (int)(src_w * scale);
         target_h = (int)(src_h * scale);
-        if (target_w < 1) target_w = 1;
-        if (target_h < 1) target_h = 1;
+        if (target_w < 1)
+            target_w = 1;
+        if (target_h < 1)
+            target_h = 1;
     }
 
     /* Resize image if needed */
@@ -839,7 +882,7 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
         scaled_img.width = (uint32_t)target_w;
         scaled_img.height = (uint32_t)target_h;
         scaled_img.rgba = (uint8_t *)malloc((size_t)target_w * (size_t)target_h * 4);
-        
+
         if (!scaled_img.rgba) {
             cupidimage_free(&img);
             mvwprintw(window, content_top, 2, "Sixel preview failed: out of memory");
@@ -850,33 +893,33 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
         /* Bilinear interpolation resize */
         for (int y = 0; y < target_h; y++) {
             for (int x = 0; x < target_w; x++) {
-                double src_x = (double)x * (double)(src_w - 1) / (double)(target_w - 1 > 0 ? target_w - 1 : 1);
-                double src_y = (double)y * (double)(src_h - 1) / (double)(target_h - 1 > 0 ? target_h - 1 : 1);
-                
+                double src_x =
+                    (double)x * (double)(src_w - 1) / (double)(target_w - 1 > 0 ? target_w - 1 : 1);
+                double src_y =
+                    (double)y * (double)(src_h - 1) / (double)(target_h - 1 > 0 ? target_h - 1 : 1);
+
                 int x0 = (int)src_x;
                 int y0 = (int)src_y;
                 int x1 = x0 + 1 < (int)src_w ? x0 + 1 : x0;
                 int y1 = y0 + 1 < (int)src_h ? y0 + 1 : y0;
-                
+
                 double xf = src_x - x0;
                 double yf = src_y - y0;
-                
+
                 for (int c = 0; c < 4; c++) {
                     double v00 = img.rgba[(y0 * src_w + x0) * 4 + c];
                     double v10 = img.rgba[(y0 * src_w + x1) * 4 + c];
                     double v01 = img.rgba[(y1 * src_w + x0) * 4 + c];
                     double v11 = img.rgba[(y1 * src_w + x1) * 4 + c];
-                    
-                    double v = v00 * (1 - xf) * (1 - yf) +
-                               v10 * xf * (1 - yf) +
-                               v01 * (1 - xf) * yf +
-                               v11 * xf * yf;
-                    
+
+                    double v = v00 * (1 - xf) * (1 - yf) + v10 * xf * (1 - yf) +
+                               v01 * (1 - xf) * yf + v11 * xf * yf;
+
                     scaled_img.rgba[(y * target_w + x) * 4 + c] = (uint8_t)(v + 0.5);
                 }
             }
         }
-        
+
         render_img = &scaled_img;
     }
 
@@ -886,7 +929,7 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
 
     /* Hide cursor during image rendering */
     curs_set(0);
-    printf("\x1b[?25l");   /* Also hide via escape sequence for terminals that need it */
+    printf("\x1b[?25l"); /* Also hide via escape sequence for terminals that need it */
     fflush(stdout);
 
     /* Move cursor to content area */
@@ -897,25 +940,25 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
 
     /* Render using Sixel graphics protocol */
     cupidimage_sixel_options opts = {0};
-    opts.max_colors = 256;           /* Use full 256-color palette */
-    opts.dither_mode = 1;            /* Floyd-Steinberg dithering for best quality */
-    opts.use_transparency = 0;       /* Blend with background */
+    opts.max_colors = 256;            /* Use full 256-color palette */
+    opts.dither_mode = 1;             /* Floyd-Steinberg dithering for best quality */
+    opts.use_transparency = 0;        /* Blend with background */
     opts.background_color = 0x000000; /* Black background to match terminal */
-    opts.pixel_aspect_ratio = 1.0f;  /* Image is already properly scaled */
-    opts.delete_previous = 0;        /* Don't clear screen */
-    
+    opts.pixel_aspect_ratio = 1.0f;   /* Image is already properly scaled */
+    opts.delete_previous = 0;         /* Don't clear screen */
+
     /* Render the (possibly scaled) image */
-    if (!cupidimage_render_sixel_with_options(render_img, stdout, 0, 0,
-                                              &opts, err, sizeof(err))) {
+    if (!cupidimage_render_sixel_with_options(render_img, stdout, 0, 0, &opts, err, sizeof(err))) {
         /* Reset cursor to safe position */
         printf("\x1b[%d;%dH", 1, 1);
         fflush(stdout);
         wmove(window, 0, 0);
         wrefresh(window);
         curs_set(0);
-        if (scaled_img.rgba) free(scaled_img.rgba);
+        if (scaled_img.rgba)
+            free(scaled_img.rgba);
         cupidimage_free(&img);
-        mvwprintw(window, content_top, 2, "Sixel preview failed: %s", 
+        mvwprintw(window, content_top, 2, "Sixel preview failed: %s",
                   err[0] ? err : "Render error");
         wrefresh(window);
         return;
@@ -924,30 +967,25 @@ static void draw_image_preview_sixel(WINDOW *window, const char *full_path, int 
     /* Reset cursor to top-left of window to prevent it getting stuck */
     printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
     fflush(stdout);
-    
+
     /* Sync ncurses cursor position and refresh */
     wmove(window, 0, 0);
     wrefresh(window);
-    curs_set(0);  /* Keep cursor hidden */
+    curs_set(0); /* Keep cursor hidden */
 
     /* Clean up scaled image if we created one */
-    if (scaled_img.rgba) free(scaled_img.rgba);
+    if (scaled_img.rgba)
+        free(scaled_img.rgba);
 
     /* Track this image path to avoid re-rendering */
     snprintf(last_sixel_image_path, sizeof(last_sixel_image_path), "%s", full_path);
-    
+
     cupidimage_free(&img);
     last_truecolor_active = true;
 }
 
-static void show_directory_tree(WINDOW *window,
-                                const char *dir_path,
-                                int level,
-                                int *line_num,
-                                int max_y,
-                                int max_x,
-                                int start_line,
-                                int *current_count) {
+static void show_directory_tree(WINDOW *window, const char *dir_path, int level, int *line_num,
+                                int max_y, int max_x, int start_line, int *current_count) {
     if (level == 0) {
         tree_limit_hit = false;
     }
@@ -961,7 +999,8 @@ static void show_directory_tree(WINDOW *window,
     }
 
     DIR *dir = opendir(dir_path);
-    if (!dir) return;
+    if (!dir)
+        return;
 
     struct dirent *entry;
     struct stat statbuf;
@@ -975,13 +1014,16 @@ static void show_directory_tree(WINDOW *window,
         bool is_dir;
         mode_t mode;
     } entries[WINDOW_SIZE];
+
     int entry_count = 0;
 
     while ((entry = readdir(dir)) != NULL && entry_count < WINDOW_SIZE) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
 
         size_t name_len = strlen(entry->d_name);
-        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH) continue;
+        if (dir_path_len + name_len + 2 > MAX_PATH_LENGTH)
+            continue;
 
         strcpy(full_path, dir_path);
         if (full_path[dir_path_len - 1] != '/') {
@@ -989,7 +1031,8 @@ static void show_directory_tree(WINDOW *window,
         }
         strcat(full_path, entry->d_name);
 
-        if (lstat(full_path, &statbuf) == -1) continue;
+        if (lstat(full_path, &statbuf) == -1)
+            continue;
 
         strncpy(entries[entry_count].name, entry->d_name, MAX_PATH_LENGTH - 1);
         entries[entry_count].name[MAX_PATH_LENGTH - 1] = '\0';
@@ -1025,7 +1068,8 @@ static void show_directory_tree(WINDOW *window,
                         strcat(full_path, "/");
                     }
                     strcat(full_path, entries[i].name);
-                    show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
+                    show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x,
+                                        start_line, current_count);
                 }
             }
             continue;
@@ -1062,7 +1106,8 @@ static void show_directory_tree(WINDOW *window,
         } else if (magic_cookie) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
                 char mime_buffer[512];
-                const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
+                const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+                                                         mime_buffer, sizeof(mime_buffer));
                 emoji = get_file_emoji(mime_type, entries[i].name);
             } else {
                 emoji = "📄";
@@ -1083,19 +1128,19 @@ static void show_directory_tree(WINDOW *window,
             if (is_symlink && strlen(symlink_target) > 0) {
                 int name_part = available_width / 2;
                 int target_part = available_width - name_part - 4;
-                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s -> %.*s...",
-                          emoji, name_part, entries[i].name, target_part, symlink_target);
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s -> %.*s...", emoji, name_part,
+                          entries[i].name, target_part, symlink_target);
             } else {
-                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s",
-                          emoji, available_width, entries[i].name);
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", emoji, available_width,
+                          entries[i].name);
             }
         } else {
             if (is_symlink && strlen(symlink_target) > 0) {
-                mvwprintw(window, *line_num, 2 + level * 2, "%s %s -> %s",
-                          emoji, entries[i].name, symlink_target);
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %s -> %s", emoji, entries[i].name,
+                          symlink_target);
             } else {
-                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s",
-                          emoji, available_width, entries[i].name);
+                mvwprintw(window, *line_num, 2 + level * 2, "%s %.*s", emoji, available_width,
+                          entries[i].name);
             }
         }
 
@@ -1109,11 +1154,10 @@ static void show_directory_tree(WINDOW *window,
             break;
         }
 
-        if (entries[i].is_dir &&
-            *line_num < max_y - 1 &&
-            level < DIRECTORY_TREE_MAX_DEPTH) {
+        if (entries[i].is_dir && *line_num < max_y - 1 && level < DIRECTORY_TREE_MAX_DEPTH) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
-                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x, start_line, current_count);
+                show_directory_tree(window, full_path, level + 1, line_num, max_y, max_x,
+                                    start_line, current_count);
                 if (tree_limit_hit) {
                     break;
                 }
@@ -1133,7 +1177,8 @@ static void show_directory_tree(WINDOW *window,
 
 int get_total_lines(const char *file_path) {
     FILE *file = fopen(file_path, "r");
-    if (!file) return 0;
+    if (!file)
+        return 0;
 
     int total_lines = text_preview_count_lines(file, INT_MAX);
 
@@ -1142,7 +1187,8 @@ int get_total_lines(const char *file_path) {
 }
 
 int get_preview_total_lines(const char *file_path, int content_width, int content_height) {
-    if (!file_path || !*file_path) return 0;
+    if (!file_path || !*file_path)
+        return 0;
 
     struct stat file_stat;
     if (stat(file_path, &file_stat) == 0 && S_ISDIR(file_stat.st_mode)) {
@@ -1157,10 +1203,13 @@ int get_preview_total_lines(const char *file_path, int content_width, int conten
             int target_h = 0;
             if (supports_truecolor()) {
                 int ansi_max_h = (int)((double)content_height / image_cell_aspect + 0.5);
-                if (ansi_max_h < 1) ansi_max_h = 1;
-                compute_ansi_scaled_dims(img.width, img.height, content_width, ansi_max_h, &target_w, &target_h);
+                if (ansi_max_h < 1)
+                    ansi_max_h = 1;
+                compute_ansi_scaled_dims(img.width, img.height, content_width, ansi_max_h,
+                                         &target_w, &target_h);
             } else {
-                scale_image_to_fit(img.width, img.height, content_width, content_height, &target_w, &target_h);
+                scale_image_to_fit(img.width, img.height, content_width, content_height, &target_w,
+                                   &target_h);
             }
             cupidimage_free(&img);
             return target_h;
@@ -1173,35 +1222,41 @@ int get_preview_total_lines(const char *file_path, int content_width, int conten
 
 bool preview_can_scroll_down(const char *path, int start, int width, int rows) {
     struct stat st;
-    if (!path || start < 0 || rows <= 0 || stat(path, &st)) return false;
+    if (!path || start < 0 || rows <= 0 || stat(path, &st))
+        return false;
     if (S_ISDIR(st.st_mode))
         return start < INT_MAX - rows && get_directory_tree_total_lines(path) > start + rows;
-    if (!S_ISREG(st.st_mode)) return false;
+    if (!S_ISREG(st.st_mode))
+        return false;
     if (is_archive_file(path)) {
         int visible = rows - 1; /* Archive entries start one row below text. */
-        if (visible <= 0 || start >= 1000 || visible > 1000 - start) return false;
+        if (visible <= 0 || start >= 1000 || visible > 1000 - start)
+            return false;
         ArcReader *reader = arc_open_path(path);
-        if (!reader) return false;
-        ArcEntry entry; int count = 0;
+        if (!reader)
+            return false;
+        ArcEntry entry;
+        int count = 0;
         while (count <= start + visible && count < 1000 && arc_next(reader, &entry) == 0) {
-            count++; arc_entry_free(&entry);
+            count++;
+            arc_entry_free(&entry);
         }
         arc_close(reader);
         return count > start + visible;
     }
     if (is_image_file(path))
         return start < INT_MAX - rows && get_preview_total_lines(path, width, rows) > start + rows;
-    if (start >= INT_MAX - rows) return false;
+    if (start >= INT_MAX - rows)
+        return false;
     FILE *stream = fopen(path, "r");
-    if (!stream) return false;
+    if (!stream)
+        return false;
     int count = text_preview_count_lines(stream, start + rows + 1);
     fclose(stream);
     return count > start + rows;
 }
 
-void draw_directory_window(WINDOW *window,
-                           const char *directory,
-                           Vector *files_vector,
+void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas) {
     int cols;
     int rows;
@@ -1209,15 +1264,20 @@ void draw_directory_window(WINDOW *window,
 
     size_t vec_len = files_vector ? Vector_len(*files_vector) : 0;
     cas->num_files = (SIZE)vec_len;
-    if (cas->num_files < 0) cas->num_files = 0;
-    if (cas->start < 0) cas->start = 0;
-    if (cas->cursor < 0) cas->cursor = 0;
+    if (cas->num_files < 0)
+        cas->num_files = 0;
+    if (cas->start < 0)
+        cas->start = 0;
+    if (cas->cursor < 0)
+        cas->cursor = 0;
     if (cas->num_files == 0) {
         cas->start = 0;
         cas->cursor = 0;
     } else {
-        if (cas->start >= cas->num_files) cas->start = 0;
-        if (cas->cursor >= cas->num_files) cas->cursor = cas->num_files - 1;
+        if (cas->start >= cas->num_files)
+            cas->start = 0;
+        if (cas->cursor >= cas->num_files)
+            cas->cursor = cas->num_files - 1;
     }
 
     werase(window);
@@ -1245,7 +1305,8 @@ void draw_directory_window(WINDOW *window,
             char symlink_target[MAX_PATH_LENGTH] = {0};
 
             if (is_symlink) {
-                ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
+                ssize_t target_len =
+                    readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
                 if (target_len > 0) {
                     symlink_target[target_len] = '\0';
                 }
@@ -1261,8 +1322,10 @@ void draw_directory_window(WINDOW *window,
 
             bool is_cursor = ((cas->start + i) == cas->cursor);
             bool is_selected = g_select_all_highlight || is_cursor;
-            if (is_selected) wattron(window, A_REVERSE);
-            if (g_select_all_highlight && is_cursor) wattron(window, A_BOLD);
+            if (is_selected)
+                wattron(window, A_REVERSE);
+            if (g_select_all_highlight && is_cursor)
+                wattron(window, A_BOLD);
 
             int name_len = (int)strlen(name);
             int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
@@ -1276,18 +1339,22 @@ void draw_directory_window(WINDOW *window,
                     mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
                               name_part, name, target_part, symlink_target);
                 } else {
-                    mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
+                    mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width,
+                              name);
                 }
             } else {
                 if (is_symlink && target_len > 0) {
-                    mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name, symlink_target);
+                    mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
+                              symlink_target);
                 } else {
                     mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
                 }
             }
 
-            if (g_select_all_highlight && is_cursor) wattroff(window, A_BOLD);
-            if (is_selected) wattroff(window, A_REVERSE);
+            if (g_select_all_highlight && is_cursor)
+                wattroff(window, A_BOLD);
+            if (is_selected)
+                wattroff(window, A_REVERSE);
         }
 
         wrefresh(window);
@@ -1317,7 +1384,8 @@ void draw_directory_window(WINDOW *window,
             emoji = "📁";
         } else {
             char mime_buffer[512];
-            const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
+            const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+                                                     mime_buffer, sizeof(mime_buffer));
             emoji = get_file_emoji(mime_type, name);
         }
         const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
@@ -1329,8 +1397,10 @@ void draw_directory_window(WINDOW *window,
 
         bool is_cursor = ((cas->start + i) == cas->cursor);
         bool is_selected = g_select_all_highlight || is_cursor;
-        if (is_selected) wattron(window, A_REVERSE);
-        if (g_select_all_highlight && is_cursor) wattron(window, A_BOLD);
+        if (is_selected)
+            wattron(window, A_REVERSE);
+        if (g_select_all_highlight && is_cursor)
+            wattron(window, A_BOLD);
 
         int name_len = (int)strlen(name);
         int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
@@ -1341,21 +1411,24 @@ void draw_directory_window(WINDOW *window,
             if (is_symlink && target_len > 0) {
                 int name_part = available_width / 2;
                 int target_part = available_width - name_part - 4;
-                mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
-                          name_part, name, target_part, symlink_target);
+                mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji, name_part,
+                          name, target_part, symlink_target);
             } else {
                 mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
             }
         } else {
             if (is_symlink && target_len > 0) {
-                mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name, symlink_target);
+                mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
+                          symlink_target);
             } else {
                 mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
             }
         }
 
-        if (g_select_all_highlight && is_cursor) wattroff(window, A_BOLD);
-        if (is_selected) wattroff(window, A_REVERSE);
+        if (g_select_all_highlight && is_cursor)
+            wattroff(window, A_BOLD);
+        if (is_selected)
+            wattroff(window, A_REVERSE);
     }
 
     magic_close(magic_cookie);
@@ -1363,16 +1436,20 @@ void draw_directory_window(WINDOW *window,
 }
 
 static const char *basename_ptr_local(const char *p) {
-    if (!p) return "";
+    if (!p)
+        return "";
     size_t len = strlen(p);
-    while (len > 0 && p[len - 1] == '/') len--;
-    if (len == 0) return "";
+    while (len > 0 && p[len - 1] == '/')
+        len--;
+    if (len == 0)
+        return "";
     const char *end = p + len;
     const char *slash = memrchr(p, '/', (size_t)(end - p));
     return slash ? (slash + 1) : p;
 }
 
-void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name, int start_line) {
+void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name,
+                              int start_line) {
     // Clear the window and draw border
     werase(window);
     box(window, 0, 0);
@@ -1386,7 +1463,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         return;
     }
 
-    const char *name = (display_name && *display_name) ? display_name : basename_ptr_local(full_path);
+    const char *name =
+        (display_name && *display_name) ? display_name : basename_ptr_local(full_path);
     mvwprintw(window, 1, 2, "Preview: %s", name);
 
     struct stat file_stat;
@@ -1418,8 +1496,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
                           (now.tv_nsec - last_preview_size_change.tv_nsec);
         bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
 
-        long dir_size = allow_enqueue ? get_directory_size(full_path)
-                                      : get_directory_size_peek(full_path);
+        long dir_size =
+            allow_enqueue ? get_directory_size(full_path) : get_directory_size_peek(full_path);
         if (dir_size == -1) {
             snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
         } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
@@ -1435,7 +1513,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
                 format_file_size(tmp, (size_t)p);
                 snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
             } else {
-                snprintf(fileSizeStr, sizeof(fileSizeStr), allow_enqueue ? "Calculating..." : "Waiting...");
+                snprintf(fileSizeStr, sizeof(fileSizeStr),
+                         allow_enqueue ? "Calculating..." : "Waiting...");
             }
         } else {
             format_file_size(fileSizeStr, (size_t)dir_size);
@@ -1459,7 +1538,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
-        const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE, mime_buffer, sizeof(mime_buffer));
+        const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+                                                 mime_buffer, sizeof(mime_buffer));
         if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
             is_image = true;
         }
@@ -1498,7 +1578,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     if (S_ISDIR(file_stat.st_mode)) {
         int line_num = 7;
         int current_count = 0;
-        show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line, &current_count);
+        show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line,
+                            &current_count);
     } else if (is_archive_file(full_path)) {
         display_archive_preview(window, full_path, start_line, max_y, max_x);
     } else if (is_image) {
@@ -1517,8 +1598,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_supported_file_type(full_path)) {
         FILE *file = fopen(full_path, "r");
         if (file) {
-            draw_text_preview(window, file, syntax_get_for_file(full_path),
-                              start_line, max_y, max_x);
+            draw_text_preview(window, file, syntax_get_for_file(full_path), start_line, max_y,
+                              max_x);
             fclose(file);
         } else {
             mvwprintw(window, 7, 2, "Unable to open file for preview");
@@ -1532,7 +1613,8 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     }
 }
 
-void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry, int start_line) {
+void draw_preview_window(WINDOW *window, const char *current_directory, const char *selected_entry,
+                         int start_line) {
     if (selected_entry == NULL || selected_entry[0] == '\0') {
         draw_preview_window_path(window, NULL, NULL, start_line);
         return;
@@ -1561,7 +1643,8 @@ void fix_cursor(CursorAndSlice *cas) {
     }
 
     int max_start = cas->num_files - visible_lines;
-    if (max_start < 0) max_start = 0;
+    if (max_start < 0)
+        max_start = 0;
     cas->start = MIN(cas->start, max_start);
     cas->start = MAX(0, cas->start);
 
@@ -1571,8 +1654,10 @@ void fix_cursor(CursorAndSlice *cas) {
             cas->start = cas->cursor;
         } else {
             cas->start = cas->cursor - visible_lines + 1;
-            if (cas->start < 0) cas->start = 0;
-            if (cas->start > max_start) cas->start = max_start;
+            if (cas->start < 0)
+                cas->start = 0;
+            if (cas->start > max_start)
+                cas->start = max_start;
         }
     }
 }

@@ -1,0 +1,12 @@
+name: C and C++ formatting
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check application and test source formatting
+        run: git ls-files -z -- '*.c' '*.h' '*.cpp' '*.cc' '*.cxx' '*.hpp' '*.hh' '*.hxx' ':(exclude)lib/**' | xargs -0 -r clang-format-18 --dry-run --Werror

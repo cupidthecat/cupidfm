@@ -1,8 +1,8 @@
 #ifndef VECTOR_H
 #define VECTOR_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 struct VectorImpl {
     size_t cap;
@@ -14,7 +14,6 @@ typedef struct {
     struct VectorImpl _PRIVATE_dont_access_PRIVATE_;
 } Vector;
 
-
 Vector Vector_new(size_t cap);
 void Vector_bye(Vector *v);
 /* Reserve len + add elements. Failure preserves the original vector. */
@@ -25,6 +24,4 @@ size_t Vector_len(Vector v);
 void Vector_min_cap(Vector *v);
 void Vector_sane_cap(Vector *v);
 
-
 #endif
-

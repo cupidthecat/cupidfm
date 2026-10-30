@@ -3,37 +3,37 @@
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
+#include <ctype.h> // for isprint
+#include <curses.h> // for initscr, noecho, keypad, stdscr, clear, printw, refresh, mvaddch, getch, endwin
+#include <dirent.h>    // for DIR, struct dirent, opendir, readdir, closedir
 #include <errno.h>     // for errno
+#include <libgen.h>    // for dirname() and basename()
+#include <limits.h>    // for PATH_MAX
 #include <stdarg.h>    // for va_list, va_start, va_end
 #include <stdio.h>     // for fprintf, stderr, vfprintf
 #include <stdlib.h>    // for exit
 #include <string.h>    // for strerror
-#include <sys/wait.h>  // for WEXITSTATUS, WIFEXITED
-#include <dirent.h>    // for DIR, struct dirent, opendir, readdir, closedir
-#include <curses.h>    // for initscr, noecho, keypad, stdscr, clear, printw, refresh, mvaddch, getch, endwin
-#include <unistd.h>    // for system
-#include <sys/types.h> // for stat
 #include <sys/stat.h>  // for stat, S_ISDIR
-#include <ctype.h>     // for isprint
-#include <libgen.h>    // for dirname() and basename()
-#include <limits.h>    // for PATH_MAX
+#include <sys/types.h> // for stat
+#include <sys/wait.h>  // for WEXITSTATUS, WIFEXITED
 #include <time.h>      // for clock_gettime, CLOCK_MONOTONIC, struct timespec
+#include <unistd.h>    // for system
 
 // Local includes
-#include "utils.h"
-#include "mime.h"
-#include "text_preview.h"
-#include "process.h"
 #include "clipboard.h"
-#include "files.h"  // Include the header for FileAttr and related functions
+#include "files.h" // Include the header for FileAttr and related functions
 #include "globals.h"
 #include "main.h"
-#include "mime.h"   // For MIME type and emoji functions
+#include "mime.h"
+#include "mime.h" // For MIME type and emoji functions
+#include "process.h"
+#include "text_preview.h"
+#include "utils.h"
 #define MAX_DISPLAY_LENGTH 32
 
 // Declare copied_filename as a global variable at the top of the file
 char copied_filename[MAX_PATH_LENGTH] = "";
-extern bool should_clear_notif; 
+extern bool should_clear_notif;
 
 /**
  * Confirm deletion of a file or directory by prompting the user.
@@ -44,36 +44,37 @@ extern bool should_clear_notif;
  */
 bool confirm_delete(const char *path, bool *should_delete) {
     *should_delete = false;
-    
+
     // Get terminal size
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
-    
+
     // Define popup window size
     int popup_height = 5;
     int popup_width = 60;
     int starty = (max_y - popup_height) / 2;
     int startx = (max_x - popup_width) / 2;
-    
+
     // Create the popup window
     WINDOW *popup = newwin(popup_height, popup_width, starty, startx);
     box(popup, 0, 0);
-    
+
     // Display the confirmation message
     mvwprintw(popup, 1, 2, "Confirm Delete:");
     mvwprintw(popup, 2, 2, "'%s' (Y to confirm, N or ESC to cancel)", path);
     wrefresh(popup);
-    
+
     // Make input non-blocking to allow banner updates
     wtimeout(popup, 10);
-    
+
     // Initialize time-based update tracking
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
-    
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
+
     // Capture user input
     int ch;
     while (1) {
@@ -82,10 +83,10 @@ bool confirm_delete(const char *path, bool *should_delete) {
             // Handle time-based updates while waiting for input
             struct timespec current_time;
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            
+
             // Update banner scrolling
             long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
-                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
             if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
                 pthread_mutex_lock(&banner_mutex);
                 draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -93,7 +94,7 @@ bool confirm_delete(const char *path, bool *should_delete) {
                 banner_offset = (banner_offset + 1) % total_scroll_length;
                 last_banner_update = current_time;
             }
-            
+
             napms(10);
             continue;
         }
@@ -105,31 +106,31 @@ bool confirm_delete(const char *path, bool *should_delete) {
             break;
         }
     }
-    
+
     wtimeout(popup, -1); // Restore blocking input
-    
+
     // Clear and delete the popup window
     werase(popup);
     wrefresh(popup);
     delwin(popup);
-    
+
     return *should_delete;
 }
 
 void die(int r, const char *format, ...) {
-	fprintf(stderr, "The program used die()\n");
-	fprintf(stderr, "The last errno was %d/%s\n", errno, strerror(errno));
-	fprintf(stderr, "The user of die() decided to leave this message for "
-			"you:\n");
+    fprintf(stderr, "The program used die()\n");
+    fprintf(stderr, "The last errno was %d/%s\n", errno, strerror(errno));
+    fprintf(stderr, "The user of die() decided to leave this message for "
+                    "you:\n");
 
-	va_list args;
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
 
-	fprintf(stderr, "\nGood Luck.\n");
+    fprintf(stderr, "\nGood Luck.\n");
 
-	exit(r);
+    exit(r);
 }
 
 void create_file(const char *filename) {
@@ -140,12 +141,14 @@ void create_file(const char *filename) {
 }
 
 void browse_files(const char *directory) {
-    if (!directory || !*directory) return;
+    if (!directory || !*directory)
+        return;
     /* xdg-open has no -- delimiter; prefix relative option-like paths. */
     char *operand = NULL;
     if (directory[0] == '-') {
         operand = malloc(strlen(directory) + 3);
-        if (!operand) return;
+        if (!operand)
+            return;
         snprintf(operand, strlen(directory) + 3, "./%s", directory);
     }
     char *args[] = {"xdg-open", operand ? operand : (char *)directory, NULL};
@@ -153,6 +156,7 @@ void browse_files(const char *directory) {
         fprintf(stderr, "Error: Unable to open the file manager.\n");
     free(operand);
 }
+
 /**
  * Function to display the contents of a directory in the terminal
  *
@@ -164,7 +168,7 @@ void display_files(const char *directory) {
 
     if ((dir = opendir(directory)) == NULL) {
         die(1, "Couldn't open directory %s", directory);
-        return ;
+        return;
     }
 
     while ((entry = readdir(dir)) != NULL) {
@@ -173,6 +177,7 @@ void display_files(const char *directory) {
 
     closedir(dir);
 }
+
 /**
  * Function to preview the contents of a file in the terminal
  *
@@ -180,7 +185,7 @@ void display_files(const char *directory) {
  */
 void preview_file(const char *filename) {
     printf("Attempting to preview file: %s\n", filename);
-    
+
     // First check if file exists and is readable
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -195,14 +200,14 @@ void preview_file(const char *filename) {
     noecho();
     keypad(stdscr, TRUE);
     raw();
-    
+
     int ch;
     int row = 0;
     int col = 0;
     int max_rows, max_cols;
-    
+
     getmaxyx(stdscr, max_rows, max_cols);
-    
+
     // Clear screen and show header
     clear();
     attron(A_BOLD | A_REVERSE);
@@ -210,9 +215,9 @@ void preview_file(const char *filename) {
     attroff(A_BOLD | A_REVERSE);
     printw("\nPress 'q' to exit, arrow keys to scroll\n\n");
     refresh();
-    
+
     row = 3;
-    
+
     // Read and display file contents
     char buffer[1024];
     while (fgets(buffer, sizeof(buffer), file) != NULL) {
@@ -232,20 +237,22 @@ void preview_file(const char *filename) {
             }
         }
         row++;
-        
+
         if (row >= max_rows - 1) {
             break;
         }
     }
-    
+
     refresh();
-    
+
     // Wait for 'q' to exit
-    while ((ch = getch()) != 'q');
-    
+    while ((ch = getch()) != 'q')
+        ;
+
     endwin();
     fclose(file);
 }
+
 /**
  * Function to change the current directory and update the list of files
  *
@@ -301,27 +308,36 @@ bool copy_to_clipboard(const char *path) {
 // Helper function to generate a unique filename in target_directory.
 // If target_directory/filename exists, the function returns a new filename
 // such as "filename (1).ext", "filename (2).ext", etc.
-static bool generate_unique_filename(const char *target_directory, const char *filename, char *unique_name, size_t unique_size) {
-    if (!target_directory || !filename || !unique_name || unique_size == 0) return false;
+static bool generate_unique_filename(const char *target_directory, const char *filename,
+                                     char *unique_name, size_t unique_size) {
+    if (!target_directory || !filename || !unique_name || unique_size == 0)
+        return false;
     const char *dot = strrchr(filename, '.');
     size_t base_len = dot ? (size_t)(dot - filename) : strlen(filename);
-    if (base_len > INT_MAX) return false;
+    if (base_len > INT_MAX)
+        return false;
     const char *ext = dot ? dot : "";
-    for (unsigned counter = 0; ; ++counter) {
-        int n = counter == 0 ? snprintf(unique_name, unique_size, "%s", filename) :
-            snprintf(unique_name, unique_size, "%.*s (%u)%s", (int)base_len, filename, counter, ext);
-        if (n < 0 || (size_t)n >= unique_size) return false;
+    for (unsigned counter = 0;; ++counter) {
+        int n = counter == 0 ? snprintf(unique_name, unique_size, "%s", filename)
+                             : snprintf(unique_name, unique_size, "%.*s (%u)%s", (int)base_len,
+                                        filename, counter, ext);
+        if (n < 0 || (size_t)n >= unique_size)
+            return false;
         char target_path[PATH_MAX];
         n = snprintf(target_path, sizeof(target_path), "%s/%s", target_directory, unique_name);
-        if (n < 0 || (size_t)n >= sizeof(target_path)) return false;
+        if (n < 0 || (size_t)n >= sizeof(target_path))
+            return false;
         struct stat st;
-        if (lstat(target_path, &st) != 0) return errno == ENOENT;
-        if (counter == UINT_MAX) return false;
+        if (lstat(target_path, &st) != 0)
+            return errno == ENOENT;
+        if (counter == UINT_MAX)
+            return false;
     }
 }
 
 void paste_log_free(PasteLog *log) {
-    if (!log) return;
+    if (!log)
+        return;
     for (size_t i = 0; i < log->count; i++) {
         free(log->src ? log->src[i] : NULL);
         free(log->dst ? log->dst[i] : NULL);
@@ -335,8 +351,10 @@ void paste_log_free(PasteLog *log) {
 }
 
 static bool paste_log_append(PasteLog *log, PasteKind kind, const char *src, const char *dst) {
-    if (!log) return true;
-    if (log->count >= (size_t)-1 / sizeof(char *)) return false;
+    if (!log)
+        return true;
+    if (log->count >= (size_t)-1 / sizeof(char *))
+        return false;
     size_t n = log->count + 1;
     char **new_src = malloc(n * sizeof(char *));
     char **new_dst = malloc(n * sizeof(char *));
@@ -360,7 +378,8 @@ static bool paste_log_append(PasteLog *log, PasteKind kind, const char *src, con
     log->src = new_src;
     log->dst = new_dst;
     log->count = n;
-    if (log->kind == PASTE_KIND_NONE) log->kind = kind;
+    if (log->kind == PASTE_KIND_NONE)
+        log->kind = kind;
     return true;
 }
 
@@ -373,7 +392,8 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         log->dst = NULL;
     }
     FILE *temp = tmpfile();
-    if (!temp) return -1;
+    if (!temp)
+        return -1;
     char *args[] = {"xclip", "-selection", "clipboard", "-o", NULL};
     if (!run_process(args, -1, fileno(temp))) {
         fprintf(stderr, "Error: Unable to read from clipboard.\n");
@@ -396,14 +416,18 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         const char *name = strrchr(source, '/');
         name = name ? name + 1 : source;
         struct stat st;
-        if (lstat(source, &st) != 0) continue;
+        if (lstat(source, &st) != 0)
+            continue;
         char unique[512], destination[PATH_MAX];
-        if (!generate_unique_filename(target_directory, name, unique, sizeof(unique))) continue;
+        if (!generate_unique_filename(target_directory, name, unique, sizeof(unique)))
+            continue;
         int n = snprintf(destination, sizeof(destination), "%s/%s", target_directory, unique);
-        if (n < 0 || (size_t)n >= sizeof(destination)) continue;
-        bool ok = paths.cut ? file_command_move(source, destination) :
-                              file_command_copy(source, destination, S_ISDIR(st.st_mode));
-        if (!ok) continue;
+        if (n < 0 || (size_t)n >= sizeof(destination))
+            continue;
+        bool ok = paths.cut ? file_command_move(source, destination)
+                            : file_command_copy(source, destination, S_ISDIR(st.st_mode));
+        if (!ok)
+            continue;
         if (!paste_log_append(log, kind, source, destination)) {
             paste_log_free(log);
             log = NULL;
@@ -420,11 +444,15 @@ bool cut_to_clipboard(const char *path) {
 }
 
 static bool ensure_trash_dir(char *out_dir, size_t out_len) {
-    if (!out_dir || out_len == 0) return false;
+    if (!out_dir || out_len == 0)
+        return false;
     int n = snprintf(out_dir, out_len, "/tmp/cupidfm_trash_%d", getpid());
-    if (n < 0 || (size_t)n >= out_len) return false;
-    if (mkdir(out_dir, 0700) == 0) return true;
-    if (errno != EEXIST) return false;
+    if (n < 0 || (size_t)n >= out_len)
+        return false;
+    if (mkdir(out_dir, 0700) == 0)
+        return true;
+    if (errno != EEXIST)
+        return false;
     struct stat existing;
     // A predictable session path must never redirect private deleted files.
     return lstat(out_dir, &existing) == 0 && S_ISDIR(existing.st_mode) &&
@@ -445,25 +473,30 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
 
     const char *base = strrchr(path, '/');
     base = base ? base + 1 : path;
-    if (!base || !*base) base = "item";
+    if (!base || !*base)
+        base = "item";
 
     char dst_path[MAX_PATH_LENGTH];
     int n = snprintf(dst_path, sizeof(dst_path), "%s/%s", trash_dir, base);
     if (n < 0 || (size_t)n >= sizeof(dst_path)) {
         return false;
     }
-    for (unsigned attempt = 0; ; ++attempt) {
+    for (unsigned attempt = 0;; ++attempt) {
         struct stat existing;
         if (lstat(dst_path, &existing) != 0) {
-            if (errno != ENOENT) return false;
+            if (errno != ENOENT)
+                return false;
             break;
         }
-        if (attempt == UINT_MAX) return false;
+        if (attempt == UINT_MAX)
+            return false;
         n = snprintf(dst_path, sizeof(dst_path), "%s/%s_%u", trash_dir, base, attempt + 1);
-        if (n < 0 || (size_t)n >= sizeof(dst_path)) return false;
+        if (n < 0 || (size_t)n >= sizeof(dst_path))
+            return false;
     }
     // Never move an item if its undo path cannot be returned intact.
-    if (out_trashed_path && (out_len == 0 || strlen(dst_path) >= out_len)) return false;
+    if (out_trashed_path && (out_len == 0 || strlen(dst_path) >= out_len))
+        return false;
 
     // Soft delete: move into per-session trash so we can undo.
     if (!file_command_move(path, dst_path)) {
@@ -479,7 +512,8 @@ bool delete_item(const char *path, char *out_trashed_path, size_t out_len) {
 }
 
 bool change_permissions(WINDOW *win, const char *path) {
-    if (!win || !path || !*path) return false;
+    if (!win || !path || !*path)
+        return false;
 
     struct stat st;
     if (lstat(path, &st) != 0) {
@@ -498,8 +532,8 @@ bool change_permissions(WINDOW *win, const char *path) {
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
     int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     unsigned current = (unsigned)(st.st_mode & 07777);
 
@@ -533,7 +567,8 @@ bool change_permissions(WINDOW *win, const char *path) {
             return false;
         }
 
-        if (ch == '\n') break;
+        if (ch == '\n')
+            break;
 
         if (ch == KEY_BACKSPACE || ch == 127) {
             if (idx > 0) {
@@ -585,7 +620,8 @@ bool change_permissions(WINDOW *win, const char *path) {
  * @param dir_path The directory where the new folder will be created.
  * @return         true if the directory was created successfully, false if canceled or failed.
  */
-bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_path, size_t out_len) {
+bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_path,
+                          size_t out_len) {
     char dir_name[MAX_PATH_LENGTH] = {0};
     int ch, index = 0;
 
@@ -596,8 +632,9 @@ bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_p
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     // Prompt for the new directory name
     werase(win);
@@ -609,10 +646,10 @@ bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_p
             // Handle time-based updates while waiting for input
             struct timespec current_time;
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            
+
             // Update banner scrolling
             long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
-                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
             if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
                 pthread_mutex_lock(&banner_mutex);
                 draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -620,11 +657,11 @@ bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_p
                 banner_offset = (banner_offset + 1) % total_scroll_length;
                 last_banner_update = current_time;
             }
-            
+
             napms(10);
             continue;
         }
-        if (ch == 27) { // Escape key pressed
+        if (ch == 27) {        // Escape key pressed
             wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ Directory creation canceled.");
             should_clear_notif = false;
@@ -643,7 +680,7 @@ bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_p
         mvwprintw(win, 0, 0, "New directory name (Esc to cancel): %s", dir_name);
         wrefresh(win);
     }
-    
+
     wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
@@ -690,8 +727,9 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     // Prompt for new name
     werase(win);
@@ -703,10 +741,10 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
             // Handle time-based updates while waiting for input
             struct timespec current_time;
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            
+
             // Update banner scrolling
             long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
-                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
             if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
                 pthread_mutex_lock(&banner_mutex);
                 draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -714,11 +752,11 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
                 banner_offset = (banner_offset + 1) % total_scroll_length;
                 last_banner_update = current_time;
             }
-            
+
             napms(10);
             continue;
         }
-        if (ch == 27) { // Escape key pressed
+        if (ch == 27) {        // Escape key pressed
             wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ Rename canceled.");
             should_clear_notif = false; // Prevent immediate clearing
@@ -737,7 +775,7 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
         mvwprintw(win, 0, 0, "Rename (Esc to cancel): %s", new_name);
         wrefresh(win);
     }
-    
+
     wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
@@ -789,8 +827,9 @@ bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, 
     // banner_offset is now a global variable - no need for static
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) + (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) +
-                              BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN + 4;
+    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
+                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
+                              BANNER_TIME_LEN + 4;
 
     // Prompt for the new file name
     werase(win);
@@ -802,10 +841,10 @@ bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, 
             // Handle time-based updates while waiting for input
             struct timespec current_time;
             clock_gettime(CLOCK_MONOTONIC, &current_time);
-            
+
             // Update banner scrolling
             long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
-                                   (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
+                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
             if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
                 pthread_mutex_lock(&banner_mutex);
                 draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -813,11 +852,11 @@ bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, 
                 banner_offset = (banner_offset + 1) % total_scroll_length;
                 last_banner_update = current_time;
             }
-            
+
             napms(10);
             continue;
         }
-        if (ch == 27) { // Escape key pressed
+        if (ch == 27) {        // Escape key pressed
             wtimeout(win, -1); // Restore blocking input
             show_notification(win, "❌ File creation canceled.");
             should_clear_notif = false;
@@ -836,7 +875,7 @@ bool create_new_file(WINDOW *win, const char *dir_path, char *out_created_path, 
         mvwprintw(win, 0, 0, "New file name (Esc to cancel): %s", file_name);
         wrefresh(win);
     }
-    
+
     wtimeout(win, -1); // Restore blocking input
 
     if (index == 0) {
@@ -888,7 +927,8 @@ void reload_directory(Vector *files, const char *current_directory) {
 }
 
 // Lazy loading version - loads initial batch
-void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded, size_t *total_files) {
+void reload_directory_lazy(Vector *files, const char *current_directory, size_t *files_loaded,
+                           size_t *total_files) {
     mime_cache_clear();
     text_preview_clear_index();
     // Free all FileAttr objects before clearing the vector
@@ -898,25 +938,27 @@ void reload_directory_lazy(Vector *files, const char *current_directory, size_t 
     // Empties the vector
     Vector_set_len_no_free(files, 0);
     *files_loaded = 0;
-    
+
     // Count total files first (for display purposes)
     *total_files = count_directory_files(current_directory);
-    
+
     // Load initial batch - larger for better UX (200 files or all if less)
     const size_t INITIAL_BATCH = 200;
     size_t batch_size = (*total_files > INITIAL_BATCH) ? INITIAL_BATCH : *total_files;
-    
+
     if (batch_size > 0) {
         append_files_to_vec_lazy(files, current_directory, batch_size, files_loaded);
     }
-    
+
     // Makes the vector shorter
     Vector_sane_cap(files);
 }
 
 // Load more files when user scrolls near the end
-// Note: CursorAndSlice is defined in main.c, this function is implemented here but declared in utils.h
-void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas_ptr, size_t *files_loaded, size_t total_files) {
+// Note: CursorAndSlice is defined in main.c, this function is implemented here but declared in
+// utils.h
+void load_more_files_if_needed(Vector *files, const char *current_directory, void *cas_ptr,
+                               size_t *files_loaded, size_t total_files) {
     // Cast to access CursorAndSlice fields (defined in main.c)
     typedef struct {
         SIZE start;
@@ -924,27 +966,30 @@ void load_more_files_if_needed(Vector *files, const char *current_directory, voi
         SIZE num_lines;
         SIZE num_files;
     } CursorAndSlice;
+
     CursorAndSlice *cas = (CursorAndSlice *)cas_ptr;
-    
+
     // Only load more if we haven't loaded all files yet
     if (total_files > 0 && *files_loaded >= total_files) {
-        return;  // All files already loaded
+        return; // All files already loaded
     }
-    
+
     // Calculate how close we are to the end of loaded files
     size_t visible_lines = cas->num_lines - 2;
     size_t end_of_visible = cas->start + visible_lines;
-    
-    // Load more if we're within 50 items of the end of loaded files (increased threshold for smoother experience)
+
+    // Load more if we're within 50 items of the end of loaded files (increased threshold for
+    // smoother experience)
     const size_t LOAD_THRESHOLD = 50;
     if (end_of_visible + LOAD_THRESHOLD >= *files_loaded && *files_loaded < total_files) {
         // Load larger batches to reduce frequency of loading
         size_t remaining = (total_files > *files_loaded) ? (total_files - *files_loaded) : 200;
-        size_t batch_size = (remaining > 200) ? 200 : remaining;  // Load 200 at a time for better performance
-        
+        size_t batch_size =
+            (remaining > 200) ? 200 : remaining; // Load 200 at a time for better performance
+
         append_files_to_vec_lazy(files, current_directory, batch_size, files_loaded);
         cas->num_files = Vector_len(*files);
-        
+
         // Make the vector shorter if needed
         Vector_sane_cap(files);
     }

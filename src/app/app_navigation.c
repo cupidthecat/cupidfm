@@ -18,25 +18,24 @@
 #include "utils.h"
 
 void navigation_clear_stack(VecStack *stack) {
-    if (!stack) return;
+    if (!stack)
+        return;
     char *p;
     while ((p = (char *)VecStack_pop(stack)) != NULL) {
         free(p);
     }
 }
 
-void navigate_up(CursorAndSlice *cas,
-                 Vector *files,
-                 const char **selected_entry,
-                 const char *current_directory,
-                 LazyLoadState *lazy_load) {
-    if (!cas || !files || !selected_entry) return;
+void navigate_up(CursorAndSlice *cas, Vector *files, const char **selected_entry,
+                 const char *current_directory, LazyLoadState *lazy_load) {
+    if (!cas || !files || !selected_entry)
+        return;
     cas->num_files = Vector_len(*files);
     if (cas->num_files > 0) {
         if (cas->cursor == 0) {
             if (lazy_load && current_directory) {
-                load_more_files_if_needed(files, current_directory, cas,
-                                          &lazy_load->files_loaded, lazy_load->total_files);
+                load_more_files_if_needed(files, current_directory, cas, &lazy_load->files_loaded,
+                                          lazy_load->total_files);
                 cas->num_files = Vector_len(*files);
             }
 
@@ -61,12 +60,10 @@ void navigate_up(CursorAndSlice *cas,
     }
 }
 
-void navigate_down(CursorAndSlice *cas,
-                   Vector *files,
-                   const char **selected_entry,
-                   const char *current_directory,
-                   LazyLoadState *lazy_load) {
-    if (!cas || !files || !selected_entry) return;
+void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_entry,
+                   const char *current_directory, LazyLoadState *lazy_load) {
+    if (!cas || !files || !selected_entry)
+        return;
     cas->num_files = Vector_len(*files);
     if (cas->num_files > 0) {
         if (cas->cursor >= cas->num_files - 1) {
@@ -81,7 +78,8 @@ void navigate_down(CursorAndSlice *cas,
             }
 
             int max_start = cas->num_files - visible_lines;
-            if (max_start < 0) max_start = 0;
+            if (max_start < 0)
+                max_start = 0;
             if (cas->start > max_start) {
                 cas->start = max_start;
             }
@@ -89,8 +87,8 @@ void navigate_down(CursorAndSlice *cas,
         fix_cursor(cas);
 
         if (lazy_load && current_directory) {
-            load_more_files_if_needed(files, current_directory, cas,
-                                      &lazy_load->files_loaded, lazy_load->total_files);
+            load_more_files_if_needed(files, current_directory, cas, &lazy_load->files_loaded,
+                                      lazy_load->total_files);
             cas->num_files = Vector_len(*files);
         }
 
@@ -100,12 +98,10 @@ void navigate_down(CursorAndSlice *cas,
     }
 }
 
-void navigate_left(char **current_directory,
-                   Vector *files,
-                   CursorAndSlice *dir_window_cas,
-                   AppState *state,
-                   VecStack *dir_stack) {
-    if (!current_directory || !*current_directory || !files || !dir_window_cas || !state) return;
+void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_window_cas,
+                   AppState *state, VecStack *dir_stack) {
+    if (!current_directory || !*current_directory || !files || !dir_window_cas || !state)
+        return;
 
     search_clear(state);
 
@@ -120,8 +116,8 @@ void navigate_left(char **current_directory,
             }
             state->lazy_load.directory_path = strdup(*current_directory);
             git_update_directory(*current_directory);
-            reload_directory_lazy(files, *current_directory,
-                                  &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+            reload_directory_lazy(files, *current_directory, &state->lazy_load.files_loaded,
+                                  &state->lazy_load.total_files);
         }
     }
 
@@ -132,8 +128,8 @@ void navigate_left(char **current_directory,
         }
         state->lazy_load.directory_path = strdup(*current_directory);
         git_update_directory(*current_directory);
-        reload_directory_lazy(files, *current_directory,
-                              &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+        reload_directory_lazy(files, *current_directory, &state->lazy_load.files_loaded,
+                              &state->lazy_load.total_files);
     }
 
     if (popped_dir) {
@@ -165,16 +161,16 @@ void navigate_left(char **current_directory,
     wrefresh(notifwin);
 }
 
-void navigate_right(AppState *state,
-                    char **current_directory,
-                    Vector *files_view,
-                    CursorAndSlice *dir_window_cas,
-                    VecStack *dir_stack) {
-    if (!state || !current_directory || !*current_directory || !dir_window_cas) return;
+void navigate_right(AppState *state, char **current_directory, Vector *files_view,
+                    CursorAndSlice *dir_window_cas, VecStack *dir_stack) {
+    if (!state || !current_directory || !*current_directory || !dir_window_cas)
+        return;
 
     Vector *view = files_view ? files_view : &state->files;
-    if (Vector_len(*view) == 0) return;
-    if (dir_window_cas->cursor < 0 || (size_t)dir_window_cas->cursor >= Vector_len(*view)) return;
+    if (Vector_len(*view) == 0)
+        return;
+    if (dir_window_cas->cursor < 0 || (size_t)dir_window_cas->cursor >= Vector_len(*view))
+        return;
 
     FileAttr current_file = (FileAttr)view->el[dir_window_cas->cursor];
     const char *selected_entry = FileAttr_get_name(current_file);
@@ -234,8 +230,8 @@ void navigate_right(AppState *state,
     state->lazy_load.last_load_time = (struct timespec){0};
 
     git_update_directory(*current_directory);
-    reload_directory_lazy(&state->files, *current_directory,
-                          &state->lazy_load.files_loaded, &state->lazy_load.total_files);
+    reload_directory_lazy(&state->files, *current_directory, &state->lazy_load.files_loaded,
+                          &state->lazy_load.total_files);
 
     dir_window_cas->cursor = 0;
     dir_window_cas->start = 0;

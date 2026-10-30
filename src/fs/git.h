@@ -16,6 +16,6 @@ void git_update_directory(const char *directory);
 GitStatus git_query_file_status(const char *filepath);
 
 // Convert git status to emoji string
-const char* git_status_to_emoji(GitStatus status);
+const char *git_status_to_emoji(GitStatus status);
 
 #endif // GIT_H

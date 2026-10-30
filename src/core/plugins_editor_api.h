@@ -10,4 +10,3 @@ typedef struct cs_vm cs_vm;
 void plugins_register_editor_api(cs_vm *vm, PluginManager *pm);
 
 #endif // PLUGINS_EDITOR_API_H
-

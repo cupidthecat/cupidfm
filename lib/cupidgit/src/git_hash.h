@@ -1,8 +1,8 @@
 #ifndef GIT_HASH_H
 #define GIT_HASH_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define GIT_SHA1_SIZE 20
 

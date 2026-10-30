@@ -22,29 +22,33 @@ int banner_initial_offset_for_center(const char *text, const char *build_info) {
     // To start "centered", we start the viewport inside the trailing-space region so the
     // first frame shows leading spaces, then the text.
     int width = COLS - 2;
-    if (width <= 0) return 0;
+    if (width <= 0)
+        return 0;
 
     int text_len = (int)strlen(text ? text : "");
 
     // build_with_time = build_info + " | " + "YYYY-MM-DD HH:MM:SS"
-    int build_len = (int)strlen(build_info ? build_info : "") + BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN;
+    int build_len =
+        (int)strlen(build_info ? build_info : "") + BANNER_TIME_PREFIX_LEN + BANNER_TIME_LEN;
 
     int content_len = text_len + 2 + build_len;
     int start_pad = (width - content_len) / 2;
-    if (start_pad <= 0) return 0;
+    if (start_pad <= 0)
+        return 0;
 
     int total_len = width + text_len + build_len + 4;
-    if (total_len <= 0) return 0;
+    if (total_len <= 0)
+        return 0;
 
     int off = total_len - start_pad;
     off %= total_len;
-    if (off < 0) off += total_len;
+    if (off < 0)
+        off += total_len;
     return off;
 }
 
-static void draw_scrolling_banner_impl(WINDOW *window, const char *text,
-                                       const char *build_info, int offset,
-                                       bool do_immediate_refresh) {
+static void draw_scrolling_banner_impl(WINDOW *window, const char *text, const char *build_info,
+                                       int offset, bool do_immediate_refresh) {
     // Include local date/time in the banner (fixed width so the scroll math stays stable).
     time_t t = time(NULL);
     struct tm tm_local;
@@ -53,10 +57,8 @@ static void draw_scrolling_banner_impl(WINDOW *window, const char *text,
     strftime(time_buf, sizeof(time_buf), BANNER_TIME_FORMAT, &tm_local);
 
     char build_with_time[256];
-    snprintf(build_with_time, sizeof(build_with_time), "%s%s%s",
-             build_info ? build_info : "",
-             BANNER_TIME_PREFIX,
-             time_buf);
+    snprintf(build_with_time, sizeof(build_with_time), "%s%s%s", build_info ? build_info : "",
+             BANNER_TIME_PREFIX, time_buf);
 
     int width = COLS - 2;
     int text_len = (int)strlen(text ? text : "");
@@ -67,7 +69,8 @@ static void draw_scrolling_banner_impl(WINDOW *window, const char *text,
 
     // Create the scroll text buffer
     char *scroll_text = malloc(2 * (size_t)total_len + 1);
-    if (!scroll_text) return;
+    if (!scroll_text)
+        return;
 
     memset(scroll_text, ' ', 2 * (size_t)total_len);
     scroll_text[2 * (size_t)total_len] = '\0';
@@ -95,7 +98,8 @@ void draw_scrolling_banner(WINDOW *window, const char *text, const char *build_i
     draw_scrolling_banner_impl(window, text, build_info, offset, true);
 }
 
-void draw_scrolling_banner_nout(WINDOW *window, const char *text, const char *build_info, int offset) {
+void draw_scrolling_banner_nout(WINDOW *window, const char *text, const char *build_info,
+                                int offset) {
     draw_scrolling_banner_impl(window, text, build_info, offset, false);
 }
 

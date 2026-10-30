@@ -1,8 +1,8 @@
 // vecstack.c
 
 #include "vecstack.h"
-#include <stdlib.h> // For malloc, realloc, free
 #include <stdio.h>  // For fprintf, stderr
+#include <stdlib.h> // For malloc, realloc, free
 
 #define INITIAL_CAPACITY 10
 
@@ -24,10 +24,12 @@ VecStack VecStack_empty() {
  * @param el the element to push
  */
 bool VecStack_push(VecStack *v, void *el) {
-    if (!v) return false;
+    if (!v)
+        return false;
     // Cache length to avoid multiple function calls
     size_t len = Vector_len(v->v);
-    if (!Vector_add(&v->v, 1)) return false;
+    if (!Vector_add(&v->v, 1))
+        return false;
     v->v.el[len] = el;
     // Use set_len_no_free since we're growing (no elements to free)
     Vector_set_len_no_free(&v->v, len + 1);

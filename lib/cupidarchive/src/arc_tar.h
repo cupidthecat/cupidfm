@@ -6,7 +6,7 @@
 
 /**
  * TAR format implementation.
- * 
+ *
  * Supports:
  * - ustar format (basic)
  * - pax extended headers (long paths, large sizes)
@@ -32,4 +32,3 @@ void arc_tar_close(ArcReader *reader);
 bool arc_tar_header_valid(const uint8_t *header);
 
 #endif // ARC_TAR_H
-

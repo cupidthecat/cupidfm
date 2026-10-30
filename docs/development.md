@@ -17,3 +17,11 @@ Movement bursts can share repaints within a 16 ms budget while every key still r
 Text preview checkpoints store physical-line offsets and comment state. The index has a fixed number of entries and becomes sparser as files grow. It is intended for the UI thread. MIME lookups use a separate synchronized cache and copy results into caller-owned buffers. File metadata and syntax changes invalidate cached state; recent regular-file changes bypass timestamp-only reuse.
 
 See [the performance notes](../PERFORMANCE.md) for measurements, commands, and limits.
+
+## C formatting
+
+Use clang-format 18 with the repository's `.clang-format`. It sets four-space indentation, spaces instead of tabs, a 100-column limit, attached braces, pointer stars beside names, case-sensitive include sorting, and separate definition blocks. CI checks application and test sources. Library sources are formatted and checked in their original repositories before their pinned snapshots are updated here.
+
+```sh
+git ls-files -z -- '*.c' '*.h' ':(exclude)lib/**' | xargs -0 -r clang-format-18 -i
+```

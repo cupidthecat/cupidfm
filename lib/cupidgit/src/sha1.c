@@ -10,14 +10,12 @@ static void sha1_transform(uint32_t state[5], const uint8_t block[SHA1_BLOCK_SIZ
 
     // Prepare message schedule
     for (int i = 0; i < 16; i++) {
-        w[i] = ((uint32_t)block[i * 4] << 24) |
-               ((uint32_t)block[i * 4 + 1] << 16) |
-               ((uint32_t)block[i * 4 + 2] << 8) |
-               ((uint32_t)block[i * 4 + 3]);
+        w[i] = ((uint32_t)block[i * 4] << 24) | ((uint32_t)block[i * 4 + 1] << 16) |
+               ((uint32_t)block[i * 4 + 2] << 8) | ((uint32_t)block[i * 4 + 3]);
     }
 
     for (int i = 16; i < 80; i++) {
-        w[i] = ROL32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+        w[i] = ROL32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
     }
 
     // Initialize working variables

@@ -38,32 +38,40 @@ static const char *get_home_dir(void) {
 
 // Helper: trim whitespace from both ends
 static char *trim_whitespace(char *str) {
-    if (!str) return NULL;
-    while (isspace((unsigned char)*str)) str++;
-    if (*str == 0) return str;
+    if (!str)
+        return NULL;
+    while (isspace((unsigned char)*str))
+        str++;
+    if (*str == 0)
+        return str;
     char *end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
+    while (end > str && isspace((unsigned char)*end))
+        end--;
     *(end + 1) = '\0';
     return str;
 }
 
 // Helper: check if string ends with suffix
 static bool ends_with(const char *str, const char *suffix) {
-    if (!str || !suffix) return false;
+    if (!str || !suffix)
+        return false;
     size_t str_len = strlen(str);
     size_t suffix_len = strlen(suffix);
-    if (suffix_len > str_len) return false;
+    if (suffix_len > str_len)
+        return false;
     return strcasecmp(str + str_len - suffix_len, suffix) == 0;
 }
 
 // Helper: split comma-separated values into array
 static char **split_csv(const char *value, size_t *count) {
-    if (!value || !count) return NULL;
-    
+    if (!value || !count)
+        return NULL;
+
     *count = 0;
     char *copy = strdup(value);
-    if (!copy) return NULL;
-    
+    if (!copy)
+        return NULL;
+
     // Count items
     char *tmp = strdup(copy);
     char *token = strtok(tmp, ",");
@@ -72,18 +80,18 @@ static char **split_csv(const char *value, size_t *count) {
         token = strtok(NULL, ",");
     }
     free(tmp);
-    
+
     if (*count == 0) {
         free(copy);
         return NULL;
     }
-    
+
     char **result = calloc(*count, sizeof(char *));
     if (!result) {
         free(copy);
         return NULL;
     }
-    
+
     size_t i = 0;
     token = strtok(copy, ",");
     while (token && i < *count) {
@@ -91,51 +99,52 @@ static char **split_csv(const char *value, size_t *count) {
         i++;
         token = strtok(NULL, ",");
     }
-    
+
     free(copy);
     return result;
 }
 
 // Free a syntax definition
 static void syntax_def_free(SyntaxDef *def) {
-    if (!def) return;
-    
+    if (!def)
+        return;
+
     free(def->language);
-    
+
     for (size_t i = 0; i < def->keyword_count; i++) {
         free(def->keywords[i]);
     }
     free(def->keywords);
-    
+
     for (size_t i = 0; i < def->type_count; i++) {
         free(def->types[i]);
     }
     free(def->types);
-    
+
     for (size_t i = 0; i < def->statement_count; i++) {
         free(def->statements[i]);
     }
     free(def->statements);
-    
+
     for (size_t i = 0; i < def->constant_count; i++) {
         free(def->constants[i]);
     }
     free(def->constants);
-    
+
     for (size_t i = 0; i < def->preprocessor_count; i++) {
         free(def->preprocessor[i]);
     }
     free(def->preprocessor);
-    
+
     for (size_t i = 0; i < def->extension_count; i++) {
         free(def->extensions[i]);
     }
     free(def->extensions);
-    
+
     free(def->line_comment);
     free(def->block_comment_start);
     free(def->block_comment_end);
-    
+
     // Reset color arrays
     for (int i = 0; i < 3; i++) {
         def->color_keyword[i] = -1;
@@ -147,20 +156,22 @@ static void syntax_def_free(SyntaxDef *def) {
         def->color_operator[i] = -1;
         def->color_function[i] = -1;
     }
-    
+
     memset(def, 0, sizeof(SyntaxDef));
 }
 
 // Load a single syntax definition from a cupidconf file
 static bool load_syntax_file(const char *filepath) {
-    if (g_syntax_count >= MAX_SYNTAX_DEFS) return false;
-    
+    if (g_syntax_count >= MAX_SYNTAX_DEFS)
+        return false;
+
     FILE *fp = fopen(filepath, "r");
-    if (!fp) return false;
-    
+    if (!fp)
+        return false;
+
     SyntaxDef *def = &g_syntax_defs[g_syntax_count];
     memset(def, 0, sizeof(SyntaxDef));
-    
+
     // Initialize color arrays to -1 (not set)
     for (int i = 0; i < 3; i++) {
         def->color_keyword[i] = -1;
@@ -172,7 +183,7 @@ static bool load_syntax_file(const char *filepath) {
         def->color_operator[i] = -1;
         def->color_function[i] = -1;
     }
-    
+
     // Extract language name from filename (e.g., "c.cupidconf" -> "c")
     const char *filename = strrchr(filepath, '/');
     filename = filename ? filename + 1 : filepath;
@@ -180,21 +191,24 @@ static bool load_syntax_file(const char *filepath) {
     strncpy(lang_name, filename, sizeof(lang_name) - 1);
     lang_name[sizeof(lang_name) - 1] = '\0';
     char *dot = strrchr(lang_name, '.');
-    if (dot) *dot = '\0';
+    if (dot)
+        *dot = '\0';
     def->language = strdup(lang_name);
-    
+
     char line[MAX_LINE_LENGTH];
     while (fgets(line, sizeof(line), fp)) {
         char *trimmed = trim_whitespace(line);
-        if (trimmed[0] == '\0' || trimmed[0] == '#') continue;
-        
+        if (trimmed[0] == '\0' || trimmed[0] == '#')
+            continue;
+
         char *eq = strchr(trimmed, '=');
-        if (!eq) continue;
-        
+        if (!eq)
+            continue;
+
         *eq = '\0';
         char *key = trim_whitespace(trimmed);
         char *value = trim_whitespace(eq + 1);
-        
+
         if (strcasecmp(key, "keywords") == 0) {
             def->keywords = split_csv(value, &def->keyword_count);
         } else if (strcasecmp(key, "types") == 0) {
@@ -237,7 +251,7 @@ static bool load_syntax_file(const char *filepath) {
             parse_color_rgb(value, def->color_function);
         }
     }
-    
+
     fclose(fp);
     def->loaded = true;
     g_syntax_count++;
@@ -246,27 +260,29 @@ static bool load_syntax_file(const char *filepath) {
 
 // Initialize syntax highlighting system
 void syntax_init(void) {
-    if (g_syntax_initialized) return;
-    
+    if (g_syntax_initialized)
+        return;
+
     char syntax_dir[MAX_PATH_LENGTH];
     snprintf(syntax_dir, sizeof(syntax_dir), "%s/.cupidfm/syntax", get_home_dir());
-    
+
     DIR *dir = opendir(syntax_dir);
     if (!dir) {
         g_syntax_initialized = true;
         return; // No syntax directory, that's okay
     }
-    
+
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (!ends_with(entry->d_name, ".cupidconf")) continue;
-        
+        if (!ends_with(entry->d_name, ".cupidconf"))
+            continue;
+
         // Use larger buffer to avoid truncation warning (dir path + "/" + filename)
         char filepath[MAX_PATH_LENGTH + 256];
         snprintf(filepath, sizeof(filepath), "%s/%s", syntax_dir, entry->d_name);
         load_syntax_file(filepath);
     }
-    
+
     closedir(dir);
     g_syntax_initialized = true;
 }
@@ -276,14 +292,12 @@ void syntax_cleanup(void) {
     // Restore original terminal colors if we changed them
     if (g_colors_changed && can_change_color()) {
         for (int i = 0; i < 8; i++) {
-            init_color(COLOR_MONOKAI_ORANGE + i,
-                      g_original_colors[i][0],
-                      g_original_colors[i][1],
-                      g_original_colors[i][2]);
+            init_color(COLOR_MONOKAI_ORANGE + i, g_original_colors[i][0], g_original_colors[i][1],
+                       g_original_colors[i][2]);
         }
         g_colors_changed = false;
     }
-    
+
     for (size_t i = 0; i < g_syntax_count; i++) {
         syntax_def_free(&g_syntax_defs[i]);
     }
@@ -293,8 +307,9 @@ void syntax_cleanup(void) {
 
 // Get syntax definition for a file based on extension
 SyntaxDef *syntax_get_for_file(const char *filename) {
-    if (!filename || !g_syntax_initialized) return NULL;
-    
+    if (!filename || !g_syntax_initialized)
+        return NULL;
+
     for (size_t i = 0; i < g_syntax_count; i++) {
         SyntaxDef *def = &g_syntax_defs[i];
         for (size_t j = 0; j < def->extension_count; j++) {
@@ -303,19 +318,22 @@ SyntaxDef *syntax_get_for_file(const char *filename) {
             }
         }
     }
-    
+
     return NULL;
 }
 
 // Helper: parse RGB color from string "R,G,B" or "#RRGGBB"
 static bool parse_color_rgb(const char *value, int rgb[3]) {
-    if (!value || !*value) return false;
-    
+    if (!value || !*value)
+        return false;
+
     if (value[0] == '#') {
         // Hex format: #RRGGBB
         unsigned int r, g, b;
         if (sscanf(value + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-            rgb[0] = r; rgb[1] = g; rgb[2] = b;
+            rgb[0] = r;
+            rgb[1] = g;
+            rgb[2] = b;
             return true;
         }
     } else {
@@ -334,35 +352,41 @@ static short rgb_to_ncurses(int rgb_value) {
 
 // Initialize ncurses color pairs for syntax highlighting
 void syntax_init_colors(void) {
-    if (!has_colors()) return;
-    
+    if (!has_colors())
+        return;
+
     // Check if we can define custom colors
     if (can_change_color()) {
         // Save original color values so we can restore them on exit
         for (int i = 0; i < 8; i++) {
-            color_content(COLOR_MONOKAI_ORANGE + i, 
-                         &g_original_colors[i][0],
-                         &g_original_colors[i][1],
-                         &g_original_colors[i][2]);
+            color_content(COLOR_MONOKAI_ORANGE + i, &g_original_colors[i][0],
+                          &g_original_colors[i][1], &g_original_colors[i][2]);
         }
         g_colors_changed = true;
-        
+
         // Define Monokai colors
         // Orange: (232, 125, 62) for keywords
-        init_color(COLOR_MONOKAI_ORANGE, rgb_to_ncurses(232), rgb_to_ncurses(125), rgb_to_ncurses(62));
+        init_color(COLOR_MONOKAI_ORANGE, rgb_to_ncurses(232), rgb_to_ncurses(125),
+                   rgb_to_ncurses(62));
         // Green: (180, 210, 115) for types
-        init_color(COLOR_MONOKAI_GREEN, rgb_to_ncurses(180), rgb_to_ncurses(210), rgb_to_ncurses(115));
+        init_color(COLOR_MONOKAI_GREEN, rgb_to_ncurses(180), rgb_to_ncurses(210),
+                   rgb_to_ncurses(115));
         // Yellow: (229, 181, 103) for strings
-        init_color(COLOR_MONOKAI_YELLOW, rgb_to_ncurses(229), rgb_to_ncurses(181), rgb_to_ncurses(103));
+        init_color(COLOR_MONOKAI_YELLOW, rgb_to_ncurses(229), rgb_to_ncurses(181),
+                   rgb_to_ncurses(103));
         // Purple: (158, 134, 200) for numbers/constants
-        init_color(COLOR_MONOKAI_PURPLE, rgb_to_ncurses(158), rgb_to_ncurses(134), rgb_to_ncurses(200));
+        init_color(COLOR_MONOKAI_PURPLE, rgb_to_ncurses(158), rgb_to_ncurses(134),
+                   rgb_to_ncurses(200));
         // Pink: (176, 82, 121) for preprocessor
-        init_color(COLOR_MONOKAI_PINK, rgb_to_ncurses(176), rgb_to_ncurses(82), rgb_to_ncurses(121));
+        init_color(COLOR_MONOKAI_PINK, rgb_to_ncurses(176), rgb_to_ncurses(82),
+                   rgb_to_ncurses(121));
         // Blue: (108, 153, 187) for functions
-        init_color(COLOR_MONOKAI_BLUE, rgb_to_ncurses(108), rgb_to_ncurses(153), rgb_to_ncurses(187));
+        init_color(COLOR_MONOKAI_BLUE, rgb_to_ncurses(108), rgb_to_ncurses(153),
+                   rgb_to_ncurses(187));
         // Gray: (121, 121, 121) for comments
-        init_color(COLOR_MONOKAI_GRAY, rgb_to_ncurses(121), rgb_to_ncurses(121), rgb_to_ncurses(121));
-        
+        init_color(COLOR_MONOKAI_GRAY, rgb_to_ncurses(121), rgb_to_ncurses(121),
+                   rgb_to_ncurses(121));
+
         // Initialize color pairs with Monokai theme
         init_pair(COLOR_SYNTAX_KEYWORD, COLOR_MONOKAI_ORANGE, COLOR_BLACK);
         init_pair(COLOR_SYNTAX_TYPE, COLOR_MONOKAI_GREEN, COLOR_BLACK);
@@ -408,23 +432,26 @@ static bool is_keyword(const char *word, size_t len, char **keywords, size_t cou
 static bool is_uppercase_ident(const char *word, size_t len) {
     for (size_t i = 0; i < len; i++) {
         char c = word[i];
-        if (c == '_' || isdigit((unsigned char)c)) continue;
-        if (!isupper((unsigned char)c)) return false;
+        if (c == '_' || isdigit((unsigned char)c))
+            continue;
+        if (!isupper((unsigned char)c))
+            return false;
     }
     return true;
 }
 
 // Helper: check if identifier looks like a type (ends with _t or _T)
 static bool is_type_suffix(const char *word, size_t len) {
-    if (len < 3) return false;
-    return (word[len-2] == '_' && (word[len-1] == 't' || word[len-1] == 'T'));
+    if (len < 3)
+        return false;
+    return (word[len - 2] == '_' && (word[len - 1] == 't' || word[len - 1] == 'T'));
 }
 
 // Helper: check if character is an operator
 static bool is_operator_char(char c) {
-    return (c == '+' || c == '-' || c == '*' || c == '/' || c == '%' ||
-            c == '=' || c == '!' || c == '<' || c == '>' || c == '&' ||
-            c == '|' || c == '^' || c == '~' || c == '?' || c == ':');
+    return (c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '=' || c == '!' ||
+            c == '<' || c == '>' || c == '&' || c == '|' || c == '^' || c == '~' || c == '?' ||
+            c == ':');
 }
 
 // Helper: check if next non-whitespace character is '('
@@ -437,7 +464,8 @@ static bool is_followed_by_paren(const char *line, int pos, int len) {
 
 /* Track comments through an entire physical line, including clipped columns. */
 int syntax_scan_line_state(const char *line, const SyntaxDef *syntax, int state) {
-    if (!line || !syntax) return 0;
+    if (!line || !syntax)
+        return 0;
     size_t opening = syntax->block_comment_start ? strlen(syntax->block_comment_start) : 0;
     size_t closing = syntax->block_comment_end ? strlen(syntax->block_comment_end) : 0;
     size_t comment = syntax->line_comment ? strlen(syntax->line_comment) : 0;
@@ -445,43 +473,56 @@ int syntax_scan_line_state(const char *line, const SyntaxDef *syntax, int state)
     for (size_t i = 0; line[i];) {
         if (state) {
             if (closing && !strncmp(line + i, syntax->block_comment_end, closing)) {
-                state = 0; i += closing;
-            } else i++;
+                state = 0;
+                i += closing;
+            } else
+                i++;
         } else if (quote) {
-            if (line[i] == '\\' && line[i + 1]) i += 2;
-            else { if (line[i] == quote) quote = 0; i++; }
+            if (line[i] == '\\' && line[i + 1])
+                i += 2;
+            else {
+                if (line[i] == quote)
+                    quote = 0;
+                i++;
+            }
         } else if (comment && !strncmp(line + i, syntax->line_comment, comment)) {
             break;
         } else if (opening && closing && !strncmp(line + i, syntax->block_comment_start, opening)) {
-            state = 1; i += opening;
+            state = 1;
+            i += opening;
         } else {
             if ((syntax->string_delim && line[i] == syntax->string_delim) ||
-                (syntax->char_delim && line[i] == syntax->char_delim)) quote = line[i];
+                (syntax->char_delim && line[i] == syntax->char_delim))
+                quote = line[i];
             i++;
         }
     }
     return state;
 }
 
-int get_initial_block_comment_state(char **lines, int num_lines, int current_line, SyntaxDef *syntax) {
+int get_initial_block_comment_state(char **lines, int num_lines, int current_line,
+                                    SyntaxDef *syntax) {
     int state = 0;
-    if (!lines) return state;
+    if (!lines)
+        return state;
     for (int i = 0; i < current_line && i < num_lines; i++)
         state = syntax_scan_line_state(lines[i], syntax, state);
     return state;
 }
 
 // Helper: parse and highlight a number (supports various formats)
-static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, int *col, int max_x) {
+static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, int *col,
+                        int max_x) {
     int start = pos;
-    
+
     // Check for 0x (hex), 0b (binary), or 0 (octal)
     if (line[pos] == '0' && pos + 1 < len) {
         if (line[pos + 1] == 'x' || line[pos + 1] == 'X') {
             // Hexadecimal
             pos += 2;
-            while (pos < len && (isxdigit((unsigned char)line[pos]) || line[pos] == '.' || 
-                   line[pos] == 'p' || line[pos] == 'P' || line[pos] == '+' || line[pos] == '-')) {
+            while (pos < len &&
+                   (isxdigit((unsigned char)line[pos]) || line[pos] == '.' || line[pos] == 'p' ||
+                    line[pos] == 'P' || line[pos] == '+' || line[pos] == '-')) {
                 pos++;
             }
         } else if (line[pos + 1] == 'b' || line[pos + 1] == 'B') {
@@ -498,13 +539,13 @@ static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, 
             }
         }
     }
-    
+
     // Decimal or floating point
     if (pos == start) {
         while (pos < len && isdigit((unsigned char)line[pos])) {
             pos++;
         }
-        
+
         // Check for decimal point
         if (pos < len && line[pos] == '.') {
             pos++;
@@ -512,7 +553,7 @@ static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, 
                 pos++;
             }
         }
-        
+
         // Check for exponent (e or E)
         if (pos < len && (line[pos] == 'e' || line[pos] == 'E')) {
             pos++;
@@ -524,7 +565,7 @@ static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, 
             }
         }
     }
-    
+
     // Parse suffixes (U, L, LL, F, etc.)
     while (pos < len) {
         char c = line[pos];
@@ -534,32 +575,33 @@ static int parse_number(WINDOW *win, const char *line, int pos, int len, int y, 
             break;
         }
     }
-    
+
     // Print the number
     wattron(win, COLOR_PAIR(COLOR_SYNTAX_NUMBER));
     for (int i = start; i < pos && *col < max_x; i++) {
         mvwaddch(win, y, (*col)++, line[i]);
     }
     wattroff(win, COLOR_PAIR(COLOR_SYNTAX_NUMBER));
-    
+
     return pos;
 }
 
 // Apply syntax highlighting to a line of text
-void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
-                          int *in_block_comment, int y, int x, int max_width,
-                          char **lines, int num_lines, int line_index) {
-    if (!win || !line) return;
+void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax, int *in_block_comment,
+                           int y, int x, int max_width, char **lines, int num_lines,
+                           int line_index) {
+    if (!win || !line)
+        return;
     (void)lines;
     (void)num_lines;
     (void)line_index;
-    
+
     // No syntax highlighting available - just print the line normally
     if (!syntax) {
         mvwprintw(win, y, x, "%.*s", max_width, line);
         return;
     }
-    
+
     int pos = 0;
     int col = x;
     size_t len = strlen(line);
@@ -567,12 +609,12 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
     bool in_char = false;
     bool in_line_comment = false;
     int max_x = x + max_width;
-    
+
     while (pos < (int)len && col < max_x) {
         // Check for block comment continuation
         if (in_block_comment && *in_block_comment) {
-            if (syntax->block_comment_end &&
-                strncmp(&line[pos], syntax->block_comment_end, strlen(syntax->block_comment_end)) == 0) {
+            if (syntax->block_comment_end && strncmp(&line[pos], syntax->block_comment_end,
+                                                     strlen(syntax->block_comment_end)) == 0) {
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
                 for (size_t i = 0; i < strlen(syntax->block_comment_end) && col < max_x; i++) {
                     mvwaddch(win, y, col++, line[pos++]);
@@ -586,16 +628,17 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
             continue;
         }
-        
+
         // Check for line comment start
         if (!in_string && !in_char && syntax->line_comment &&
             strncmp(&line[pos], syntax->line_comment, strlen(syntax->line_comment)) == 0) {
             in_line_comment = true;
         }
-        
+
         // Check for block comment start
         if (!in_string && !in_char && !in_line_comment && syntax->block_comment_start &&
-            strncmp(&line[pos], syntax->block_comment_start, strlen(syntax->block_comment_start)) == 0) {
+            strncmp(&line[pos], syntax->block_comment_start, strlen(syntax->block_comment_start)) ==
+                0) {
             *in_block_comment = 1;
             wattron(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
             for (size_t i = 0; i < strlen(syntax->block_comment_start) && col < max_x; i++) {
@@ -604,7 +647,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
             continue;
         }
-        
+
         // Line comment - color rest of line
         if (in_line_comment) {
             wattron(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
@@ -612,7 +655,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_COMMENT));
             continue;
         }
-        
+
         // Check for preprocessor (e.g., #include, #define)
         if (!in_string && !in_char && syntax->preprocessor_char) {
             // Skip leading whitespace to check for preprocessor
@@ -624,12 +667,12 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 // Highlight the # symbol
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_PREPROCESSOR));
                 mvwaddch(win, y, col++, line[pos++]);
-                
+
                 // Skip whitespace after #
                 while (pos < (int)len && isspace((unsigned char)line[pos]) && col < max_x) {
                     mvwaddch(win, y, col++, line[pos++]);
                 }
-                
+
                 // Highlight the directive keyword (define, include, ifndef, etc.)
                 int directive_start = pos;
                 while (pos < (int)len && is_ident_char(line[pos])) {
@@ -639,13 +682,13 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                     mvwaddch(win, y, col++, line[i]);
                 }
                 wattroff(win, COLOR_PAIR(COLOR_SYNTAX_PREPROCESSOR));
-                
+
                 // For simple directives like #define MACRO, #ifndef MACRO, highlight the macro name
                 // Skip whitespace
                 while (pos < (int)len && isspace((unsigned char)line[pos]) && col < max_x) {
                     mvwaddch(win, y, col++, line[pos++]);
                 }
-                
+
                 // Check if next token is an identifier (macro name)
                 if (pos < (int)len && is_ident_char(line[pos])) {
                     int macro_start = pos;
@@ -653,7 +696,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                         pos++;
                     }
                     int macro_len = pos - macro_start;
-                    
+
                     // Highlight macro name as constant if uppercase
                     if (is_uppercase_ident(&line[macro_start], macro_len)) {
                         wattron(win, COLOR_PAIR(COLOR_SYNTAX_NUMBER) | A_BOLD);
@@ -668,7 +711,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                         }
                     }
                 }
-                
+
                 // Rest of the line (macro definition, include path, etc.) - normal color
                 while (pos < (int)len && col < max_x) {
                     mvwaddch(win, y, col++, line[pos++]);
@@ -676,7 +719,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 break;
             }
         }
-        
+
         // String handling
         if (syntax->string_delim && line[pos] == syntax->string_delim && !in_char) {
             if (!in_string) {
@@ -689,7 +732,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_STRING));
             continue;
         }
-        
+
         // Character literal handling
         if (syntax->char_delim && line[pos] == syntax->char_delim && !in_string) {
             if (!in_char) {
@@ -702,7 +745,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_STRING));
             continue;
         }
-        
+
         // Inside string or char - handle escape sequences
         if (in_string || in_char) {
             if (line[pos] == '\\' && pos + 1 < (int)len) {
@@ -715,14 +758,16 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                     char esc_type = line[pos];
                     mvwaddch(win, y, col++, line[pos++]);
                     int max_digits = (esc_type == 'x') ? 2 : (esc_type == 'u') ? 4 : 8;
-                    for (int i = 0; i < max_digits && pos < (int)len && 
-                         isxdigit((unsigned char)line[pos]) && col < max_x; i++) {
+                    for (int i = 0; i < max_digits && pos < (int)len &&
+                                    isxdigit((unsigned char)line[pos]) && col < max_x;
+                         i++) {
                         mvwaddch(win, y, col++, line[pos++]);
                     }
                 } else if (line[pos] >= '0' && line[pos] <= '7') {
                     // Octal escape \ooo
-                    for (int i = 0; i < 3 && pos < (int)len && 
-                         line[pos] >= '0' && line[pos] <= '7' && col < max_x; i++) {
+                    for (int i = 0; i < 3 && pos < (int)len && line[pos] >= '0' &&
+                                    line[pos] <= '7' && col < max_x;
+                         i++) {
                         mvwaddch(win, y, col++, line[pos++]);
                     }
                 } else {
@@ -737,14 +782,13 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             }
             continue;
         }
-        
+
         // Check for numbers (improved parsing)
-        if (isdigit((unsigned char)line[pos]) && 
-            (pos == 0 || !is_ident_char(line[pos - 1]))) {
+        if (isdigit((unsigned char)line[pos]) && (pos == 0 || !is_ident_char(line[pos - 1]))) {
             pos = parse_number(win, line, pos, len, y, &col, max_x);
             continue;
         }
-        
+
         // Check for identifiers (keywords, types, constants, etc.)
         if (is_ident_char(line[pos])) {
             int word_start = pos;
@@ -752,7 +796,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 pos++;
             }
             int word_len = pos - word_start;
-            
+
             // Check for labels (identifier followed by colon at line start)
             bool is_label = false;
             if (pos < (int)len && line[pos] == ':') {
@@ -765,7 +809,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                     is_label = true;
                 }
             }
-            
+
             // Check for typedef type name (after closing brace and before semicolon)
             bool is_typedef_name = false;
             if (word_start > 0) {
@@ -784,10 +828,10 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                     }
                 }
             }
-            
+
             // Check if it's a constant (true, false, NULL, etc.)
-            if (syntax->constants && is_keyword(&line[word_start], word_len, 
-                                               syntax->constants, syntax->constant_count)) {
+            if (syntax->constants && is_keyword(&line[word_start], word_len, syntax->constants,
+                                                syntax->constant_count)) {
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_NUMBER) | A_BOLD);
                 for (int i = 0; i < word_len && col < max_x; i++) {
                     mvwaddch(win, y, col++, line[word_start + i]);
@@ -795,8 +839,8 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 wattroff(win, COLOR_PAIR(COLOR_SYNTAX_NUMBER) | A_BOLD);
             }
             // Check if it's a control flow keyword
-            else if (syntax->keywords && is_keyword(&line[word_start], word_len, 
-                                               syntax->keywords, syntax->keyword_count)) {
+            else if (syntax->keywords && is_keyword(&line[word_start], word_len, syntax->keywords,
+                                                    syntax->keyword_count)) {
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_KEYWORD) | A_BOLD);
                 for (int i = 0; i < word_len && col < max_x; i++) {
                     mvwaddch(win, y, col++, line[word_start + i]);
@@ -804,8 +848,9 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 wattroff(win, COLOR_PAIR(COLOR_SYNTAX_KEYWORD) | A_BOLD);
             }
             // Check if it's a statement keyword (storage class, qualifiers)
-            else if (syntax->statements && is_keyword(&line[word_start], word_len,
-                                                     syntax->statements, syntax->statement_count)) {
+            else if (syntax->statements &&
+                     is_keyword(&line[word_start], word_len, syntax->statements,
+                                syntax->statement_count)) {
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_KEYWORD));
                 for (int i = 0; i < word_len && col < max_x; i++) {
                     mvwaddch(win, y, col++, line[word_start + i]);
@@ -813,8 +858,8 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
                 wattroff(win, COLOR_PAIR(COLOR_SYNTAX_KEYWORD));
             }
             // Check if it's a type
-            else if (syntax->types && is_keyword(&line[word_start], word_len,
-                                                 syntax->types, syntax->type_count)) {
+            else if (syntax->types &&
+                     is_keyword(&line[word_start], word_len, syntax->types, syntax->type_count)) {
                 wattron(win, COLOR_PAIR(COLOR_SYNTAX_TYPE));
                 for (int i = 0; i < word_len && col < max_x; i++) {
                     mvwaddch(win, y, col++, line[word_start + i]);
@@ -869,7 +914,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             }
             continue;
         }
-        
+
         // Check for operators
         if (is_operator_char(line[pos])) {
             wattron(win, COLOR_PAIR(COLOR_SYNTAX_OPERATOR));
@@ -880,7 +925,7 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax,
             wattroff(win, COLOR_PAIR(COLOR_SYNTAX_OPERATOR));
             continue;
         }
-        
+
         // Regular character (brackets, semicolons, etc.)
         mvwaddch(win, y, col++, line[pos++]);
     }
