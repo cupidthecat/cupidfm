@@ -63,7 +63,13 @@ fn on_key(key) {
                     if process.poll() is not None: break
                     if select.select([primary], [], [], 0.01)[0]:
                         try: output.extend(os.read(primary, 65536))
-                        except OSError: break
+                        except OSError:
+                            # PTY EOF can arrive before the child becomes waitable.
+                            try:
+                                process.wait(timeout=0.05)
+                            except subprocess.TimeoutExpired:
+                                pass
+                            continue
                 if predicate(): return
                 errors.seek(0)
                 raise AssertionError((process.poll(), errors.read(), bytes(output[-2000:])))
