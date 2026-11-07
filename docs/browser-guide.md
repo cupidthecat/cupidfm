@@ -40,8 +40,7 @@ Selections belong to the tab and keep their full paths when you navigate, filter
 or reload. Yank, file tasks, openers, shell commands, and chooser output use every selected path,
 including paths outside the current directory. With no selection, they use the hovered entry.
 Rename accepts selected paths, preserves existing destinations, and keeps successful moves selected
-under their new names. Selected paths use a reviewed editor list in the Vim profile. File information and
-permissions still use the hovered entry. Esc leaves search and filtering together, finishes visual mode, or clears selection. A directory and its descendants cannot be selected together.
+under their new names. Selected paths use a reviewed editor list in the Vim profile. The file inspector accepts selected paths; permissions still use the hovered entry. Esc leaves search and filtering together, finishes visual mode, or clears selection. A directory and its descendants cannot be selected together.
 Reloading prunes missing paths and finishes any visual range; hidden selections remain active.
 
 ## Browser keys
@@ -73,7 +72,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | e, E | Extract archives beside their sources, or choose an output directory |
 | r | Rename one entry, or edit a name list for multiple selections |
 | :, ; | Run a blocking shell command or queue a background shell task |
-| Tab | Show information about the hovered file |
+| Tab | Inspect selected files or the hovered entry |
 | Ctrl+E | Open CupidFM's editor |
 | w | Open the task manager |
 | q, Q, Ctrl+C | Quit, quit without a cwd file, or close the current tab |
@@ -284,7 +283,7 @@ their snapshots and source pins here.
 | Image/graphics previews | Partial | Kitty/Sixel/ANSI; no complete terminal or multiplexer coverage |
 | PDF/SVG/video/font/JSON preview pipelines | Partial | Library capabilities and text fallback do not cover all preview formats |
 | Archive preview/extraction | Partial | Native extraction tasks, private staging, cancellation, destination choice, collisions, and metadata; no complete format coverage or password prompts |
-| Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
+| File inspector | Partial | Selection-aware metadata table, file swipes, cell copying, directory-size updates, and refresh; no custom spotter lifecycle or file-summary grid |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
 | Input editing/history/completion | Partial | UTF-8 editing, purpose-specific history, undo/redo, component completion and fuzzy picker; no modal input |
 | Help/which-key | Partial | Scrollable, searchable help and chord indicator; no action picker or action sequences |
@@ -340,3 +339,5 @@ skips intermediate preview paints, and queued Escape takes priority over another
 An already-running synchronous preview must still finish before input can be read.
 
 See [archive extraction](archive-guide.md) for opening rules, task controls, output folders, and supported formats.
+
+See [file information](file-info.md) for field navigation, file swipes, copying, and metadata behavior.

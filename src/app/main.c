@@ -29,6 +29,7 @@
 #include "app_commands.h"
 #include "app_help.h"
 #include "app_input.h"
+#include "app_inspector.h"
 #include "app_navigation.h"
 #include "app_options.h"
 #include "app_panes.h"
@@ -1518,121 +1519,9 @@ int main(int argc, char **argv) {
                 }
             }
 
-            // Quick File Info (Ctrl+T by default)
+            // File information uses the current selection or hovered entry.
             else if (ch == kb.key_info) {
-                if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        show_notification(notifwin, "Quick info does not support Select All");
-                        should_clear_notif = false;
-                        goto input_done;
-                    }
-
-                    char file_path[MAX_PATH_LENGTH];
-                    path_join(file_path, state.current_directory, state.selected_entry);
-
-                    struct stat st;
-                    if (lstat(file_path, &st) != 0) {
-                        show_popup("File Info", "Unable to stat:\n\n%s\n\n%s", file_path,
-                                   strerror(errno));
-                        goto input_done;
-                    }
-
-                    char type_buf[64] = "Other";
-                    if (S_ISDIR(st.st_mode))
-                        strcpy(type_buf, "Directory");
-                    else if (S_ISREG(st.st_mode))
-                        strcpy(type_buf, "File");
-                    else if (S_ISLNK(st.st_mode))
-                        strcpy(type_buf, "Symlink");
-
-                    char size_buf[64] = "-";
-                    if (S_ISDIR(st.st_mode)) {
-                        long dir_size = get_directory_size_peek(file_path);
-                        if (dir_size == DIR_SIZE_PENDING) {
-                            long p = dir_size_get_progress(file_path);
-                            if (p > 0) {
-                                char tmp[32];
-                                format_file_size(tmp, (size_t)p);
-                                snprintf(size_buf, sizeof(size_buf), "Calculating... %s", tmp);
-                            } else {
-                                snprintf(size_buf, sizeof(size_buf), "Calculating...");
-                            }
-                        } else if (dir_size == DIR_SIZE_VIRTUAL_FS)
-                            snprintf(size_buf, sizeof(size_buf), "Virtual FS");
-                        else if (dir_size == DIR_SIZE_TOO_LARGE)
-                            snprintf(size_buf, sizeof(size_buf), "Too large");
-                        else if (dir_size == DIR_SIZE_PERMISSION_DENIED)
-                            snprintf(size_buf, sizeof(size_buf), "Permission denied");
-                        else if (dir_size < 0)
-                            snprintf(size_buf, sizeof(size_buf), "Error");
-                        else {
-                            char tmp[32];
-                            format_file_size(tmp, (size_t)dir_size);
-                            snprintf(size_buf, sizeof(size_buf), "%s", tmp);
-                        }
-                    } else {
-                        char tmp[32];
-                        format_file_size(tmp, (size_t)st.st_size);
-                        snprintf(size_buf, sizeof(size_buf), "%s", tmp);
-                    }
-
-                    char perm_buf[16];
-                    snprintf(perm_buf, sizeof(perm_buf), "%04o", (unsigned)(st.st_mode & 07777));
-
-                    char mtime_buf[64];
-                    struct tm tm_local;
-                    localtime_r(&st.st_mtime, &tm_local);
-                    strftime(mtime_buf, sizeof(mtime_buf), "%Y-%m-%d %H:%M:%S", &tm_local);
-
-                    // MIME type (best effort)
-                    char mime_buf[128] = "unknown";
-                    magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
-                    if (mc && magic_load(mc, NULL) == 0) {
-                        char mime_buffer[512];
-                        const char *m = mime_type_cached(
-                            mc, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
-                            mime_buffer, sizeof(mime_buffer));
-                        if (m && *m) {
-                            strncpy(mime_buf, m, sizeof(mime_buf) - 1);
-                            mime_buf[sizeof(mime_buf) - 1] = '\0';
-                        }
-                    }
-
-                    char link_target[MAX_PATH_LENGTH] = {0};
-                    if (S_ISLNK(st.st_mode)) {
-                        ssize_t n = readlink(file_path, link_target, sizeof(link_target) - 1);
-                        if (n > 0)
-                            link_target[n] = '\0';
-                    }
-
-                    if (mc)
-                        magic_close(mc);
-
-                    if (S_ISLNK(st.st_mode) && link_target[0]) {
-                        show_popup("File Info",
-                                   "Name: %s\n"
-                                   "Type: %s\n"
-                                   "Path: %s\n"
-                                   "Link: -> %s\n"
-                                   "Size: %s\n"
-                                   "Perm: %s\n"
-                                   "MIME: %s\n"
-                                   "MTime: %s",
-                                   state.selected_entry, type_buf, file_path, link_target, size_buf,
-                                   perm_buf, mime_buf, mtime_buf);
-                    } else {
-                        show_popup("File Info",
-                                   "Name: %s\n"
-                                   "Type: %s\n"
-                                   "Path: %s\n"
-                                   "Size: %s\n"
-                                   "Perm: %s\n"
-                                   "MIME: %s\n"
-                                   "MTime: %s",
-                                   state.selected_entry, type_buf, file_path, size_buf, perm_buf,
-                                   mime_buf, mtime_buf);
-                    }
-                }
+                app_inspector_show(&state);
             }
 
             // File Permissions (Ctrl+P by default)

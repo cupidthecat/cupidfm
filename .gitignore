@@ -77,3 +77,5 @@ __pycache__/
 /tests/test_process_status
 
 /tests/test_app_paths
+
+/tests/test_file_info

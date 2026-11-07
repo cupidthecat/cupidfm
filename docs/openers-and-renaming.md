@@ -83,3 +83,5 @@ cannot form part of a name in this format.
 Run make test for opener rules, picker behavior, rename ordering, conflicts, and source replacement.
 Run python3 tests/test_open_bulk_smoke.py for grouped dispatch, literal shell arguments,
 common opener choices, detached commands, review cancellation, and selection updates.
+
+Recognized archives offer the built-in extract opener. See [archive extraction](archive-guide.md) for jobs, output folders, and limits.
