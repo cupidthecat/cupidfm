@@ -55,4 +55,6 @@ at once or a configurable inspector plugin lifecycle.
 
 Tests cover literal names and copied paths, file navigation, selection preservation, directory
 size updates, broken and deleted links, FIFOs, resizing, permissions and metadata, and both
-browser profiles. The core metadata test also checks refresh ownership and hardlink counts.
+browser profiles. Graphics checks verify that the image preview is hidden while inspecting
+fields and restored on return. The core metadata test also checks refresh ownership and
+hardlink counts.

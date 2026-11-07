@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import termios
 import time
+import zlib
 
 from terminal_wait import wait_for_terminal
 
@@ -27,6 +28,12 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-inspector-") as temporary:
     (source / "child").mkdir()
     (source / "broken").symlink_to("missing")
     os.mkfifo(source / "fifo.pipe")
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 6, 0, 0, 0)) +
+           chunk(b"IDAT", zlib.compress((b"\0" + b"\xff\0\0\xff" * 2) * 2)) + chunk(b"IEND", b""))
+    (source / "zz-image.png").write_bytes(png)
+
     (home / ".cupidfmrc").write_text("keymap=vim\n")
     plugins = home / ".cupidfm/plugins"; plugins.mkdir(parents=True)
     (plugins / "ready.cs").write_text(r'''
@@ -44,7 +51,7 @@ fn on_key(key) {
     return false;
 }
 ''')
-    for profile in ("vim", "cupidfm"):
+    for profile in ("vim", "cupidfm", "graphics"):
         (root / "ready").unlink(missing_ok=True)
         for receipt in root.glob("check-*"): receipt.unlink()
         primary, secondary = pty.openpty()
@@ -52,8 +59,12 @@ fn on_key(key) {
         env = dict(os.environ, HOME=str(home), TERM="xterm-256color", INFO_ROOT=str(root))
         for name in ("DISPLAY", "WAYLAND_DISPLAY", "TMUX"):
             env.pop(name, None)
+        if profile == "graphics":
+            env["KITTY_WINDOW_ID"] = "1"
+        keymap = "vim" if profile == "graphics" else profile
+        entry = source / ("zz-image.png" if profile == "graphics" else literal)
         with tempfile.TemporaryFile() as errors:
-            process = subprocess.Popen([str(binary), "--keymap=" + profile, str(source / literal)],
+            process = subprocess.Popen([str(binary), "--keymap=" + keymap, str(entry)],
                                        env=env, stdin=secondary, stdout=secondary, stderr=errors,
                                        start_new_session=True)
             os.close(secondary); output = bytearray(); checks = 0
@@ -76,6 +87,20 @@ fn on_key(key) {
                         Path(str(receipt) + "-count").read_text())
             try:
                 wait((root / "ready").exists)
+                if profile == "graphics":
+                    wait(lambda: b"\x1b_Gf=32" in output)
+                    offset = len(output)
+                    assert copy(b"\t") == "zz-image.png"
+                    assert b"\x1b_Ga=d" in output[offset:], "image must not cover the inspector"
+                    offset = len(output)
+                    assert snapshot(b"\t")[0] == "zz-image.png"
+                    wait(lambda: b"\x1b_Gf=32" in output[offset:])
+                    send(b"q")
+                    wait(lambda: process.poll() is not None)
+                    errors.seek(0); error = errors.read()
+                    assert process.returncode == 0 and b"Sanitizer" not in error and b"runtime error:" not in error, error
+                    continue
+
                 if profile == "cupidfm":
                     snapshot(b",a")
                 opener = b"\t" if profile == "vim" else b"\x14"
