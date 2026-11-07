@@ -89,43 +89,70 @@ static bool boolean(const char *text, bool *value) {
 
 /* Match alternations such as application/{json,javascript} as ordinary globs.
  * Brace expansion is bounded by the configuration text, not the filesystem. */
-static bool pattern_match(const char *pattern, const char *text, unsigned depth) {
-    if (!pattern || !text || depth > 16)
+static const char *glob_next(const char *at) {
+    if (*at == '\\' && at[1])
+        return at + 2;
+    if (*at == '[') {
+        const char *end = at + 1;
+        if (*end == '!' || *end == '^')
+            end++;
+        if (*end == ']')
+            end++;
+        while (*end && *end != ']')
+            end += *end == '\\' && end[1] ? 2 : 1;
+        if (*end)
+            return end + 1;
+    }
+    return at + 1;
+}
+
+static bool expand_match(const char *pattern, const char *text, unsigned depth, unsigned *budget) {
+    if (!pattern || !text || depth > 16 || !*budget)
         return false;
-    const char *open = strchr(pattern, '{');
-    if (!open)
+    (*budget)--;
+    const char *open = pattern;
+    while (*open && *open != '{')
+        open = glob_next(open);
+    if (!*open)
         return fnmatch(pattern, text, 0) == 0;
     const char *close = open + 1;
     unsigned nesting = 1;
-    for (; *close; close++) {
+    while (*close) {
         if (*close == '{')
             nesting++;
         else if (*close == '}' && !--nesting)
             break;
+        close = glob_next(close);
     }
     if (!*close)
         return false;
-    const char *first = open + 1;
+    const char *first = open + 1, *at = first;
     nesting = 0;
-    for (const char *at = first;; at++) {
+    for (;;) {
         if (at == close || (*at == ',' && !nesting)) {
             char *prefix = g_strndup(pattern, (gsize)(open - pattern));
             char *part = g_strndup(first, (gsize)(at - first));
             char *expanded = g_strconcat(prefix, part, close + 1, NULL);
-            bool matched = pattern_match(expanded, text, depth + 1);
+            bool matched = expand_match(expanded, text, depth + 1, budget);
             g_free(prefix);
             g_free(part);
             g_free(expanded);
             if (matched)
                 return true;
-            if (at == close)
+            if (!*budget || at == close)
                 return false;
             first = at + 1;
         } else if (*at == '{')
             nesting++;
         else if (*at == '}')
             nesting--;
+        at = glob_next(at);
     }
+}
+
+static bool pattern_match(const char *pattern, const char *text) {
+    unsigned budget = 4096;
+    return expand_match(pattern, text, 0, &budget);
 }
 
 static bool available(const Opener *opener) {
@@ -152,11 +179,10 @@ GPtrArray *openers_match(Openers *set, const char *path, const char *mime) {
     for (guint i = 0; i < set->rules->len; i++) {
         Rule *rule = g_ptr_array_index(set->rules, i);
         bool path_match =
-            !rule->path ||
-            pattern_match(
-                rule->path,
-                strchr(rule->path, '/') ? (directory_path ? directory_path : path) : basename, 0);
-        bool mime_match = !rule->mime || pattern_match(rule->mime, mime ? mime : "", 0);
+            !rule->path || pattern_match(rule->path, strchr(rule->path, '/')
+                                                         ? (directory_path ? directory_path : path)
+                                                         : basename);
+        bool mime_match = !rule->mime || pattern_match(rule->mime, mime ? mime : "");
         if (!path_match || !mime_match)
             continue;
         for (guint j = 0; j < rule->use->len; j++)
@@ -172,7 +198,7 @@ GPtrArray *openers_match(Openers *set, const char *path, const char *mime) {
          !strcmp(mime, "application/xml") ||
          pattern_match(
              "application/{ndjson,x-shellscript,x-sh,x-perl,x-php,x-yaml,toml,wine-extension-ini}",
-             mime, 0) ||
+             mime) ||
          g_str_has_suffix(mime, "+xml") || g_str_has_suffix(mime, "+json"));
     /* Image XML subtypes retain their image opener. */
     if (mime && !strncmp(mime, "folder/", 7)) {

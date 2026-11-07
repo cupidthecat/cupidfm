@@ -40,6 +40,12 @@ int main(void) {
                          "opener.viewer.orphan = true\n"
                          "opener.windows.command = windows-only\n"
                          "opener.windows.for = windows\n"
+                         "rule.literal.path = 'brace\\{name\\}.txt'\n"
+                         "rule.literal.use = viewer\n"
+                         "rule.character.path = 'brace[{]other[}].txt'\n"
+                         "rule.character.use = viewer\n"
+                         "rule.comma.path = 'file{a\\,b,c}.txt'\n"
+                         "rule.comma.use = viewer\n"
                          "rule.special.path = '*.{foo,{bar,baz}}'\n"
                          "rule.special.mime = 'text/*'\n"
                          "rule.special.use = capture, viewer\n"
@@ -52,6 +58,9 @@ int main(void) {
     GError *error = NULL;
     set = openers_load(filename, &error);
     assert(set && !error);
+    first(set, "/src/brace{name}.txt", "text/plain", "viewer");
+    first(set, "/src/brace{other}.txt", "text/plain", "viewer");
+    first(set, "/src/filea,b.txt", "text/plain", "viewer");
     first(set, "/src/.odd file.foo", "text/plain", "capture");
     first(set, "/src/a.bar", "text/plain", "capture");
     first(set, "/src/a.baz", "text/plain", "capture");
