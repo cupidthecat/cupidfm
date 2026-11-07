@@ -24,7 +24,8 @@ Copying uses the existing text clipboard backends, including the terminal fallba
 values are clipped and control characters are shown safely; copying retains the original value,
 including line breaks in names and paths. The selected field highlights its entire row.
 
-Swiping files stays within the inspector's path list. On close, the browser hovers the inspected
+Swiping files stays within the inspector's path list and keeps the selected field when it
+is available in the next file. On close, the browser hovers the inspected
 file when it remains in the visible listing. Inspecting a selection outside the current view
 does not change the current directory.
 

@@ -113,6 +113,7 @@ void app_inspector_show(AppState *state) {
             wtimeout(window, 100);
         }
         if (reload) {
+            const char *field = selected < info.count ? info.fields[selected].label : NULL;
             file_info_read(&info, paths->pdata[current], cookie);
             size_field = SIZE_MAX;
             for (size_t i = 0; i < info.count; i++)
@@ -125,7 +126,20 @@ void app_inspector_show(AppState *state) {
                     clock_gettime(CLOCK_MONOTONIC, &size_updated);
                     break;
                 }
-            selected = MIN(selected, info.count ? info.count - 1 : 0);
+            selected = 0;
+            if (field) {
+                for (size_t i = 0; i < info.count; i++) {
+                    const char *label = info.fields[i].label;
+                    bool size_alias = (!strcmp(field, "Size") && !strcmp(label, "Entry size")) ||
+                                      (!strcmp(field, "Entry size") && !strcmp(label, "Size"));
+                    if (!strcmp(field, label) || size_alias) {
+                        selected = i;
+                        break;
+                    }
+                    if (!strcmp(label, "Error"))
+                        selected = i;
+                }
+            }
             reload = false;
         }
         if (size_field != SIZE_MAX) {

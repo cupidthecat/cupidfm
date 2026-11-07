@@ -84,6 +84,10 @@ fn on_key(key) {
                 actual = copy(b"l")
                 assert actual == str(source / "b.json"), (profile, actual, str(source / "b.json"))
                 assert copy(b"k") == "b.json"
+                mode = (source / "child").stat().st_mode & 0o7777
+                assert copy(b"jjjjjhh").endswith(f"({mode:04o})")
+                file_mode = (source / "b.json").stat().st_mode & 0o7777
+                assert copy(b"ll").endswith(f"({file_mode:04o})")
                 assert snapshot(b"\t")[0] == "b.json"
                 if profile == "vim":
                     assert snapshot(b"gg")[0] == "child"
