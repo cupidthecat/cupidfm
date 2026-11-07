@@ -12,6 +12,10 @@ import termios
 import time
 
 binary = Path(os.environ.get("CUPIDFM_TEST_BINARY", Path(__file__).resolve().parents[1] / "cupidfm"))
+help_text = subprocess.run([str(binary), "--help"], capture_output=True, text=True, check=True).stdout
+for text in ("--keymap", "--cwd-file", "--chooser-file", "Mouse", "Tabs",
+             "Q", "syntax", "examples/syntax", "key", "Editor"):
+    assert text in help_text, text
 with tempfile.TemporaryDirectory(prefix="cupidfm-cli-output-") as temporary:
     root = Path(temporary)
     home = root / "home"; home.mkdir()

@@ -75,6 +75,17 @@ fn on_key(key) {
         try:
             wait_for((root / "ready").exists)
             assert snapshot()[:3] == ["child folder", "0", "3"]
+            assert snapshot(b"~/syntax\nnNq")[:3] == ["child folder", "0", "3"]
+            # Help must survive shrinking below the browser's minimum and growing again.
+            os.write(primary, b"~")
+            time.sleep(0.1)
+            fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 4, 8, 0, 0))
+            process.send_signal(signal.SIGWINCH)
+            time.sleep(0.15)
+            fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
+            process.send_signal(signal.SIGWINCH)
+            time.sleep(0.15)
+            assert snapshot(b"/syntax"+bytes([10])+b"nNq")[:3] == ["child folder", "0", "3"]
             clicked = snapshot(b"\x1b[<0;20;4M\x1b[<0;20;4m")
             assert clicked[:2] == ["file2.txt", "2"], clicked
             assert snapshot(b"\x1b[<64;20;4M")[:2] == ["child folder", "0"]

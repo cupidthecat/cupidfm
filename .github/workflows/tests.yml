@@ -30,6 +30,11 @@ jobs:
         run: make -j2 test-libs
       - name: Run tests
         run: make test
+      - name: Check header and help with sanitizers
+        run: |
+          make -B -C tests test_header test_help CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_header
+          ./tests/test_help
       - name: Check browser state and tasks with sanitizers
         run: |
           make -B -C tests test_browser_session test_tasks test_mime_native CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'

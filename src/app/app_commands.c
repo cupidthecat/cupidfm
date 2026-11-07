@@ -294,28 +294,6 @@ static void follow_link(AppState *state) {
     free(resolved);
 }
 
-static void show_browser_help(void) {
-    show_popup("Browser keys", "j/k h/l: navigate    H/L: back/forward\n"
-                               "gg/G Home/End: top/bottom    PageUp/PageDown: page\n"
-                               "Ctrl+u/d: half page    Ctrl+b/f: page\n"
-                               "Space: select    v/V: select/unset range\n"
-                               "Ctrl+a: select all    Ctrl+r: invert    Esc: clear\n"
-                               "f: filter    / or ?: find    n/N: repeat find\n"
-                               ".: hidden    ,a/n/e/s/m/b/r: sort (uppercase reverses)\n"
-                               "ms/mp/mm/mb/mo/mn: size/permissions/time/owner/no details\n"
-                               "gh/gc/gd: home/config/downloads    g Space: cd    gf: follow\n"
-                               "tt: new tab    tr: name tab    1..9: switch\n"
-                               "[/]: previous/next tab    {/}: swap tabs    Ctrl+c: close\n"
-                               "o/Enter: open    O: open with    y/x/p: copy/cut/paste\n"
-                               "a: create    r: rename    d/D: trash/permanent delete\n"
-                               "cc/cC/cd/cD/cf/cn: copy path/URL/dir/dir URL/name/stem\n"
-                               "Y/X: unyank    -/_: symlink/relative    Ctrl+_: hardlink\n"
-                               "J/K: preview seek    :/;: blocking/background shell    w: tasks\n"
-                               "q: quit    Ctrl+z: suspend    F1/~: help\n"
-                               "Set keymap=vim in ~/.cupidfmrc for this keymap.\n"
-                               "CupidFM's editor remains available through Ctrl+E.");
-}
-
 static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int key) {
     FileListingOptions options = file_listing_options();
     if (prefix == ',') {
@@ -548,7 +526,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
     if (ch == 3)
         return app_tab_close(tabs, state) || !task_ui_can_quit() ? APP_KEY_HANDLED : APP_KEY_QUIT;
     if (ch == KEY_F(1) || ch == '~') {
-        show_browser_help();
+        show_help_menu(kb);
     } else if (ch == 'h' || ch == 'l') {
         *key = ch == 'h' ? kb->key_left : kb->key_right;
         return APP_KEY_PASS;
@@ -648,30 +626,4 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         return APP_KEY_PASS;
     }
     return APP_KEY_HANDLED;
-}
-
-void app_draw_tab_bar(AppState *state, const AppTabs *tabs) {
-    if (tabs->count == 1 && !g_kb.vim_keymap)
-        return;
-    WINDOW *target = g_kb.vim_keymap ? bannerwin : mainwin;
-    if (!target || (g_kb.vim_keymap && (LINES < 5 || COLS < 12)))
-        return;
-    int width = getmaxx(target);
-    int x = g_kb.vim_keymap ? MAX(0, width - (int)tabs->count * 18) : 2;
-    for (size_t i = 0; i < tabs->count && x < width - 3; i++) {
-        const AppState *tab = i == tabs->active ? state : tabs->saved[i];
-        const char *label = tab->tab_name[0] ? tab->tab_name : basename_ptr(tab->current_directory);
-        if (!*label)
-            label = "/";
-        char text[96];
-        snprintf(text, sizeof(text), " %zu:%.*s ", i + 1, 24, label);
-        if (i == tabs->active)
-            wattron(target, A_REVERSE);
-        wmove(target, 0, x);
-        int used = browser_draw_name(target, text, width - x - 2);
-        if (i == tabs->active)
-            wattroff(target, A_REVERSE);
-        x += used;
-    }
-    wrefresh(target);
 }

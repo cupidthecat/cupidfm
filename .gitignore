@@ -57,3 +57,7 @@ __pycache__/
 /tests/test_syntax_rules
 
 /tests/syntax_snapshot
+
+/tests/test_header
+
+/tests/test_help

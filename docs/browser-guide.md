@@ -20,7 +20,8 @@ confirmation. System trash survives shutdown; session trash does not.
 
 The Vim profile shows the parent directory, current directory, and preview. Directory previews
 use the tab's sorting and hidden-file settings. Click a side-pane entry to reveal it in the
-current pane; right-click opens it. The header shows the current path and tabs. The status
+current pane; right-click opens it. The header clips the current path before the tab labels. On narrow screens, it keeps the active
+tab visible and hides labels that do not fit. The status
 line shows the selection mode, selected count, position, and queued or running task count.
 
 Set pane weights and the cursor's scroll margin in ~/.cupidfmrc:
@@ -90,6 +91,16 @@ before retrying a batch.
 File yanks are held in the process, so copying between tabs does not require a display server.
 CupidFM also publishes its file clipboard payload through X11 or Wayland when available.
 Copying text fields through c chords requires xclip or wl-copy.
+
+## Help
+
+Run ./cupidfm --help for command-line options, browser keys, syntax setup, and launch examples.
+In the Vim profile, F1 or ~ opens help; the original profile uses its configured help key.
+The help screen shows the active browser profile and configured editor keys.
+
+Use j/k or the arrow keys to scroll, PageUp/PageDown for a page, and Home/End for either end.
+Press / to search the help text without case sensitivity, then n or N for the next or previous
+match. Press q or Esc to return to browsing. Text wraps when the terminal is resized.
 
 ## Mouse navigation
 
@@ -182,7 +193,7 @@ their snapshots and source pins here.
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
 | Input editing/history/completion | Partial | Basic UTF-8 editing; no modal input, undo/history, or completion picker |
-| Help/which-key | Partial | Static help and chord indicator; no searchable picker or action sequences |
+| Help/which-key | Partial | Scrollable, searchable help and chord indicator; no action picker or action sequences |
 | TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
 | Lua plugin API and preset plugins | Missing | CupidScript remains; the Lua runtime is not implemented |
 | Async fetch/preload/peek/seek/spot lifecycle | Missing | Existing hooks do not implement this lifecycle |

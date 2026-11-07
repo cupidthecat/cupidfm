@@ -1,4 +1,5 @@
 #include "app_options.h"
+#include "app_help.h"
 
 #include <string.h>
 
@@ -49,6 +50,20 @@ void app_options_usage(FILE *stream, const char *program) {
             "  --keymap=vim|cupidfm  Choose browser shortcuts\n"
             "  --cwd-file=FILE        Write the final directory on quit (Q skips it)\n"
             "  --chooser-file=FILE    Write opened file paths and quit\n"
-            "  -h, --help             Show this help\n",
+            "  -h, --help             Show this help\n\n"
+            "New configurations use the Vim profile. Existing configurations keep their keys.\n"
+            "Options accept --name=VALUE or --name VALUE. Use -- before a path starting with -.\n"
+            "Relative output files are resolved from the launch directory.\n"
+            "Chooser output contains one selected path per line.\n\n",
             program);
+    fputs(app_help_vim(), stream);
+    fputs("\nDefault editor keys: Ctrl+E opens, Ctrl+S saves, Ctrl+Q returns to browsing.\n"
+          "Editor bindings and original-profile browser bindings can be set in ~/.cupidfmrc.\n\n",
+          stream);
+    fputs(app_help_setup(), stream);
+    fprintf(stream,
+            "\nExamples\n  %s --keymap=vim ~/Documents\n"
+            "  %s --cwd-file=/tmp/cupidfm-cwd\n"
+            "  %s --chooser-file=/tmp/cupidfm-selection\n",
+            program, program, program);
 }

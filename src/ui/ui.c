@@ -9,11 +9,16 @@
 #include <stdio.h>   // For vsnprintf, snprintf
 #include <stdlib.h>  // For malloc, free
 #include <string.h>  // For strlen, memcpy
-#include <time.h>    // For clock_gettime, struct timespec, CLOCK_MONOTONIC
+#include <sys/ioctl.h>
+#include <time.h> // For clock_gettime, struct timespec, CLOCK_MONOTONIC
+#include <unistd.h>
 
+#include "app_help.h"
 #include "app_input.h" // for keycode_to_string
 #include "globals.h"
+#include "input_prompt.h"
 #include "main.h" // for banner globals and draw_scrolling_banner
+#include "utils.h"
 
 void hold_notification_for_ms(long ms) {
     if (ms <= 0) {
@@ -238,17 +243,62 @@ static void strvec_push(StrVec *v, const char *str) {
         v->lines = new_lines;
         v->capacity = new_cap;
     }
-    v->lines[v->count++] = strdup(str ? str : "");
+    char *copy = strdup(str ? str : "");
+    if (copy)
+        v->lines[v->count++] = copy;
 }
 
 // --------------------------------------------------------------------
+static void help_text(StrVec *out, const char *text) {
+    while (*text) {
+        size_t length = strcspn(text, "\n");
+        char *line = malloc(length + 1);
+        if (!line)
+            return;
+        memcpy(line, text, length);
+        line[length] = 0;
+        strvec_push(out, line);
+        free(line);
+        text += length;
+        if (*text)
+            text++;
+    }
+}
+
+static void help_key(StrVec *out, int key, const char *description) {
+    char line[256];
+    snprintf(line, sizeof(line), "  %-20s %s", keycode_to_string(key), description);
+    strvec_push(out, line);
+}
+
+static void help_editor(StrVec *out, const KeyBindings *kb) {
+    strvec_push(out, "");
+    strvec_push(out, "Editor (configured keys)");
+    help_key(out, kb->key_edit, "Open editor");
+    help_key(out, kb->edit_save, "Save");
+    help_key(out, kb->edit_quit, "Return to browsing");
+    help_key(out, kb->edit_copy, "Copy selected text");
+    help_key(out, kb->edit_cut, "Cut selected text");
+    help_key(out, kb->edit_paste, "Paste text");
+    help_key(out, kb->edit_select_all, "Select all text");
+    help_key(out, kb->edit_undo, "Undo edit");
+    help_key(out, kb->edit_redo, "Redo edit");
+    strvec_push(out, "");
+    help_text(out, app_help_setup());
+}
+
 // Build help content with word-wrapping
 // --------------------------------------------------------------------
-static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) {
-    if (!kb || max_width < 10)
+static void build_help_content(StrVec *out, const KeyBindings *kb) {
+    if (!kb)
         return;
 
     strvec_init(out);
+    if (kb->vim_keymap) {
+        help_text(out, app_help_vim());
+        help_editor(out, kb);
+        return;
+    }
 
     // Helper to format a keybinding line
     char line_buf[512];
@@ -268,6 +318,8 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) 
         snprintf(help_key_buf, sizeof(help_key_buf), "%s", keycode_to_string(kb->key_help));
     }
 
+    strvec_push(out, "Original browser profile (configured keys)");
+    strvec_push(out, "");
     strvec_push(out, "Navigation:");
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Move up", keycode_to_string(kb->key_up));
     strvec_push(out, line_buf);
@@ -276,7 +328,7 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) 
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Go to parent directory",
              keycode_to_string(kb->key_left));
     strvec_push(out, line_buf);
-    snprintf(line_buf, sizeof(line_buf), "  %-20s - Enter directory / Switch to preview",
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Enter directory",
              keycode_to_string(kb->key_right));
     strvec_push(out, line_buf);
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Switch between directory and preview",
@@ -295,7 +347,8 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) 
     strvec_push(out, line_buf);
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Paste", keycode_to_string(kb->key_paste));
     strvec_push(out, line_buf);
-    snprintf(line_buf, sizeof(line_buf), "  %-20s - Delete", keycode_to_string(kb->key_delete));
+    snprintf(line_buf, sizeof(line_buf), "  %-20s - Move to session trash",
+             keycode_to_string(kb->key_delete));
     strvec_push(out, line_buf);
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Rename", keycode_to_string(kb->key_rename));
     strvec_push(out, line_buf);
@@ -327,6 +380,45 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int max_width) 
     strvec_push(out, line_buf);
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Exit", keycode_to_string(kb->key_exit));
     strvec_push(out, line_buf);
+    help_editor(out, kb);
+}
+
+static void build_help_lines(StrVec *out, const KeyBindings *kb, int width) {
+    StrVec source;
+    strvec_init(&source);
+    strvec_init(out);
+    build_help_content(&source, kb);
+    width = MAX(1, width);
+    for (size_t i = 0; i < source.count; i++) {
+        const char *line = source.lines[i];
+        if (!*line)
+            strvec_push(out, "");
+        while (*line) {
+            size_t length = strlen(line), take = MIN(length, (size_t)width);
+            if (take < length) {
+                while (take && ((unsigned char)line[take] & 0xc0) == 0x80)
+                    take--;
+                size_t word = take;
+                while (word && line[word] != ' ')
+                    word--;
+                if (word)
+                    take = word;
+            }
+            if (!take)
+                take = MIN(length, (size_t)4);
+            char *part = malloc(take + 1);
+            if (!part)
+                break;
+            memcpy(part, line, take);
+            part[take] = 0;
+            strvec_push(out, part);
+            free(part);
+            line += take;
+            while (*line == ' ')
+                line++;
+        }
+    }
+    strvec_free(&source);
 }
 
 // --------------------------------------------------------------------
@@ -349,12 +441,15 @@ void show_help_menu(const KeyBindings *kb) {
     }
 
     const char *title = "CupidFM - Help Menu";
-    const char *footer = "↑/↓: Scroll | PgUp/PgDn | Home/End | q/Esc: Close";
+    const char *footer = "j/k: scroll  PgUp/Dn  /: find  n/N: next/prev  q/Esc: close";
 
     WINDOW *popup_win = NULL;
     WINDOW *content_pad = NULL;
 
     int scroll_pos = 0;
+    int found_row = -1;
+    int original_delay = wgetdelay(stdscr);
+    char query[128] = {0};
     bool done = false;
 
     // Track terminal + geometry so we only recreate on resize
@@ -384,6 +479,29 @@ void show_help_menu(const KeyBindings *kb) {
     bool force_repaint = true;
 
     while (!done) {
+        struct winsize terminal = {0};
+        if (resized && !ioctl(STDOUT_FILENO, TIOCGWINSZ, &terminal) && terminal.ws_row &&
+            terminal.ws_col && (LINES != terminal.ws_row || COLS != terminal.ws_col)) {
+            resize_term(terminal.ws_row, terminal.ws_col);
+            need_recreate = true;
+            /* Leave resized set so the browser rebuilds its panes on return. */
+            if (notifwin) {
+                mvwin(notifwin, 0, 0);
+                wresize(notifwin, 1, COLS);
+                mvwin(notifwin, LINES - 1, 0);
+            }
+        }
+        if (LINES < 5 || COLS < 12) {
+            erase();
+            mvaddnstr(0, 0, "Resize terminal; q closes help", MAX(1, COLS - 1));
+            refresh();
+            wtimeout(stdscr, 100);
+            int key = wgetch(stdscr);
+            if (key == 'q' || key == 'Q' || key == 27)
+                done = true;
+            need_recreate = true;
+            continue;
+        }
         // Recreate windows only if resized or first time
         if (need_recreate || LINES != last_lines || COLS != last_cols) {
             last_lines = LINES;
@@ -395,10 +513,8 @@ void show_help_menu(const KeyBindings *kb) {
 
             popup_rows = term_rows - 4;
             popup_cols = term_cols - 4;
-            if (popup_rows < 10)
-                popup_rows = 10;
-            if (popup_cols < 50)
-                popup_cols = 50;
+            popup_rows = MIN(term_rows, MAX(5, popup_rows));
+            popup_cols = MIN(term_cols, MAX(12, popup_cols));
             if (popup_rows > 40)
                 popup_rows = 40;
             if (popup_cols > 100)
@@ -419,6 +535,11 @@ void show_help_menu(const KeyBindings *kb) {
                 content_height = 1;
             if (content_width < 1)
                 content_width = 1;
+
+            strvec_free(&help_lines);
+            build_help_lines(&help_lines, kb, content_width);
+            found_row = -1;
+            max_line_len = (size_t)content_width;
 
             // Pad dims: tall enough for all lines, wide enough for longest line
             pad_height = (int)help_lines.count;
@@ -444,6 +565,7 @@ void show_help_menu(const KeyBindings *kb) {
             // Create popup window
             popup_win = newwin(popup_rows, popup_cols, starty, startx);
             if (!popup_win) {
+                wtimeout(stdscr, original_delay);
                 strvec_free(&help_lines);
                 return;
             }
@@ -454,6 +576,7 @@ void show_help_menu(const KeyBindings *kb) {
             // Create pad
             content_pad = newpad(pad_height, pad_width);
             if (!content_pad) {
+                wtimeout(stdscr, original_delay);
                 delwin(popup_win);
                 strvec_free(&help_lines);
                 return;
@@ -503,7 +626,8 @@ void show_help_menu(const KeyBindings *kb) {
             int footer_space = popup_cols - 4;
             if (footer_space < 0)
                 footer_space = 0;
-            mvwaddnstr(popup_win, footer_y, 2, footer ? footer : "", footer_space);
+            mvwaddnstr(popup_win, footer_y, 2, popup_cols < 50 ? "j/k / q: close" : footer,
+                       footer_space);
 
             need_frame_redraw = false;
             force_repaint = true;
@@ -566,11 +690,41 @@ void show_help_menu(const KeyBindings *kb) {
             continue;
         }
 
+        if (ch == '/' || ch == 'n' || ch == 'N') {
+            if (ch != '/' || input_prompt("Help search", query, sizeof(query))) {
+                if (*query) {
+                    int count = (int)help_lines.count;
+                    int from = ch == '/' || found_row < 0 ? scroll_pos : found_row;
+                    for (int step = ch == '/' ? 0 : 1; step < count; step++) {
+                        int at = (from + (ch == 'N' ? count - step : step)) % count;
+                        const char *line = help_lines.lines[at];
+                        bool match = false;
+                        for (; *line && !match; line++) {
+                            size_t i = 0;
+                            while (query[i] && line[i] &&
+                                   tolower((unsigned char)query[i]) ==
+                                       tolower((unsigned char)line[i]))
+                                i++;
+                            match = !query[i];
+                        }
+                        if (match) {
+                            found_row = scroll_pos = at;
+                            break;
+                        }
+                    }
+                }
+            }
+            force_repaint = true;
+            need_frame_redraw = true;
+            continue;
+        }
         switch (ch) {
+            case 'k':
             case KEY_UP:
                 if (scroll_pos > 0)
                     scroll_pos--;
                 break;
+            case 'j':
             case KEY_DOWN:
                 if (scroll_pos < max_scroll)
                     scroll_pos++;
@@ -613,8 +767,9 @@ void show_help_menu(const KeyBindings *kb) {
                 done = true;
                 break;
             default:
-                if (ch == kb->key_help || ch == toupper(kb->key_help) ||
-                    ch == tolower(kb->key_help)) {
+                if (ch == kb->key_help ||
+                    (kb->key_help >= 0 && kb->key_help <= 255 &&
+                     (ch == toupper(kb->key_help) || ch == tolower(kb->key_help)))) {
                     done = true;
                 }
                 break;
@@ -626,6 +781,7 @@ void show_help_menu(const KeyBindings *kb) {
     if (popup_win)
         delwin(popup_win);
     strvec_free(&help_lines);
+    wtimeout(stdscr, original_delay);
 
     touchwin(stdscr);
     refresh();
