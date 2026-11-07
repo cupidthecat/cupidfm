@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "app_panes.h"
 #include "git.h"
 #include "search.h"
 #include "utils.h"
@@ -16,6 +17,9 @@ void app_state_dispose(AppState *state) {
     Vector_bye(&state->files);
     Vector_set_len_no_free(&state->search_files, 0);
     Vector_bye(&state->search_files);
+    app_pane_dispose(&state->parent);
+    app_pane_dispose(&state->child);
+    selection_destroy(state->selection);
     undo_state_clear(&state->undo_state);
     free(state->current_directory);
     free(state->lazy_load.directory_path);
@@ -26,15 +30,92 @@ void app_state_dispose(AppState *state) {
     memset(state, 0, sizeof(*state));
 }
 
+void app_selection_restore(AppState *state) {
+    if (!state || !state->current_directory)
+        return;
+    size_t revision = Vector_revision(state->files);
+    if (state->selection_revision == revision &&
+        !strcmp(state->selection_directory, state->current_directory))
+        return;
+    for (size_t i = 0; i < Vector_len(state->files); i++) {
+        FileAttr file = state->files.el[i];
+        char path[MAX_PATH_LENGTH];
+        const char *name = FileAttr_get_name(file);
+        if (strlen(state->current_directory) + strlen(name) + 2 > sizeof(path)) {
+            FileAttr_select(file, false);
+            continue;
+        }
+        path_join(path, state->current_directory, name);
+        FileAttr_select(file, selection_has(state->selection, path));
+    }
+    state->selection_revision = revision;
+    snprintf(state->selection_directory, sizeof(state->selection_directory), "%s",
+             state->current_directory);
+}
+
+bool app_selection_set(AppState *state, FileAttr file, bool selected) {
+    app_selection_restore(state);
+    if (!file)
+        return false;
+    char path[MAX_PATH_LENGTH];
+    const char *name = FileAttr_get_name(file);
+    if (strlen(state->current_directory) + strlen(name) + 2 > sizeof(path))
+        return false;
+    path_join(path, state->current_directory, name);
+    bool ok = selection_set(&state->selection, path, FileAttr_is_dir(file), selected);
+    FileAttr_select(file, selection_has(state->selection, path));
+    return ok;
+}
+
+void app_selection_capture(AppState *state) {
+    for (size_t i = 0; i < Vector_len(state->files); i++) {
+        FileAttr file = state->files.el[i];
+        char path[MAX_PATH_LENGTH];
+        const char *name = FileAttr_get_name(file);
+        if (strlen(state->current_directory) + strlen(name) + 2 > sizeof(path)) {
+            FileAttr_select(file, false);
+            continue;
+        }
+        path_join(path, state->current_directory, name);
+        bool marked = FileAttr_selected(file);
+        if (!selection_set(&state->selection, path, FileAttr_is_dir(file), marked))
+            FileAttr_select(file, selection_has(state->selection, path));
+    }
+}
+
 size_t app_selection_count(AppState *state) {
-    size_t count = 0;
-    Vector *view = active_files(state);
-    for (size_t i = 0; i < Vector_len(*view); i++)
-        count += state->select_all_active || FileAttr_selected(view->el[i]);
-    return count;
+    app_selection_restore(state);
+    return selection_count(state->selection);
+}
+
+bool app_selection_paths(AppState *state, Vector *paths) {
+    app_selection_restore(state);
+    if (selection_count(state->selection))
+        return selection_export(state->selection, paths);
+    *paths = Vector_new(1);
+    if (!paths->el)
+        return false;
+    if (!state->selected_entry || !*state->selected_entry)
+        return true;
+    char path[MAX_PATH_LENGTH];
+    if (strlen(state->current_directory) + strlen(state->selected_entry) + 2 > sizeof(path)) {
+        Vector_bye(paths);
+        *paths = (Vector){0};
+        return false;
+    }
+    path_join(path, state->current_directory, state->selected_entry);
+    paths->el[0] = strdup(path);
+    if (!paths->el[0]) {
+        Vector_bye(paths);
+        *paths = (Vector){0};
+        return false;
+    }
+    Vector_set_len_no_free(paths, 1);
+    return true;
 }
 
 void app_selection_clear(AppState *state) {
+    selection_clear(state->selection);
     for (size_t i = 0; i < Vector_len(state->files); i++)
         FileAttr_select(state->files.el[i], false);
     state->select_all_active = false;
@@ -46,7 +127,7 @@ void app_selection_clear(AppState *state) {
 void app_selection_toggle_all(AppState *state, bool invert) {
     Vector *view = active_files(state);
     for (size_t i = 0; i < Vector_len(*view); i++)
-        FileAttr_select(view->el[i], !invert || !FileAttr_selected(view->el[i]));
+        app_selection_set(state, view->el[i], !invert || !FileAttr_selected(view->el[i]));
     state->select_all_active = false;
     g_select_all_highlight = false;
     state->mouse_drag = false;
@@ -54,6 +135,7 @@ void app_selection_toggle_all(AppState *state, bool invert) {
 }
 
 void app_move_cursor(AppState *state, SIZE index) {
+    app_selection_restore(state);
     CursorAndSlice *cas = &state->dir_window_cas;
     Vector *view = active_files(state);
     SIZE count = (SIZE)Vector_len(*view);
@@ -73,6 +155,8 @@ void app_move_cursor(AppState *state, SIZE index) {
             FileAttr_visual_apply(view->el[i], in_range, state->visual_unset);
         }
     }
+    if (state->visual_active)
+        app_selection_capture(state);
     cas->cursor = index;
     cas->num_files = count;
     fix_cursor(cas);
@@ -83,34 +167,15 @@ void app_move_cursor(AppState *state, SIZE index) {
 void app_reload_view(AppState *state) {
     char hover[MAX_PATH_LENGTH], query[MAX_PATH_LENGTH];
     snprintf(hover, sizeof(hover), "%s", state->selected_entry ? state->selected_entry : "");
-    Vector selection = Vector_new(app_selection_count(state));
-    if (selection.el) {
-        for (size_t i = 0; i < Vector_len(state->files); i++) {
-            FileAttr file = state->files.el[i];
-            if (!FileAttr_selected(file) && !state->select_all_active)
-                continue;
-            char *name = strdup(FileAttr_get_name(file));
-            if (!name || !Vector_add(&selection, 1)) {
-                free(name);
-                break;
-            }
-            selection.el[Vector_len(selection)] = name;
-            Vector_set_len_no_free(&selection, Vector_len(selection) + 1);
-        }
-    }
+    app_selection_restore(state);
+    selection_prune(state->selection);
+    state->visual_active = false;
+    state->mouse_drag = false;
     search_before_reload(state, query);
     reload_directory(&state->files, state->current_directory);
+    state->parent.loaded = state->child.loaded = false;
     state->lazy_load.files_loaded = state->lazy_load.total_files = Vector_len(state->files);
-    for (size_t i = 0; i < Vector_len(state->files); i++) {
-        FileAttr file = state->files.el[i];
-        for (size_t j = 0; j < Vector_len(selection); j++) {
-            if (!strcmp(FileAttr_get_name(file), selection.el[j])) {
-                FileAttr_select(file, true);
-                break;
-            }
-        }
-    }
-    Vector_bye(&selection);
+    app_selection_restore(state);
     search_after_reload(state, &state->dir_window_cas, query);
     SIZE index = find_loaded_index_by_name(active_files(state), hover);
     if (index != (SIZE)-1)
@@ -143,7 +208,8 @@ bool app_change_directory(AppState *state, const char *path) {
         free(canonical);
         return false;
     }
-    app_selection_clear(state);
+    state->visual_active = false;
+    state->mouse_drag = false;
     search_clear(state);
     free(state->current_directory);
     free(state->lazy_load.directory_path);
@@ -154,6 +220,7 @@ bool app_change_directory(AppState *state, const char *path) {
     reload_directory_lazy(&state->files, canonical, &state->lazy_load.files_loaded,
                           &state->lazy_load.total_files);
     state->dir_window_cas.cursor = state->dir_window_cas.start = 0;
+    app_selection_restore(state);
     app_move_cursor(state, 0);
     return true;
 }

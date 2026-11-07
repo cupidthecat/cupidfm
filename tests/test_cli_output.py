@@ -55,6 +55,9 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-cli-output-") as temporary:
     assert not (root / "skipped.txt").exists()
     launch(["--chooser-file", "chosen.txt"], b"\n")
     assert (root / "chosen.txt").read_text() == str(source / "selected.txt") + "\n"
+    empty = root / "empty"; empty.mkdir()
+    launch(["--chooser-file=across-directories.txt"], b" g " + str(empty).encode() + b"\no")
+    assert (root / "across-directories.txt").read_text() == str(source / "selected.txt") + "\n"
     for arguments in (["--keymap=unknown"], ["--cwd-file"], ["--chooser-file="]):
         result = subprocess.run([str(binary), *arguments], cwd=root, capture_output=True, timeout=5)
         assert result.returncode == 2, (arguments, result.returncode)

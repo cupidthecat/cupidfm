@@ -22,6 +22,10 @@ bool app_tab_close(AppTabs *tabs, AppState *state);
 void app_tabs_dispose(AppTabs *tabs);
 void app_move_cursor(AppState *state, SIZE index);
 size_t app_selection_count(AppState *state);
+void app_selection_restore(AppState *state);
+bool app_selection_set(AppState *state, FileAttr file, bool selected);
+void app_selection_capture(AppState *state);
+bool app_selection_paths(AppState *state, Vector *paths);
 void app_selection_clear(AppState *state);
 void app_selection_toggle_all(AppState *state, bool invert);
 

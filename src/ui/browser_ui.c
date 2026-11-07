@@ -38,6 +38,10 @@
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
 
+static int preview_top(void) {
+    return g_kb.vim_keymap ? 1 : 7;
+}
+
 static bool tree_limit_hit = false;
 
 static void count_directory_tree_lines(const char *dir_path, int level, int *line_count) {
@@ -156,7 +160,7 @@ static bool supports_truecolor(void) {
 }
 
 static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -179,7 +183,7 @@ static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
 
 /* Clear Sixel graphics from the content area by overwriting with a black Sixel image */
 static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -444,7 +448,7 @@ static void scale_image_to_fit(uint32_t src_w, uint32_t src_h, int max_width, in
 
 static void draw_image_preview(WINDOW *window, const char *full_path, int start_line, int max_y,
                                int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -571,7 +575,7 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
 
 static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, int start_line,
                                          int max_y, int max_x) {
-    int content_top = 7, content_left = 2;
+    int content_top = preview_top(), content_left = 2;
     int content_width = max_x - 4, content_height = max_y - content_top - 1;
     char error[256] = {0};
     const cupidimage_image *image =
@@ -621,14 +625,14 @@ static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, 
 
 static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y, int max_x,
                                 enum ImagePreviewEncoding encoding) {
-    int content_width = max_x - 4, content_height = max_y - 8;
+    int content_width = max_x - 4, content_height = max_y - preview_top() - 1;
     char error[256] = {0};
     uint64_t generation;
     const cupidimage_image *image = get_preview_image(full_path, content_width, content_height,
                                                       &generation, error, sizeof(error));
     if (!image) {
         clear_preview_graphics(window, max_y, max_x);
-        mvwprintw(window, 7, 2, "Image preview failed: %s", error);
+        mvwprintw(window, preview_top(), 2, "Image preview failed: %s", error);
         wrefresh(window);
         return;
     }
@@ -651,7 +655,7 @@ static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y
         image_preview_encode(image, encoding, columns, rows, &length, error, sizeof(error));
     if (!payload) {
         clear_preview_graphics(window, max_y, max_x);
-        mvwprintw(window, 7, 2, "Image preview failed: %s", error);
+        mvwprintw(window, preview_top(), 2, "Image preview failed: %s", error);
         wrefresh(window);
         return;
     }
@@ -667,7 +671,7 @@ static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y
     }
     clear_truecolor_overlay(window, max_y, max_x);
     curs_set(0);
-    printf("\x1b[?25l\x1b[%d;%dH", win_y + 8, win_x + 3);
+    printf("\x1b[?25l\x1b[%d;%dH", win_y + preview_top() + 1, win_x + 3);
     size_t written = fwrite(payload, 1, length, stdout);
     int flushed = fflush(stdout);
     printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
@@ -701,7 +705,7 @@ static void show_directory_tree(WINDOW *window, const char *dir_path, int level,
     if (level == 0) {
         tree_limit_hit = false;
     }
-    if (level == 0) {
+    if (level == 0 && !g_kb.vim_keymap) {
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
         (*line_num)++;
     }
@@ -1048,23 +1052,41 @@ static void listing_details(const char *path, const struct stat *info, FileLineM
     }
 }
 
+static void draw_directory_list(WINDOW *window, const char *directory, Vector *files_vector,
+                                CursorAndSlice *cas, bool hover);
+
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas) {
+    draw_directory_list(window, directory, files_vector, cas, true);
+}
+
+void draw_directory_preview(WINDOW *window, const char *directory, Vector *files_vector,
+                            CursorAndSlice *cas) {
+    draw_directory_list(window, directory, files_vector, cas, false);
+}
+
+static void draw_directory_list(WINDOW *window, const char *directory, Vector *files_vector,
+                                CursorAndSlice *cas, bool hover) {
     if (!window || !cas)
         return;
     int rows, cols;
     getmaxyx(window, rows, cols);
     cas->num_files = files_vector ? (SIZE)Vector_len(*files_vector) : 0;
-    cas->num_lines = rows;
-    fix_cursor(cas);
+    int padding = g_kb.vim_keymap ? 0 : 1;
+    cas->num_lines = rows + (padding ? 0 : 2);
+    if (hover)
+        fix_cursor(cas);
+    else
+        cas->start = MAX(0, MIN(cas->start, cas->num_files - MAX(1, rows - padding * 2)));
     werase(window);
-    box(window, 0, 0);
-    if (cols > 6) {
+    if (padding)
+        box(window, 0, 0);
+    if (padding && cols > 6) {
         wmove(window, 0, 2);
         browser_draw_name(window, directory, cols - 4);
     }
     if (!cas->num_files) {
-        mvwaddnstr(window, 1, 1, "This directory is empty", MAX(0, cols - 2));
+        mvwaddnstr(window, padding, padding, "This directory is empty", MAX(0, cols - padding * 2));
         wrefresh(window);
         return;
     }
@@ -1074,8 +1096,9 @@ void draw_directory_window(WINDOW *window, const char *directory, Vector *files_
         cookie = NULL;
     }
     FileListingOptions options = file_listing_options();
-    for (int row = 1; row < rows - 1 && cas->start + row - 1 < cas->num_files; row++) {
-        SIZE index = cas->start + row - 1;
+    for (int row = padding; row < rows - padding && cas->start + row - padding < cas->num_files;
+         row++) {
+        SIZE index = cas->start + row - padding;
         FileAttr file = files_vector->el[index];
         const char *name = FileAttr_get_name(file);
         char path[MAX_PATH_LENGTH], mime[512], details[80] = {0};
@@ -1086,19 +1109,22 @@ void draw_directory_window(WINDOW *window, const char *directory, Vector *files_
                                                  : mime_type_cached(cookie, path, MAGIC_MIME_TYPE,
                                                                     mime, sizeof(mime));
         const char *icon = FileAttr_is_dir(file) ? "📁" : get_file_emoji(type, name);
-        bool cursor = index == cas->cursor;
+        bool cursor = hover && index == cas->cursor;
         bool selected = g_select_all_highlight || FileAttr_selected(file);
         if (cursor)
             wattron(window, A_REVERSE);
         if (selected)
             wattron(window, A_BOLD);
-        mvwprintw(window, row, 1, "%c %s %s ", selected ? '*' : ' ', icon,
-                  git_status_to_emoji(FileAttr_get_git_status(file)));
+        if (g_kb.vim_keymap)
+            mvwprintw(window, row, 0, "%c%s ", selected ? '*' : ' ', icon);
+        else
+            mvwprintw(window, row, 1, "%c %s %s ", selected ? '*' : ' ', icon,
+                      git_status_to_emoji(FileAttr_get_git_status(file)));
         int x = getcurx(window);
         if (metadata && cols >= 40)
             listing_details(path, &info, options.linemode, details, sizeof(details));
         int detail_width = MIN((int)strlen(details), MAX(0, cols / 2 - 2));
-        int available = MAX(0, cols - 2 - x - (detail_width ? detail_width + 1 : 0));
+        int available = MAX(0, cols - padding - x - (detail_width ? detail_width + 1 : 0));
         int used = browser_draw_name(window, name, available);
         if (metadata && S_ISLNK(info.st_mode) && used + 5 < available) {
             char target[MAX_PATH_LENGTH];
@@ -1110,7 +1136,7 @@ void draw_directory_window(WINDOW *window, const char *directory, Vector *files_
             }
         }
         if (detail_width) {
-            wmove(window, row, cols - detail_width - 2);
+            wmove(window, row, cols - detail_width - padding);
             browser_draw_name(window, details, detail_width);
         }
         if (selected)
@@ -1158,6 +1184,11 @@ static void clear_preview_graphics(WINDOW *window, int max_y, int max_x) {
     last_image_backend = -1;
 }
 
+void browser_clear_preview(WINDOW *window) {
+    if (window)
+        clear_preview_graphics(window, getmaxy(window), getmaxx(window));
+}
+
 void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name,
                               int start_line) {
     // Clear the window and draw border
@@ -1176,7 +1207,10 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
 
     const char *name =
         (display_name && *display_name) ? display_name : basename_ptr_local(full_path);
-    mvwprintw(window, 1, 2, "Preview: %s", name);
+    wmove(window, g_kb.vim_keymap ? 0 : 1, 2);
+    if (!g_kb.vim_keymap)
+        waddstr(window, "Preview: ");
+    browser_draw_name(window, name, MAX(0, max_x - getcurx(window) - 2));
 
     struct stat file_stat;
     if (stat(full_path, &file_stat) == -1) {
@@ -1186,65 +1220,67 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         return;
     }
 
-    char fileSizeStr[64];
-    if (S_ISDIR(file_stat.st_mode)) {
-        static char last_preview_size_path[MAX_PATH_LENGTH] = "";
-        static struct timespec last_preview_size_change = {0};
-        static bool last_preview_size_initialized = false;
+    if (!g_kb.vim_keymap) {
+        char fileSizeStr[64];
+        if (S_ISDIR(file_stat.st_mode)) {
+            static char last_preview_size_path[MAX_PATH_LENGTH] = "";
+            static struct timespec last_preview_size_change = {0};
+            static bool last_preview_size_initialized = false;
 
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
 
-        bool path_changed = !last_preview_size_initialized ||
-                            strncmp(last_preview_size_path, full_path, MAX_PATH_LENGTH) != 0;
-        if (path_changed) {
-            strncpy(last_preview_size_path, full_path, MAX_PATH_LENGTH - 1);
-            last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
-            last_preview_size_change = now;
-            last_preview_size_initialized = true;
-        }
-
-        long elapsed_ns = (now.tv_sec - last_preview_size_change.tv_sec) * 1000000000L +
-                          (now.tv_nsec - last_preview_size_change.tv_nsec);
-        bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
-
-        long dir_size =
-            allow_enqueue ? get_directory_size(full_path) : get_directory_size_peek(full_path);
-        if (dir_size == -1) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
-        } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
-        } else if (dir_size == DIR_SIZE_TOO_LARGE) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
-        } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
-        } else if (dir_size == DIR_SIZE_PENDING) {
-            long p = dir_size_get_progress(full_path);
-            if (p > 0) {
-                char tmp[32];
-                format_file_size(tmp, (size_t)p);
-                snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
-            } else {
-                snprintf(fileSizeStr, sizeof(fileSizeStr),
-                         allow_enqueue ? "Calculating..." : "Waiting...");
+            bool path_changed = !last_preview_size_initialized ||
+                                strncmp(last_preview_size_path, full_path, MAX_PATH_LENGTH) != 0;
+            if (path_changed) {
+                strncpy(last_preview_size_path, full_path, MAX_PATH_LENGTH - 1);
+                last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
+                last_preview_size_change = now;
+                last_preview_size_initialized = true;
             }
+
+            long elapsed_ns = (now.tv_sec - last_preview_size_change.tv_sec) * 1000000000L +
+                              (now.tv_nsec - last_preview_size_change.tv_nsec);
+            bool allow_enqueue =
+                (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
+
+            long dir_size =
+                allow_enqueue ? get_directory_size(full_path) : get_directory_size_peek(full_path);
+            if (dir_size == -1) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
+            } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
+            } else if (dir_size == DIR_SIZE_TOO_LARGE) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+            } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
+            } else if (dir_size == DIR_SIZE_PENDING) {
+                long p = dir_size_get_progress(full_path);
+                if (p > 0) {
+                    char tmp[32];
+                    format_file_size(tmp, (size_t)p);
+                    snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
+                } else {
+                    snprintf(fileSizeStr, sizeof(fileSizeStr),
+                             allow_enqueue ? "Calculating..." : "Waiting...");
+                }
+            } else {
+                format_file_size(fileSizeStr, (size_t)dir_size);
+            }
+            mvwprintw(window, 2, 2, "📁 Directory Size: %s", fileSizeStr);
         } else {
-            format_file_size(fileSizeStr, (size_t)dir_size);
+            format_file_size(fileSizeStr, (size_t)file_stat.st_size);
+            mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
         }
-        mvwprintw(window, 2, 2, "📁 Directory Size: %s", fileSizeStr);
-    } else {
-        format_file_size(fileSizeStr, (size_t)file_stat.st_size);
-        mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
+
+        char permissions[10];
+        snprintf(permissions, sizeof(permissions), "%o", file_stat.st_mode & 0777);
+        mvwprintw(window, 3, 2, "🔒 Permissions: %s", permissions);
+
+        char modTime[50];
+        strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
+        mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
     }
-
-    char permissions[10];
-    snprintf(permissions, sizeof(permissions), "%o", file_stat.st_mode & 0777);
-    mvwprintw(window, 3, 2, "🔒 Permissions: %s", permissions);
-
-    char modTime[50];
-    strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
-    mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
-
     bool is_image = false;
     bool used_truecolor = false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
@@ -1255,13 +1291,16 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
             is_image = true;
         }
-        mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
+        if (!g_kb.vim_keymap)
+            mvwprintw(window, 5, 2, "MIME Type: %.*s", MAX(0, max_x - 15),
+                      mime_type ? mime_type : "Unknown");
         magic_close(magic_cookie);
     } else {
         if (magic_cookie) {
             magic_close(magic_cookie);
         }
-        mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
+        if (!g_kb.vim_keymap)
+            mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
     }
     if (!is_image) {
         is_image = is_image_extension(full_path);
@@ -1277,12 +1316,13 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     last_image_backend = backend;
 
     if (S_ISDIR(file_stat.st_mode)) {
-        int line_num = 7;
+        int line_num = preview_top();
         int current_count = 0;
         show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line,
                             &current_count);
     } else if (is_archive_file(full_path)) {
-        display_archive_preview(window, full_path, start_line, max_y, max_x);
+        display_archive_preview_at(window, full_path, start_line, max_y, max_x,
+                                   g_kb.vim_keymap ? 1 : 8);
     } else if (is_image) {
         if (cupidimage_is_kitty_terminal()) {
             draw_image_preview_kitty(window, full_path, start_line, max_y, max_x);
@@ -1299,14 +1339,14 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_supported_file_type(full_path)) {
         FILE *file = fopen(full_path, "r");
         if (file) {
-            draw_text_preview(window, file, syntax_get_for_file(full_path), start_line, max_y,
-                              max_x);
+            draw_text_preview_at(window, file, syntax_get_for_file(full_path), start_line, max_y,
+                                 max_x, preview_top());
             fclose(file);
         } else {
-            mvwprintw(window, 7, 2, "Unable to open file for preview");
+            mvwprintw(window, preview_top(), 2, "Unable to open file for preview");
         }
     } else {
-        mvwprintw(window, 7, 2, "No preview available");
+        mvwprintw(window, preview_top(), 2, "No preview available");
     }
 
     if (!used_truecolor) {
@@ -1336,6 +1376,12 @@ void fix_cursor(CursorAndSlice *cas) {
         cas->start = 0;
         return;
     }
+
+    int margin = g_kb.vim_keymap ? MIN(MAX(0, g_kb.scrolloff), (visible_lines - 1) / 2) : 0;
+    if (cas->cursor < cas->start + margin)
+        cas->start = MAX(0, cas->cursor - margin);
+    else if (cas->cursor >= cas->start + visible_lines - margin)
+        cas->start = cas->cursor - visible_lines + margin + 1;
 
     if (cas->cursor < cas->start) {
         cas->start = cas->cursor;

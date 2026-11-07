@@ -8,6 +8,12 @@
 extern WINDOW *mainwin;
 extern WINDOW *dirwin;
 extern WINDOW *previewwin;
+extern WINDOW *parentwin;
+extern WINDOW *statuswin;
+
+void app_windows_create(void);
+void app_windows_destroy(void);
+void app_draw_browser(AppState *state);
 
 void redraw_all_windows(AppState *state);
 

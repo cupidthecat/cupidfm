@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import struct
 import subprocess
 import tempfile
@@ -74,13 +75,13 @@ fn on_key(key) {
         try:
             wait_for((root / "ready").exists)
             assert snapshot()[:3] == ["child folder", "0", "3"]
-            clicked = snapshot(b"\x1b[<0;5;8M\x1b[<0;5;8m")
+            clicked = snapshot(b"\x1b[<0;20;4M\x1b[<0;20;4m")
             assert clicked[:2] == ["file2.txt", "2"], clicked
-            assert snapshot(b"\x1b[<64;5;8M")[:2] == ["child folder", "0"]
-            assert snapshot(b"\x1b[<65;5;8M")[:2] == ["file2.txt", "2"]
-            snapshot(b"\x1b[<0;5;6M")
-            snapshot(b"\x1b[<32;5;8M")
-            assert snapshot(b"\x1b[<0;5;8m")[3] == "3"
+            assert snapshot(b"\x1b[<64;20;4M")[:2] == ["child folder", "0"]
+            assert snapshot(b"\x1b[<65;20;4M")[:2] == ["file2.txt", "2"]
+            snapshot(b"\x1b[<0;20;2M")
+            snapshot(b"\x1b[<32;20;4M")
+            assert snapshot(b"\x1b[<0;20;4m")[3] == "3"
             snapshot(b"\x1b")
             snapshot(b"gg")
 
@@ -118,6 +119,41 @@ fn on_key(key) {
             wait_for(lambda: (trash / "files/file10.txt").exists())
             assert (trash / "info/file10.txt.trashinfo").exists()
             wait_for(lambda: snapshot()[2] == "0")
+            # Selections remain active in an empty directory, before anything is yanked.
+            snapshot(b"g " + str(source).encode() + b"\n")
+            selected = snapshot(b"ggl") # Enter the child directory.
+            (child / "nested.txt").write_text("nested\n")
+            wait_for(lambda: snapshot()[2] == "1")
+            assert snapshot(b" ")[3] == "1"
+            snapshot(b"h")
+            assert snapshot(b"ggjj ")[3] == "2" # Add file2 from the parent.
+            snapshot(b"g " + str(target).encode() + b"\n")
+            assert snapshot()[2:4] == ["0", "2"]
+            snapshot(b"y")
+            os.write(primary, b"p")
+            wait_for(lambda: (target / "nested.txt").exists() and (target / "file2.txt").exists())
+            assert (target / "nested.txt").read_text() == "nested\n"
+            assert (target / "file2.txt").read_text() == "file2.txt\n"
+            # Rename acts on an explicit selection even after leaving its directory.
+            empty = root / "rename-empty"; empty.mkdir()
+            snapshot(b"gg ")
+            snapshot(b"g " + str(empty).encode() + b"\n")
+            assert snapshot()[2:4] == ["0", "1"]
+            snapshot(b"rrenamed.txt\n")
+            wait_for((target / "renamed.txt").exists)
+            assert snapshot()[3] == "1"
+            snapshot(b"y")
+            os.write(primary, b"p")
+            wait_for((empty / "renamed.txt").exists)
+            wait_for(lambda: snapshot()[2] == "1")
+            # Small terminals keep input safe while waiting for a usable layout.
+            fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 3, 8, 0, 0))
+            process.send_signal(signal.SIGWINCH)
+            snapshot()
+            snapshot(b"~aw")
+            fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
+            process.send_signal(signal.SIGWINCH)
+            assert snapshot()[2] == "1"
             os.write(primary, b"q")
             process.wait(timeout=10)
             errors.seek(0); error = errors.read().decode(errors="replace")

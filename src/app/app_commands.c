@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "app_commands.h"
 #include "app_mouse.h"
+#include "app_panes.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -63,34 +64,16 @@ static void find_next(AppState *state, bool previous) {
 
 static bool browser_paths(AppState *state, ClipboardPaths *out) {
     *out = (ClipboardPaths){0};
-    size_t selected = app_selection_count(state);
-    out->count = selected ? selected : (state->selected_entry && *state->selected_entry ? 1 : 0);
-    if (!out->count)
+    Vector paths;
+    if (!app_selection_paths(state, &paths))
         return false;
-    out->paths = calloc(out->count, sizeof(char *));
-    if (!out->paths)
-        return false;
-    Vector *view = active_files(state);
-    size_t used = 0;
-    for (size_t i = 0; i < Vector_len(*view) && used < out->count; i++) {
-        FileAttr file = view->el[i];
-        if (selected ? !(state->select_all_active || FileAttr_selected(file))
-                     : (SIZE)i != state->dir_window_cas.cursor)
-            continue;
-        char path[MAX_PATH_LENGTH];
-        path_join(path, state->current_directory, FileAttr_get_name(file));
-        out->paths[used] = strdup(path);
-        if (!out->paths[used]) {
-            clipboard_paths_free(out);
-            return false;
-        }
-        used++;
-    }
-    if (used != out->count) {
-        clipboard_paths_free(out);
+    if (!Vector_len(paths)) {
+        Vector_bye(&paths);
         return false;
     }
-    return true;
+    out->count = Vector_len(paths);
+    out->paths = (char **)paths.el;
+    return out->count != 0;
 }
 
 static void submit_operation(AppState *state, TaskKind kind, bool overwrite) {
@@ -142,53 +125,38 @@ static void submit_operation(AppState *state, TaskKind kind, bool overwrite) {
 }
 
 static void run_shell(AppState *state, const char *command) {
-    size_t count = app_selection_count(state);
-    bool selected = count != 0;
-    if (!count && state->selected_entry && *state->selected_entry)
-        count = 1;
-    char **argv = calloc(count + 5, sizeof(*argv));
-    if (!argv)
+    Vector selected;
+    if (!app_selection_paths(state, &selected)) {
+        notify_result(false, "Read selected paths");
         return;
+    }
+    ClipboardPaths paths = {.paths = (char **)selected.el, .count = Vector_len(selected)};
+    size_t count = paths.count;
+    char **argv = calloc(count + 5, sizeof(*argv));
+    if (!argv) {
+        clipboard_paths_free(&paths);
+        return;
+    }
     argv[0] = "sh";
     argv[1] = "-c";
     argv[2] = (char *)command;
     argv[3] = "cupidfm";
-    Vector *view = active_files(state);
-    size_t used = 0;
-    for (size_t i = 0; i < Vector_len(*view) && used < count; i++) {
-        FileAttr file = view->el[i];
-        if (selected ? !(state->select_all_active || FileAttr_selected(file))
-                     : (SIZE)i != state->dir_window_cas.cursor)
-            continue;
-        char path[MAX_PATH_LENGTH];
-        path_join(path, state->current_directory, FileAttr_get_name(file));
-        argv[4 + used] = strdup(path);
-        if (!argv[4 + used])
-            break;
-        used++;
-    }
-    if (used == count) {
-        def_prog_mode();
-        endwin();
-        bool ok = run_process_in_directory(argv, state->current_directory, -1, -1);
-        reset_prog_mode();
-        refresh();
-        clearok(stdscr, TRUE);
-        resized = 1;
-        app_reload_view(state);
-        notify_result(ok, "Command finished");
-    }
-    for (size_t i = 0; i < used; i++)
-        free(argv[4 + i]);
+    for (size_t i = 0; i < count; i++)
+        argv[i + 4] = paths.paths[i];
+    def_prog_mode();
+    endwin();
+    bool ok = run_process_in_directory(argv, state->current_directory, -1, -1);
+    reset_prog_mode();
+    refresh();
+    clearok(stdscr, TRUE);
+    resized = 1;
+    app_reload_view(state);
+    notify_result(ok, "Command finished");
+    clipboard_paths_free(&paths);
     free(argv);
 }
 
 static void open_selected(AppState *state, bool interactive) {
-    Vector *view = active_files(state);
-    SIZE cursor = state->dir_window_cas.cursor;
-    if (cursor < 0 || (size_t)cursor >= Vector_len(*view))
-        return;
-    FileAttr file = view->el[cursor];
     if (state->chooser_file && !interactive) {
         ClipboardPaths paths;
         if (!browser_paths(state, &paths))
@@ -207,12 +175,19 @@ static void open_selected(AppState *state, bool interactive) {
         notify_result(ok, "Choose files");
         return;
     }
-    if (FileAttr_is_dir(file) && !app_selection_count(state)) {
+    Vector *view = active_files(state);
+    SIZE cursor = state->dir_window_cas.cursor;
+    FileAttr file = cursor >= 0 && (size_t)cursor < Vector_len(*view) ? view->el[cursor] : NULL;
+    if (file && FileAttr_is_dir(file) && !app_selection_count(state)) {
         notify_result(app_change_directory(state, FileAttr_get_name(file)), "Open directory");
         return;
     }
+    ClipboardPaths paths;
+    if (!browser_paths(state, &paths))
+        return;
     char path[MAX_PATH_LENGTH], type[512];
-    path_join(path, state->current_directory, FileAttr_get_name(file));
+    snprintf(path, sizeof(path), "%s", paths.paths[0]);
+    clipboard_paths_free(&paths);
     magic_t cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
     if (cookie && magic_load(cookie, NULL)) {
         magic_close(cookie);
@@ -413,6 +388,11 @@ static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int k
 }
 
 static void seek_preview(AppState *state, int amount) {
+    if (g_kb.vim_keymap && previewwin && app_child_refresh(state)) {
+        SIZE bound = MAX(0, (SIZE)Vector_len(state->child.files) - getmaxy(previewwin));
+        state->preview_start_line = MAX(0, MIN((SIZE)state->preview_start_line + amount, bound));
+        return;
+    }
     char path[MAX_PATH_LENGTH];
     if (state->preview_override_active)
         snprintf(path, sizeof(path), "%s", state->preview_override_path);
@@ -424,7 +404,7 @@ static void seek_preview(AppState *state, int amount) {
             state->preview_start_line = MAX(0, state->preview_start_line - 1);
         else if (previewwin &&
                  preview_can_scroll_down(path, state->preview_start_line, getmaxx(previewwin) - 4,
-                                         getmaxy(previewwin) - 8))
+                                         getmaxy(previewwin) - (g_kb.vim_keymap ? 2 : 8)))
             state->preview_start_line++;
     }
 }
@@ -496,7 +476,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         SIZE at = state->dir_window_cas.cursor;
         if (at >= 0 && (size_t)at < Vector_len(*view)) {
             FileAttr file = view->el[at];
-            FileAttr_select(file, !FileAttr_selected(file));
+            app_selection_set(state, file, !FileAttr_selected(file));
             app_move_cursor(state, at + 1);
         }
         return APP_KEY_HANDLED;
@@ -673,8 +653,11 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
 void app_draw_tab_bar(AppState *state, const AppTabs *tabs) {
     if (tabs->count == 1 && !g_kb.vim_keymap)
         return;
-    int width = getmaxx(mainwin);
-    int x = 2;
+    WINDOW *target = g_kb.vim_keymap ? bannerwin : mainwin;
+    if (!target || (g_kb.vim_keymap && (LINES < 5 || COLS < 12)))
+        return;
+    int width = getmaxx(target);
+    int x = g_kb.vim_keymap ? MAX(0, width - (int)tabs->count * 18) : 2;
     for (size_t i = 0; i < tabs->count && x < width - 3; i++) {
         const AppState *tab = i == tabs->active ? state : tabs->saved[i];
         const char *label = tab->tab_name[0] ? tab->tab_name : basename_ptr(tab->current_directory);
@@ -683,11 +666,12 @@ void app_draw_tab_bar(AppState *state, const AppTabs *tabs) {
         char text[96];
         snprintf(text, sizeof(text), " %zu:%.*s ", i + 1, 24, label);
         if (i == tabs->active)
-            wattron(mainwin, A_REVERSE);
-        wmove(mainwin, 0, x);
-        int used = browser_draw_name(mainwin, text, width - x - 2);
+            wattron(target, A_REVERSE);
+        wmove(target, 0, x);
+        int used = browser_draw_name(target, text, width - x - 2);
         if (i == tabs->active)
-            wattroff(mainwin, A_REVERSE);
+            wattroff(target, A_REVERSE);
         x += used;
     }
+    wrefresh(target);
 }

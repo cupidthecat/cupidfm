@@ -4,6 +4,7 @@
 #endif
 
 #include "app_navigation.h"
+#include "app_session.h"
 
 #include <dirent.h>
 #include <ncurses.h>
@@ -109,6 +110,7 @@ void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_
     SIZE index = find_index_by_name_lazy(files, parent, dir_window_cas, &state->lazy_load, child);
     dir_window_cas->cursor = index == (SIZE)-1 ? 0 : index;
     fix_cursor(dir_window_cas);
+    app_selection_restore(state);
     sync_selection_from_active(state, dir_window_cas);
     show_notification(notifwin, "Parent: %s", parent);
     should_clear_notif = false;
@@ -213,6 +215,7 @@ void navigate_right(AppState *state, char **current_directory, Vector *files_vie
         state->selected_entry = FileAttr_get_name(state->files.el[0]);
     }
 
+    app_selection_restore(state);
     werase(notifwin);
     show_notification(notifwin, "Entered directory: %s", state->selected_entry);
     should_clear_notif = false;

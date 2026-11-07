@@ -23,7 +23,7 @@ The default build uses Clang with `-O2 -g`. Libraries are built from pinned sour
 ./cupidfm --help
 ```
 
-With the default configuration, arrows navigate, Tab switches panes, F1 exits, and Ctrl+E opens the editor. Settings are stored in `~/.cupidfmrc`; plugins load from `~/.cupidfm/plugins/`.
+New configurations use Vim browser keys: arrows or j/k move, h/l leave or enter a directory, q quits, and Ctrl+E opens the editor. Settings are stored in `~/.cupidfmrc`; plugins load from `~/.cupidfm/plugins/`.
 
 ## Features
 
@@ -36,8 +36,7 @@ With the default configuration, arrows navigate, Tab switches panes, F1 exits, a
 
 Scrolling preserves queued keys and reuses validated MIME results. See [the performance notes](PERFORMANCE.md) for measured workloads, benchmark commands, and limits.
 
-New configurations use Vim browser keys. Existing configurations keep their bindings.
-Use `./cupidfm --keymap=vim` for tabs, selection, sorting, filtering, mouse navigation,
+Existing configurations keep their bindings. Use `./cupidfm --keymap=vim` for tabs, selection, sorting, filtering, mouse navigation,
 and background tasks. The [browser guide](docs/browser-guide.md) lists shortcuts and current limits.
 
 ## Documentation

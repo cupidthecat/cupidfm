@@ -13,7 +13,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_tasks test_mime_native test_browser_session test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
+TEST_TARGETS = test_layout test_tasks test_mime_native test_browser_session test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
 
 # Test sources include application code directly; header changes must rebuild them.
 TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
@@ -29,14 +29,17 @@ all: $(TEST_TARGETS)
 $(CUPIDMIME_LIB):
 	$(MAKE) -C .. mime-library CC="$(CC)"
 
+test_layout: test_layout.c ../src/app/app_layout.c
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(LIBS)
+
 test_tasks: test_tasks.c ../src/core/tasks.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs gio-2.0) $(LIBS) -pthread
 
 test_mime_native: test_mime_native.c ../src/fs/mime.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(LIBS) -lmagic -pthread
 
-test_browser_session: test_browser_session.c ../src/app/app_mouse.c ../src/app/app_session.c ../src/core/search.c ../src/fs/files.c ../src/core/utils.c ../src/ui/browser_ui.c ../src/ds/vector.c ../src/core/undo.c
-	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $(filter %.c,$^) $(LIBS) -lncursesw
+test_browser_session: test_browser_session.c ../src/core/selection.c ../src/fs/watch.c ../src/app/app_panes.c ../src/app/app_mouse.c ../src/app/app_session.c ../src/core/search.c ../src/fs/files.c ../src/core/utils.c ../src/ui/browser_ui.c ../src/ds/vector.c ../src/core/undo.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $(filter %.c,$^) $(LIBS) $(shell pkg-config --cflags --libs glib-2.0) -lncursesw
 
 test_vector: test_vector.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vector.c ../src/ds/vector.c $(LIBS)
@@ -65,10 +68,10 @@ test_integration: test_integration.c test_runner.h
 $(CUPIDSCRIPT_LIB):
 	$(MAKE) -C .. script-library
 
-test_plugins_api: test_plugins_api.c test_runner.h ../src/core/plugins_api.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB)
+test_plugins_api: test_plugins_api.c ../src/core/selection.c test_runner.h ../src/core/plugins_api.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB)
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections \
-		-Wl,--gc-sections -o $@ test_plugins_api.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB) \
-		$(LIBS) -pthread -lssl -lcrypto -lmagic -lm -lz
+		-Wl,--gc-sections -o $@ test_plugins_api.c ../src/core/selection.c ../src/fs/mime.c ../src/fs/files.c ../src/core/utils.c ../src/ds/vector.c $(CUPIDSCRIPT_LIB) \
+		$(LIBS) $(shell pkg-config --cflags --libs glib-2.0) -pthread -lssl -lcrypto -lmagic -lm -lz
 
 file_command_driver: file_command_driver.c ../src/core/undo.c ../src/core/process.c ../src/core/process.h ../src/core/utils.c ../src/core/utils.h ../src/fs/clipboard.c ../src/fs/clipboard.h ../src/fs/tempfiles.c
 	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
@@ -116,8 +119,8 @@ test_text_preview: test_text_preview.c ../src/ui/text_preview.c ../src/ui/text_p
 test_archive_preview: test_archive_preview.c ../src/fs/files.c $(CUPIDARCHIVE_LIB)
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(CUPIDARCHIVE_LIB) $(LIBS) -lncursesw -lz -lbz2 -llzma
 
-test_config_keys: test_config_keys.c ../src/core/config.c
-	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(LIBS) -lncursesw
+test_config_keys: test_config_keys.c ../src/core/config.c ../lib/cupidconf/cupidconf.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< ../lib/cupidconf/cupidconf.c $(LIBS) -lncursesw
 
 test_editor_loading: test_editor_loading.c ../src/fs/files.c
 	$(CC) $(CFLAGS) $(INCLUDES)  -ffunction-sections -fdata-sections \
@@ -147,6 +150,7 @@ test_editor_ranges: test_editor_ranges.c ../src/fs/files.c
 
 test: all
 	@echo "Running all tests..."
+	@./test_layout
 	@./test_tasks
 	@./test_mime_native
 	@./test_browser_session
@@ -199,6 +203,7 @@ test-asan: clean
 	@echo "  - Stack buffer overflow"
 	@echo "  - Memory leaks"
 	@echo ""
+	@./test_layout
 	@./test_tasks
 	@./test_mime_native
 	@./test_browser_session

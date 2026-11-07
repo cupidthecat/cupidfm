@@ -139,11 +139,16 @@ int text_preview_count_lines(FILE *stream, int limit) {
 
 void draw_text_preview(WINDOW *window, FILE *stream, SyntaxDef *syntax, int start_line, int max_y,
                        int max_x) {
-    if (!window || !stream || max_y <= 8 || max_x <= 4)
+    draw_text_preview_at(window, stream, syntax, start_line, max_y, max_x, 7);
+}
+
+void draw_text_preview_at(WINDOW *window, FILE *stream, SyntaxDef *syntax, int start_line,
+                          int max_y, int max_x, int top) {
+    if (!window || !stream || top < 0 || max_y <= top + 1 || max_x <= 4)
         return;
     size_t first = start_line > 0 ? (size_t)start_line : 0;
     size_t index = 0;
-    int row = 7, state = 0;
+    int row = top, state = 0;
     bool indexed = prepare_index(stream, syntax, true);
     if (indexed && !seek_index(stream, first, &index, &state))
         indexed = false;
@@ -154,7 +159,7 @@ void draw_text_preview(WINDOW *window, FILE *stream, SyntaxDef *syntax, int star
         if (length < 0) {
             if (!feof(stream)) {
                 mvwprintw(window, row, 2, "Unable to read file for preview");
-            } else {
+            } else if (top == 7) {
                 mvwprintw(window, row++, 2, "--------------------------------");
                 if (row < max_y - 1)
                     mvwprintw(window, row, 2, "[End of file]");

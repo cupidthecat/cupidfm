@@ -49,6 +49,8 @@ int banner_initial_offset_for_center(const char *text, const char *build_info) {
 
 static void draw_scrolling_banner_impl(WINDOW *window, const char *text, const char *build_info,
                                        int offset, bool do_immediate_refresh) {
+    if (g_kb.vim_keymap)
+        return;
     // Include local date/time in the banner (fixed width so the scroll math stays stable).
     time_t t = time(NULL);
     struct tm tm_local;

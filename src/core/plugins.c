@@ -444,6 +444,7 @@ void plugins_set_context_ex(PluginManager *pm, const PluginsContext *ctx) {
     pm->search_query[sizeof(pm->search_query) - 1] = '\0';
     pm->active_pane = ctx->active_pane;
     pm->view = ctx->view;
+    pm->selection_model = ctx->selection_model;
 
     if (!pm->context_initialized) {
         // Don't fire change hooks during the initial startup context population

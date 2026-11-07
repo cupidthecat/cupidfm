@@ -7,7 +7,8 @@
 #include "browser_ui.h" // CursorAndSlice
 #include "files.h"
 #include "globals.h" // MAX_PATH_LENGTH
-#include "undo.h"    // UndoState
+#include "selection.h"
+#include "undo.h" // UndoState
 #include "vector.h"
 
 typedef struct PluginManager PluginManager;
@@ -21,8 +22,22 @@ typedef struct {
 } LazyLoadState;
 
 typedef struct {
+    Vector files;
+    char directory[MAX_PATH_LENGTH];
+    CursorAndSlice cas;
+    struct timespec mtime;
+    FileListingOptions listing;
+    bool loaded;
+} AppDirectoryPane;
+
+typedef struct {
     char *current_directory;
     Vector files;
+    PathSelection *selection;
+    size_t selection_revision;
+    char selection_directory[MAX_PATH_LENGTH];
+    AppDirectoryPane parent;
+    AppDirectoryPane child;
     CursorAndSlice dir_window_cas;
     char selected_name[MAX_PATH_LENGTH];
     const char *selected_entry;

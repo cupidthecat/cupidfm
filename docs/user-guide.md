@@ -5,7 +5,7 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It pr
 ![preview](../img/preview2.png)
 
 The original shortcuts below describe the cupidfm keymap. See the
-[Vim browser guide and comparison](browser-guide.md) for tabs, selection, background tasks,
+[Vim browser guide](browser-guide.md) for tabs, selection, background tasks,
 and the remaining differences from Vim.
 
 ## Demo

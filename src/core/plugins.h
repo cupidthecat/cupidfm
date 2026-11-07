@@ -3,6 +3,7 @@
 #define PLUGINS_H
 
 #include "globals.h" // MAX_PATH_LENGTH
+#include "selection.h"
 #include "vector.h"
 #include <stdbool.h>
 #include <stddef.h> // size_t
@@ -17,7 +18,8 @@ typedef struct {
     bool select_all_active;
     bool search_active;
     const char *search_query;
-    int active_pane;    // 1=directory, 2=preview
+    int active_pane; // 1=directory, 2=preview
+    const PathSelection *selection_model;
     const Vector *view; // current visible listing (state->files or state->search_files)
 } PluginsContext;
 

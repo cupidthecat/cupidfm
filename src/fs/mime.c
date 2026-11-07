@@ -194,6 +194,7 @@ void mime_cache_clear(void) {
 
 // Supported MIME types
 const char *supported_mime_types[] = {
+    "text/*",
     "text/plain",               // Plain text files
     "text/x-c",                 // C source files
     "application/json",         // JSON files

@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "app_mouse.h"
 #include "app_navigation.h"
+#include "app_panes.h"
 #include "app_session.h"
 #include "git.h"
 #include "search.h"
@@ -14,11 +15,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+KeyBindings g_kb;
 bool g_select_all_highlight;
 bool should_clear_notif;
 WINDOW *notifwin;
 WINDOW *dirwin;
 WINDOW *previewwin;
+WINDOW *parentwin;
 
 GitStatus git_query_file_status(const char *path) {
     (void)path;
@@ -119,6 +122,58 @@ int main(void) {
     event.y = 5;
     assert(app_mouse_event(&state, &event) == APP_MOUSE_ENTER);
     assert(state.dir_window_cas.cursor == 0);
+    assert(app_change_directory(&state, child));
+    app_parent_refresh(&state);
+    assert(state.parent.loaded && !strcmp(state.parent.directory, directory));
+    assert(!strcmp(FileAttr_get_name(state.parent.files.el[state.parent.cas.cursor]), "child"));
+    parentwin = newwin(26, 20, 4, 80);
+    assert(parentwin);
+    state.parent.cas.start = 0;
+    event.x = 82;
+    event.y = 6;
+    event.bstate = BUTTON1_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(!strcmp(state.current_directory, directory));
+    assert(!strcmp(state.selected_entry, "file2.txt"));
+    fixture_file(child, "preview-item", "preview");
+    fixture_file(child, ".preview-hidden", "hidden");
+    app_move_cursor(&state, 0);
+    assert(app_child_refresh(&state));
+    assert(state.child.loaded && !strcmp(state.child.directory, child));
+    assert(Vector_len(state.child.files) == 1);
+    assert(!strcmp(FileAttr_get_name(state.child.files.el[0]), "preview-item"));
+    options.show_hidden = true;
+    file_listing_configure(options);
+    assert(app_child_refresh(&state) && Vector_len(state.child.files) == 2);
+    options.show_hidden = false;
+    file_listing_configure(options);
+    assert(app_child_refresh(&state) && Vector_len(state.child.files) == 1);
+#ifdef __linux__
+    size_t before_edit = Vector_revision(state.child.files);
+    fixture_file(child, "preview-item", "changed without changing the directory timestamp");
+    for (int i = 0; i < 100 && Vector_revision(state.child.files) == before_edit; i++) {
+        app_child_refresh(&state);
+        struct timespec pause = {.tv_nsec = 20000000};
+        nanosleep(&pause, NULL);
+    }
+    assert(Vector_revision(state.child.files) != before_edit);
+#endif
+    g_kb.vim_keymap = true;
+    event.x = 42;
+    event.y = 4;
+    event.bstate = BUTTON1_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(!strcmp(state.current_directory, child));
+    assert(!strcmp(state.selected_entry, "preview-item"));
+    g_kb.vim_keymap = false;
+    char preview_item[4096];
+    snprintf(preview_item, sizeof(preview_item), "%s/preview-item", child);
+    assert(!unlink(preview_item));
+    snprintf(preview_item, sizeof(preview_item), "%s/.preview-hidden", child);
+    assert(!unlink(preview_item));
+    assert(app_change_directory(&state, directory));
+    delwin(parentwin);
+    parentwin = NULL;
     delwin(dirwin);
     delwin(previewwin);
     dirwin = previewwin = NULL;
@@ -127,11 +182,65 @@ int main(void) {
     fclose(input);
     fclose(output);
     app_move_cursor(&state, 2);
-    FileAttr_select(state.files.el[1], true);
+    assert(app_selection_set(&state, state.files.el[1], true));
     assert(app_selection_count(&state) == 1);
     app_reload_view(&state);
     assert(!strcmp(state.selected_entry, "file10.txt"));
     assert(app_selection_count(&state) == 1);
+
+    /* Selections survive an empty directory, hidden toggles, filtering, and reloads. */
+    Vector paths;
+    assert(app_change_directory(&state, child));
+    assert(!Vector_len(state.files) && app_selection_count(&state) == 1);
+    assert(app_selection_paths(&state, &paths) && Vector_len(paths) == 1);
+    char selected_path[4096];
+    snprintf(selected_path, sizeof(selected_path), "%s/file2.txt", directory);
+    assert(!strcmp(paths.el[0], selected_path));
+    Vector_bye(&paths);
+    fixture_file(child, "nested", "nested");
+    app_reload_view(&state);
+    assert(app_selection_set(&state, state.files.el[0], true));
+    assert(app_selection_count(&state) == 2);
+    assert(app_change_directory(&state, directory));
+    assert(!app_selection_set(&state, state.files.el[0], true)); /* Selected descendant. */
+    options.show_hidden = true;
+    file_listing_configure(options);
+    app_reload_view(&state);
+    SIZE hidden = find_loaded_index_by_name(&state.files, ".hidden");
+    assert(hidden >= 0 && app_selection_set(&state, state.files.el[hidden], true));
+    options.show_hidden = false;
+    file_listing_configure(options);
+    app_reload_view(&state);
+    assert(app_selection_count(&state) == 3);
+    assert(app_selection_paths(&state, &paths) && Vector_len(paths) == 3);
+    assert(!strcmp(paths.el[0], selected_path));
+    assert(strstr(paths.el[1], "/child/nested") && strstr(paths.el[2], "/.hidden"));
+    Vector_bye(&paths);
+    snprintf(state.search_query, sizeof(state.search_query), "^file10");
+    state.search_active = true;
+    search_rebuild(&state, "file10");
+    assert(Vector_len(*active_files(&state)) == 1);
+    assert(app_selection_count(&state) == 3);
+    search_clear(&state);
+    char nested[4096];
+    snprintf(nested, sizeof(nested), "%s/nested", child);
+    assert(!unlink(nested));
+    app_reload_view(&state);
+    assert(app_selection_count(&state) == 2); /* Missing paths are pruned, hidden paths remain. */
+    app_selection_clear(&state);
+    assert(app_selection_set(&state, state.files.el[0], true));
+    assert(app_change_directory(&state, child));
+    fixture_file(child, "nested", "nested");
+    app_reload_view(&state);
+    assert(!app_selection_set(&state, state.files.el[0], true)); /* Selected ancestor. */
+    app_selection_clear(&state);
+    assert(!unlink(nested));
+    app_reload_view(&state);
+    assert(app_selection_paths(&state, &paths) && !Vector_len(paths));
+    Vector_bye(&paths);
+    assert(app_change_directory(&state, directory));
+    app_move_cursor(&state, 2);
+    assert(app_selection_set(&state, state.files.el[1], true));
 
     /* Back/forward restores the hovered entry and drops forward history on a new branch. */
     app_history_remember(&state);
@@ -153,7 +262,7 @@ int main(void) {
 
     /* A visual range shrinks, restores its baseline, and can cross an end. */
     app_selection_clear(&state);
-    FileAttr_select(state.files.el[0], true);
+    assert(app_selection_set(&state, state.files.el[0], true));
     for (size_t i = 0; i < Vector_len(state.files); i++)
         FileAttr_visual_begin(state.files.el[i]);
     state.visual_active = true;
@@ -171,7 +280,7 @@ int main(void) {
     /* Independent tab ownership includes cursor, query, options, selection, and history. */
     AppTabs tabs = {.count = 1};
     snprintf(state.tab_name, sizeof(state.tab_name), "first");
-    FileAttr_select(state.files.el[1], true);
+    assert(app_selection_set(&state, state.files.el[1], true));
     app_move_cursor(&state, 2);
     assert(app_tab_create(&tabs, &state));
     assert(tabs.count == 2 && tabs.active == 1);
@@ -200,6 +309,23 @@ int main(void) {
     while (tabs.count > 1)
         assert(app_tab_close(&tabs, &state));
     assert(!app_tab_close(&tabs, &state));
+    g_kb.vim_keymap = true;
+    g_kb.scrolloff = 3;
+    CursorAndSlice margin = {.num_files = 100, .num_lines = 12, .cursor = 8};
+    fix_cursor(&margin);
+    assert(margin.start == 2);
+    margin.cursor = 0;
+    fix_cursor(&margin);
+    assert(margin.start == 0);
+    margin.cursor = 99;
+    fix_cursor(&margin);
+    assert(margin.start == 90);
+    g_kb.scrolloff = 100;
+    margin.cursor = 50;
+    fix_cursor(&margin);
+    assert(margin.start == 46);
+    g_kb.vim_keymap = false;
+    app_panes_stop();
     app_tabs_dispose(&tabs);
     app_state_dispose(&state);
 

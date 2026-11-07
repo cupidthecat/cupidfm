@@ -196,6 +196,15 @@ int main(int argc, char **argv) {
         draw_text_preview(window, deep, &syntax, 0, 18, 80);
         expect(window, 7, "plain", 0);
         fclose(deep);
+        /* Compact previews start below their one-line title, with no metadata rows. */
+        FILE *compact = fmemopen((void *)"first\nsecond\nthird\n", 19, "r");
+        assert(compact);
+        werase(window);
+        draw_text_preview_at(window, compact, &syntax, 0, 5, 30, 1);
+        expect(window, 1, "first", 0);
+        expect(window, 2, "second", 0);
+        expect(window, 3, "third", 0);
+        fclose(compact);
         puts("Text preview: physical lines, syntax state, EOF, errors, and bounded reads passed");
     }
     delwin(window);

@@ -15,6 +15,9 @@ typedef struct {
 
 int browser_draw_name(WINDOW *window, const char *text, int columns);
 
+void browser_clear_preview(WINDOW *window);
+void draw_directory_preview(WINDOW *window, const char *directory, Vector *files_vector,
+                            CursorAndSlice *cas);
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas);
 

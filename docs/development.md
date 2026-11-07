@@ -39,7 +39,14 @@ The application Makefile watches nested library C files and headers. `python3 te
 The [browser guide](browser-guide.md) records the current behavior and remaining work.
 app_session.c owns tab snapshots, history, selection changes, and directory replacement.
 Only inactive tabs have heap snapshots. The active AppState owns its vectors and paths directly.
-Search vectors borrow file attributes and must never free those entries.
+Search vectors borrow file attributes and must never free those entries. PathSelection owns the
+selected paths independently of directory attributes. The list's revision counter invalidates the
+selection projection when a reload replaces those attributes.
+
+app_layout.c computes terminal bounds without ncurses. app_windows.c creates windows from that
+layout and composes the header, lists, previews, and status. app_panes.c owns cached side-pane
+listings. These caches use directory timestamps, listing preferences, and debounced Linux file watches; directory scanning and
+metadata lookup still run on the UI thread.
 
 tasks.c runs file work through GIO on one worker. Submitted paths and commands are copied before
 queuing. The worker publishes task snapshots under a mutex and never touches ncurses or AppState.

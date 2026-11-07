@@ -16,6 +16,33 @@ fm.delete() API still use the existing session trash and undo mechanism. In the 
 d uses recoverable system trash through GIO, and D requests permanent deletion. Both ask for
 confirmation. System trash survives shutdown; session trash does not.
 
+## Panes and selection
+
+The Vim profile shows the parent directory, current directory, and preview. Directory previews
+use the tab's sorting and hidden-file settings. Click a side-pane entry to reveal it in the
+current pane; right-click opens it. The header shows the current path and tabs. The status
+line shows the selection mode, selected count, position, and queued or running task count.
+
+Set pane weights and the cursor's scroll margin in ~/.cupidfmrc:
+
+    pane_parent=1
+    pane_current=4
+    pane_preview=3
+    scrolloff=5
+
+Pane weights range from 0 to 100; the current pane requires at least 1. A zero weight hides a
+side pane. The parent pane collapses below 80 columns and the preview below 48 columns.
+The current pane keeps at least 20 columns when space permits. Very small terminals display
+a resize message. Scrolloff ranges from 0 to 100 and is limited to half the visible list.
+
+Selections belong to the tab and keep their full paths when you navigate, filter, hide files,
+or reload. Yank, file tasks, openers, shell commands, and chooser output use every selected path,
+including paths outside the current directory. With no selection, they use the hovered entry.
+Rename accepts one selected path and keeps it selected under its new name. File information and
+permissions still use the hovered entry. Esc clears the tab's selection after leaving
+find, visual, and filter modes. A directory and its descendants cannot be selected together.
+Reloading prunes missing paths and finishes any visual range; hidden selections remain active.
+
 ## Browser keys
 
 | Keys | Action |
@@ -113,8 +140,7 @@ symlinks, rejects copying into the source, and keeps ncurses on the UI thread. F
 through one worker. The task list retains up to 128 entries and reclaims a finished entry when full.
 The byte counter describes the current file, not an aggregate estimate for a directory tree.
 
-No existing Cupid library source was modified for this checkpoint. All six pinned library
-test suites pass with Clang. Library fixes must be made and tested upstream before updating
+Cupid library sources are pinned without local modifications. The library suites run with Clang. Library fixes must be made and tested upstream before updating
 their snapshots and source pins here.
 
 ## Coverage and remaining work
@@ -130,8 +156,8 @@ their snapshots and source pins here.
 | Hidden toggle | Covered | Active listing and per-tab preference |
 | Alphabetical, natural, extension, size, mtime, btime, random sorting | Partial | No transliteration, custom ranks, configurable fallback, or async scan |
 | Directory grouping and reverse sorting | Covered | Directories remain first |
-| Scrolloff and pane ratios | Missing | Existing two-pane layout remains |
-| Individual, all, inverse, and visual selection | Partial | Entry-based selection does not span directories or survive hiding selected entries |
+| Scrolloff and pane ratios | Covered | Configurable margin and weights, parent/current/preview panes, narrow-terminal fallback |
+| Individual, all, inverse, and visual selection | Covered | Per-tab paths survive navigation, filtering, hidden toggles, and reload; ancestor conflicts are rejected |
 | Tabs, naming, cycling, movement, closing | Covered | Independent state, insertion after current tab, nine-tab limit |
 | Find and filter | Partial | Submitted POSIX regex; no live filter or Rust regex compatibility |
 | Recursive filename/content search | Missing | fd and rg search views are not wired |
@@ -146,13 +172,13 @@ their snapshots and source pins here.
 | Copy path/URL/name/stem | Partial | Hovered entry and X11/Wayland; no OSC 52 |
 | Blocking/background shell | Partial | Positional paths, output capture, cancellation; no full placeholder/rule system |
 | Task manager | Partial | Queue, counts, current-file bytes, cancellation, error/output inspection; one worker |
-| Directory watching | Partial | Active local Linux directory; inactive tabs refresh on switch |
+| Directory watching | Partial | Active local Linux directory and side-pane listings; inactive tabs refresh on switch |
 | Text/code previews | Partial | Existing bounded index and syntax definitions; work runs on UI thread |
 | Image/graphics previews | Partial | Kitty/Sixel/ANSI; no complete terminal or multiplexer coverage |
 | PDF/SVG/video/font/JSON preview pipelines | Partial | Library capabilities and text fallback do not cover all preview formats |
 | Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
-| Mouse click, wheel, and drag | Covered | Click to hover, right-click to enter/open, wheel to scroll, drag to select |
+| Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
 | Input editing/history/completion | Partial | Basic UTF-8 editing; no modal input, undo/history, or completion picker |
 | Help/which-key | Partial | Static help and chord indicator; no searchable picker or action sequences |
 | TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
@@ -165,7 +191,7 @@ their snapshots and source pins here.
 | CLI cwd/chooser output | Covered | Keymap override and Q cwd suppression |
 | Multiple startup entries and file reveal | Missing | One startup directory |
 | Native Windows/macOS behavior | Missing | This checkpoint targets Linux/WSL |
-| Notifications and theme components | Partial | Existing ncurses notifications and colors |
+| Notifications and theme components | Partial | Path/tab header, mode/task status, and ncurses colors; no configurable component/theme system |
 
 ## Verification
 
@@ -177,10 +203,11 @@ their snapshots and source pins here.
     python3 tests/test_browser_smoke.py
     python3 tests/test_cli_output.py
 
-The browser session test checks mouse geometry and dragging, tab ownership, history branching,
-visual ranges, and sorting
-beyond 200 entries. The task test checks recursive copying, symlink traversal, source/destination
+The layout test checks pane bounds across terminal sizes and ratios. Browser session tests cover
+side-pane navigation, mouse dragging, tab ownership, history branching, visual ranges, selections
+across directories and hidden toggles, scroll margins, and sorting beyond 200 entries. The task test checks recursive copying, symlink traversal, source/destination
 conflicts, overwrite, literal shell paths, cancellation, moving, and recoverable trash.
 The native MIME test checks CupidMIME routing and nonblocking special-file handling.
 The Vim terminal test covers keys, selection reaching plugins, tabs, history, filtering,
-external changes, paste without X11, and trash that survives shutdown.
+external changes, copying selections from multiple directories without X11, and trash that survives
+shutdown.

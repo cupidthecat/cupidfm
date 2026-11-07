@@ -1212,10 +1212,10 @@ Path args:
 
 Bulk helpers:
 - `fm.selected_paths() -> list`
-  - Returns a list of selected paths (currently at most one: the current selection).
+  - Returns the tab's selected paths, including selections outside the visible listing. With no selection, returns the hovered path if one exists.
 
 - `fm.each_selected(fn_or_name)`
-  - Calls your function once per selected path (currently at most once).
+  - Calls your function once per selected path from an owned snapshot. Changing the selection during a callback does not change this iteration.
   - `fn_or_name` can be a function value OR the name of a function as a string.
 
 Undo/redo:

@@ -29,6 +29,7 @@
 #include "app_input.h"
 #include "app_navigation.h"
 #include "app_options.h"
+#include "app_panes.h"
 #include "app_paths.h"
 #include "app_plugins.h"
 #include "app_session.h"
@@ -113,40 +114,12 @@ static void banner_help_key_to_string(const KeyBindings *kb, char *out, size_t o
 }
 
 static bool selection_to_clipboard(AppState *state, bool cut, size_t *copied) {
-    Vector *files = active_files(state);
-    size_t selected = app_selection_count(state);
-    size_t count = selected ? selected : (state->selected_entry && *state->selected_entry ? 1 : 0);
-    if (!count)
+    Vector paths;
+    if (!app_selection_paths(state, &paths))
         return false;
-    char **paths = calloc(count, sizeof(char *));
-    if (!paths)
-        return false;
-    bool ok = true;
-    size_t used = 0;
-    for (size_t i = 0; i < Vector_len(*files) && used < count; ++i) {
-        FileAttr file = files->el[i];
-        if (selected ? !(state->select_all_active || FileAttr_selected(file))
-                     : (SIZE)i != state->dir_window_cas.cursor)
-            continue;
-        paths[used] = malloc(MAX_PATH_LENGTH);
-        if (!paths[used]) {
-            ok = false;
-            break;
-        }
-        int n = snprintf(paths[used], MAX_PATH_LENGTH, "%s/%s", state->current_directory,
-                         FileAttr_get_name(file));
-        if (n < 0 || n >= MAX_PATH_LENGTH) {
-            ok = false;
-            break;
-        }
-        used++;
-    }
-    ok = ok && used == count;
-    if (ok)
-        ok = clipboard_set_paths((const char *const *)paths, count, cut);
-    for (size_t i = 0; i < count; ++i)
-        free(paths[i]);
-    free(paths);
+    size_t count = Vector_len(paths);
+    bool ok = count && clipboard_set_paths((const char *const *)paths.el, count, cut);
+    Vector_bye(&paths);
     if (ok && copied)
         *copied = count;
     return ok;
@@ -231,45 +204,7 @@ int main(int argc, char **argv) {
     // Load syntax highlighting definitions
     syntax_init();
 
-    // Initialize windows and other components
-    int notif_height = 1;
-    int banner_height = 3;
-
-    // Initialize notif window
-    notifwin = newwin(notif_height, COLS, LINES - notif_height, 0);
-    werase(notifwin);
-    box(notifwin, 0, 0);
-    wrefresh(notifwin);
-
-    // Initialize banner window
-    bannerwin = newwin(banner_height, COLS, 0, 0);
-    // Assuming COLOR_PAIR(1) is defined elsewhere; if not, remove or define it
-    // wbkgd(bannerwin, COLOR_PAIR(1)); // Set background color
-    box(bannerwin, 0, 0);
-    wrefresh(bannerwin);
-
-    // Initialize main window
-    mainwin = newwin(LINES - banner_height - notif_height, COLS, banner_height, 0);
-    wtimeout(mainwin, 100);
-
-    // Initialize subwindows
-    SIZE dir_win_width = MAX(COLS / 2, 20);
-    SIZE preview_win_width = MAX(COLS - dir_win_width, 20);
-
-    if (dir_win_width + preview_win_width > COLS) {
-        dir_win_width = COLS / 2;
-        preview_win_width = COLS - dir_win_width;
-    }
-
-    dirwin =
-        subwin(mainwin, LINES - banner_height - notif_height, dir_win_width - 1, banner_height, 0);
-    box(dirwin, 0, 0);
-    wrefresh(dirwin);
-
-    previewwin = subwin(mainwin, LINES - banner_height - notif_height, preview_win_width,
-                        banner_height, dir_win_width);
-    box(previewwin, 0, 0);
-    wrefresh(previewwin);
+    app_windows_create();
 
     // Initialize keybindings and configs
     KeyBindings kb;
@@ -1071,7 +1006,7 @@ int main(int argc, char **argv) {
         long time_diff = (current_time.tv_sec - last_update_time.tv_sec) * 1000000 +
                          (current_time.tv_nsec - last_update_time.tv_nsec) / 1000;
 
-        if (time_diff >= BANNER_SCROLL_INTERVAL) {
+        if (!kb.vim_keymap && time_diff >= BANNER_SCROLL_INTERVAL) {
             // Update banner with current offset
             pthread_mutex_lock(&banner_mutex);
             draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -1102,6 +1037,9 @@ int main(int argc, char **argv) {
 
         if (ch != ERR) {
             dir_size_note_user_activity();
+            if ((LINES < 5 || COLS < 12) &&
+                !(kb.vim_keymap ? (ch == 'q' || ch == 'Q' || ch == 3) : ch == kb.key_exit))
+                goto input_done;
 
             if (active_window == DIRECTORY_WIN_ACTIVE || kb.vim_keymap) {
                 AppKeyResult result = app_browser_key(&state, &tabs, &ch, &kb);
@@ -1306,7 +1244,7 @@ int main(int argc, char **argv) {
                 g_select_all_highlight = state.select_all_active;
                 Vector *selection_view = active_files(&state);
                 for (size_t i = 0; i < Vector_len(*selection_view); i++)
-                    FileAttr_select(selection_view->el[i], state.select_all_active);
+                    app_selection_set(&state, selection_view->el[i], state.select_all_active);
                 if (state.select_all_active) {
                     show_notification(notifwin, "Selected all items in view");
                 } else {
@@ -1352,14 +1290,16 @@ int main(int argc, char **argv) {
             else if (ch == kb.key_delete) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
                     if (state.select_all_active || app_selection_count(&state)) {
-                        // Bulk delete: delete all items currently visible in the active view
-                        Vector *files = active_files(&state);
+                        Vector paths;
+                        if (!app_selection_paths(&state, &paths))
+                            goto input_done;
                         size_t total = app_selection_count(&state);
                         bool should_delete = false;
                         char label[64];
                         snprintf(label, sizeof(label), "%zu selected items", total);
                         (void)confirm_delete(label, &should_delete);
                         if (!should_delete) {
+                            Vector_bye(&paths);
                             show_notification(notifwin, "Delete cancelled");
                             should_clear_notif = false;
                             state.select_all_active = false;
@@ -1369,15 +1309,8 @@ int main(int argc, char **argv) {
                         int deleted_count = 0;
                         UndoItem *undo_items =
                             (UndoItem *)calloc(total > 0 ? total : 1, sizeof(UndoItem));
-                        for (size_t i = 0; i < Vector_len(*files); i++) {
-                            FileAttr fa = (FileAttr)files->el[i];
-                            if (!state.select_all_active && !FileAttr_selected(fa))
-                                continue;
-                            const char *name = FileAttr_get_name(fa);
-                            if (!name || !*name)
-                                continue;
-                            char full_path[MAX_PATH_LENGTH];
-                            path_join(full_path, state.current_directory, name);
+                        for (size_t i = 0; i < Vector_len(paths); i++) {
+                            const char *full_path = paths.el[i];
                             char trashed[MAX_PATH_LENGTH] = {0};
                             if (delete_item(full_path, trashed, sizeof(trashed))) {
                                 if (undo_items) {
@@ -1399,14 +1332,8 @@ int main(int argc, char **argv) {
                         } else if (undo_items) {
                             free(undo_items);
                         }
-                        // Reload directory after bulk delete
-                        char saved_query[MAX_PATH_LENGTH];
-                        search_before_reload(&state, saved_query);
-                        reload_directory(&state.files, state.current_directory);
-                        state.dir_window_cas.num_files = Vector_len(state.files);
-                        state.lazy_load.files_loaded = Vector_len(state.files);
-                        state.lazy_load.total_files = state.lazy_load.files_loaded;
-                        search_after_reload(&state, &state.dir_window_cas, saved_query);
+                        Vector_bye(&paths);
+                        app_reload_view(&state);
                         show_notification(notifwin, "Deleted %d items", deleted_count);
                         should_clear_notif = false;
                         state.select_all_active = false;
@@ -1450,40 +1377,32 @@ int main(int argc, char **argv) {
             // 11) RENAME
             else if (ch == kb.key_rename) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        show_notification(notifwin, "Rename does not support Select All");
+                    Vector paths;
+                    if (!app_selection_paths(&state, &paths))
+                        goto input_done;
+                    if (Vector_len(paths) != 1) {
+                        Vector_bye(&paths);
+                        show_notification(notifwin, "Rename requires one item");
                         should_clear_notif = false;
-                        state.select_all_active = false;
-                        g_select_all_highlight = false;
                         goto input_done;
                     }
                     char full_path[MAX_PATH_LENGTH];
-                    path_join(full_path, state.current_directory, state.selected_entry);
+                    snprintf(full_path, sizeof(full_path), "%s", (char *)paths.el[0]);
+                    Vector_bye(&paths);
 
                     char new_path[MAX_PATH_LENGTH * 2] = {0};
                     if (rename_item(notifwin, full_path, new_path, sizeof(new_path))) {
                         (void)undo_state_set_single(&state.undo_state, UNDO_OP_RENAME, full_path,
                                                     new_path);
-                    }
-
-                    // Reload to show changes
-                    char saved_query[MAX_PATH_LENGTH];
-                    search_before_reload(&state, saved_query);
-                    reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
-                    state.lazy_load.files_loaded = Vector_len(state.files);
-                    state.lazy_load.total_files = state.lazy_load.files_loaded;
-                    state.dir_window_cas.cursor = 0;
-                    state.dir_window_cas.start = 0;
-                    search_after_reload(&state, &state.dir_window_cas, saved_query);
-
-                    if (!state.search_active) {
-                        if (state.dir_window_cas.num_files > 0) {
-                            state.selected_entry = FileAttr_get_name(state.files.el[0]);
-                        } else {
-                            state.selected_entry = "";
+                        if (selection_has(state.selection, full_path)) {
+                            struct stat renamed;
+                            bool directory = !stat(new_path, &renamed) && S_ISDIR(renamed.st_mode);
+                            (void)selection_set(&state.selection, full_path, false, false);
+                            (void)selection_set(&state.selection, new_path, directory, true);
                         }
                     }
+
+                    app_reload_view(&state);
                 }
             }
 
@@ -1718,6 +1637,7 @@ int main(int argc, char **argv) {
         }
 
     input_done:
+        app_selection_restore(&state);
         app_history_remember(&state);
         sync_selection_from_active(&state, &state.dir_window_cas);
         // Clear notification window only if no new notification was displayed
@@ -1734,25 +1654,8 @@ int main(int argc, char **argv) {
         if (app_input_defer_scroll_frame(ch, kb.key_up, kb.key_down, &last_frame_time))
             continue;
 
-        // Redraw windows
-        draw_directory_window(dirwin, state.current_directory, active_files(&state),
-                              &state.dir_window_cas);
-
-        if (state.preview_override_active) {
-            draw_preview_window_path(previewwin, state.preview_override_path, NULL,
-                                     state.preview_start_line);
-        } else {
-            draw_preview_window(previewwin, state.current_directory, state.selected_entry,
-                                state.preview_start_line);
-        }
-
-        // Removed: duplicate active-window cursor highlighting. Use render-only highlights in
-        // draw_directory_window.
-
+        app_draw_browser(&state);
         app_draw_tab_bar(&state, &tabs);
-        wrefresh(mainwin);
-        wrefresh(notifwin);
-        wrefresh(mainwin);
         wrefresh(notifwin);
 
         clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
@@ -1760,6 +1663,7 @@ int main(int argc, char **argv) {
 
     tasks_stop();
     file_watch_close(&watcher);
+    app_panes_stop();
     int exit_status = 0;
     if (cwd_file[0] && !state.no_cwd_file) {
         FILE *output = fopen(cwd_file, "w");
@@ -1780,11 +1684,7 @@ int main(int argc, char **argv) {
     app_tabs_dispose(&tabs);
     app_state_dispose(&state);
     clipboard_clear_paths();
-    delwin(dirwin);
-    delwin(previewwin);
-    delwin(notifwin);
-    delwin(mainwin);
-    delwin(bannerwin);
+    app_windows_destroy();
     syntax_cleanup(); // Restore colors before endwin()
     endwin();
     cleanup_temp_files();

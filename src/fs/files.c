@@ -3876,13 +3876,7 @@ bool is_supported_file_type(const char *filename) {
     if (ext && strcmp(ext, ".js") == 0) {
         supported = true;
     } else {
-        // Check if MIME type is in supported types
-        for (size_t i = 0; i < num_supported_mime_types; i++) {
-            if (strncmp(mime_type, supported_mime_types[i], strlen(supported_mime_types[i])) == 0) {
-                supported = true;
-                break;
-            }
-        }
+        supported = is_supported_mime_type(mime_type);
     }
 
     magic_close(magic_cookie);
@@ -3900,29 +3894,31 @@ bool is_supported_file_type(const char *filename) {
  */
 void display_archive_preview(WINDOW *window, const char *file_path, int start_line, int max_y,
                              int max_x) {
+    display_archive_preview_at(window, file_path, start_line, max_y, max_x, 8);
+}
+
+void display_archive_preview_at(WINDOW *window, const char *file_path, int start_line, int max_y,
+                                int max_x, int top) {
     ArcReader *reader = arc_open_path(file_path);
     if (!reader) {
         // Show more detailed error message
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Unable to open archive: %s (errno: %s)", file_path,
                  strerror(errno));
-        mvwprintw(window, 7, 2, "%.*s", max_x - 4, error_msg);
+        mvwprintw(window, top == 8 ? 7 : top, 2, "%.*s", MAX(0, max_x - 4), error_msg);
         return;
     }
 
     bool is_single_compressed = arc_format(reader) == ARC_FORMAT_COMPRESSED;
 
-    // Display archive header (start after MIME type which is on line 5)
-    // For single compressed files, show a different header
-    if (is_single_compressed) {
-        mvwprintw(window, 6, 2, "📦 Compressed File Contents:");
-    } else {
-        mvwprintw(window, 6, 2, "📦 Archive Contents:");
+    if (top == 8) {
+        mvwprintw(window, 6, 2, "%.*s", MAX(0, max_x - 4),
+                  is_single_compressed ? "Compressed File Contents:" : "Archive Contents:");
+        mvwprintw(window, 7, 2, "%.*s", MAX(0, max_x - 4), "-------------------------------------");
     }
-    mvwprintw(window, 7, 2, "─────────────────────────────────────");
 
     ArcEntry entry;
-    int line_num = 8;
+    int line_num = top;
     int current_line = 0;
     int entry_count = 0;
     const int max_entries = 1000; // Limit entries to prevent UI overload

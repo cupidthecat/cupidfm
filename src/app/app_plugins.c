@@ -5,6 +5,7 @@
 
 #include "app_plugins.h"
 
+#include "app_session.h"
 #include "plugins.h"
 #include "search.h"
 
@@ -12,6 +13,7 @@ void plugins_update_context(AppState *state, int active_window) {
     if (!state || !state->plugins)
         return;
     // A plugin may have requested a reload that replaced the file attributes.
+    app_selection_restore(state);
     sync_selection_from_active(state, &state->dir_window_cas);
     Vector *view = active_files(state);
     PluginsContext ctx = {
@@ -24,6 +26,7 @@ void plugins_update_context(AppState *state, int active_window) {
         .search_query = state->search_query,
         .active_pane = active_window,
         .view = view,
+        .selection_model = state->selection,
     };
     plugins_set_context_ex(state->plugins, &ctx);
 }

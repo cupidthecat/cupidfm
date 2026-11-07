@@ -5,16 +5,41 @@
 #include "files.h"
 #include "main.h"
 #include "search.h"
+#include <stdio.h>
 
-static bool content_position(WINDOW *window, const MEVENT *event, int *row) {
+static bool content_position(WINDOW *window, const MEVENT *event, int *row, int padding) {
     if (!window || !wenclose(window, event->y, event->x))
         return false;
     int y = event->y, x = event->x;
-    if (!wmouse_trafo(window, &y, &x, FALSE) || y <= 0 || x <= 0 || y >= getmaxy(window) - 1 ||
-        x >= getmaxx(window) - 1)
+    if (!wmouse_trafo(window, &y, &x, FALSE) || y < padding || x < padding ||
+        y >= getmaxy(window) - padding || x >= getmaxx(window) - padding)
         return false;
-    *row = y - 1;
+    *row = y - padding;
     return true;
+}
+
+static AppMouseResult pane_click(AppState *state, AppDirectoryPane *pane, const MEVENT *event,
+                                 int row) {
+    bool click = event->bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED | BUTTON1_DOUBLE_CLICKED |
+                                  BUTTON3_CLICKED | BUTTON3_PRESSED);
+    if (!click)
+        return APP_MOUSE_HANDLED;
+    SIZE index = pane->cas.start + row;
+    char name[MAX_PATH_LENGTH] = {0}, directory[MAX_PATH_LENGTH];
+    if (index >= 0 && (size_t)index < Vector_len(pane->files))
+        snprintf(name, sizeof(name), "%s", FileAttr_get_name(pane->files.el[index]));
+    else if (!(event->bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED)))
+        return APP_MOUSE_HANDLED;
+    snprintf(directory, sizeof(directory), "%s", pane->directory);
+    if (!app_change_directory(state, directory))
+        return APP_MOUSE_HANDLED;
+    SIZE at = find_loaded_index_by_name(active_files(state), name);
+    if (at == (SIZE)-1)
+        return APP_MOUSE_HANDLED;
+    app_move_cursor(state, at);
+    return event->bstate & (BUTTON1_DOUBLE_CLICKED | BUTTON3_CLICKED | BUTTON3_PRESSED)
+               ? APP_MOUSE_ENTER
+               : APP_MOUSE_HANDLED;
 }
 
 AppMouseResult app_mouse_event(AppState *state, const MEVENT *event) {
@@ -28,10 +53,21 @@ AppMouseResult app_mouse_event(AppState *state, const MEVENT *event) {
         direction = 1;
 #endif
     int row;
-    if (content_position(previewwin, event, &row) && direction)
-        return direction < 0 ? APP_MOUSE_PREVIEW_UP : APP_MOUSE_PREVIEW_DOWN;
+    int padding = g_kb.vim_keymap ? 0 : 1;
+    int preview_padding = g_kb.vim_keymap && state->child.loaded ? 0 : 1;
+    if (content_position(previewwin, event, &row, preview_padding)) {
+        if (direction)
+            return direction < 0 ? APP_MOUSE_PREVIEW_UP : APP_MOUSE_PREVIEW_DOWN;
+        if (g_kb.vim_keymap && state->child.loaded)
+            return pane_click(state, &state->child, event, row);
+    }
+    if (content_position(parentwin, event, &row, padding) && state->parent.loaded) {
+        if (direction)
+            return APP_MOUSE_HANDLED;
+        return pane_click(state, &state->parent, event, row);
+    }
     bool release = (event->bstate & BUTTON1_RELEASED) != 0;
-    if (!content_position(dirwin, event, &row)) {
+    if (!content_position(dirwin, event, &row, padding)) {
         if (release) {
             state->mouse_drag = false;
             state->visual_active = false;

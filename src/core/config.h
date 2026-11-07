@@ -48,6 +48,10 @@ typedef struct {
     int edit_uppercase;
 
     bool vim_keymap;
+    int pane_parent;
+    int pane_current;
+    int pane_preview;
+    int scrolloff;
 
     // file
     int info_label_width;

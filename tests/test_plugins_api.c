@@ -88,6 +88,54 @@ static bool test_browser_selection_paths_are_owned(void) {
     return true;
 }
 
+typedef struct {
+    PathSelection *selection;
+    int calls;
+    bool valid;
+} SelectionCallback;
+
+static int collect_selection(cs_vm *vm, void *userdata, int argc, const cs_value *argv,
+                             cs_value *out) {
+    (void)vm;
+    SelectionCallback *context = userdata;
+    const char *expected[] = {"/tmp/first", "/tmp/other/second"};
+    context->valid &=
+        argc == 1 && context->calls < 2 && !strcmp(cs_to_cstr(argv[0]), expected[context->calls]);
+    context->calls++;
+    selection_clear(context->selection);
+    if (out)
+        *out = cs_nil();
+    return 0;
+}
+
+static bool test_cross_directory_selection_snapshot(void) {
+    cs_vm *vm = cs_vm_new();
+    ASSERT_NOT_NULL(vm, "VM should allocate");
+    PathSelection *selection = NULL;
+    ASSERT_TRUE(selection_set(&selection, "/tmp/first", false, true), "Select first");
+    ASSERT_TRUE(selection_set(&selection, "/tmp/other/second", false, true), "Select second");
+    PluginManager pm = {.selection_model = selection};
+    cs_value paths = cs_nil();
+    nf_fm_selected_paths(vm, &pm, 0, NULL, &paths);
+    ASSERT_EQ(cs_list_len(paths), 2, "Selection should span directories without a visible listing");
+    cs_value first = cs_list_get(paths, 0), second = cs_list_get(paths, 1);
+    ASSERT_TRUE(!strcmp(cs_to_cstr(first), "/tmp/first"), "Preserve first selection");
+    ASSERT_TRUE(!strcmp(cs_to_cstr(second), "/tmp/other/second"), "Preserve second selection");
+    cs_value_release(first);
+    cs_value_release(second);
+    cs_value_release(paths);
+    SelectionCallback context = {.selection = selection, .valid = true};
+    cs_register_native(vm, "collect_selection", collect_selection, &context);
+    cs_value callback = cs_str(vm, "collect_selection");
+    nf_fm_each_selected(vm, &pm, 1, &callback, NULL);
+    ASSERT_TRUE(context.valid && context.calls == 2,
+                "Callbacks can clear the model while iterating an owned snapshot");
+    cs_value_release(callback);
+    selection_destroy(selection);
+    cs_vm_free(vm);
+    return true;
+}
+
 static int open_fd_count(void) {
     int count = 0;
     for (int fd = 0; fd < 1024; fd++) {
@@ -239,6 +287,7 @@ int main(void) {
     printf("=== Plugin API Tests ===\n\n");
 
     RUN_TEST(test_browser_selection_paths_are_owned);
+    RUN_TEST(test_cross_directory_selection_snapshot);
     RUN_TEST(test_mime_information_and_entries_are_owned);
     RUN_TEST(test_clear_selected_paths_preserves_plugin_state);
     RUN_TEST(test_exec_closes_partial_pipe_failure);
