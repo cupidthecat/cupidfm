@@ -85,7 +85,7 @@ fn on_key(key) {
             copied(b"cd", str(nested).encode())
             copied(b"cC", (nested / "a.txt").as_uri().encode())
             snapshot(b"y")
-            snapshot(b"g " + str(target).encode() + b"\n")
+            assert snapshot(b"g ../tar\t\n")[1] == str(target)
             os.write(primary, b"p")
             wait_for((target / "a.txt").exists)
             assert (target / "a.txt").read_text() == "needle"

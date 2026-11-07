@@ -149,6 +149,13 @@ session histories. Up/Down or Ctrl+P/N recall them and return to the draft after
 entry. Only submitted values are recorded. Each history keeps up to 32 entries, with at
 most 16 histories in memory; confirmation prompts have no history.
 
+Tab completes a path component in directory, creation, and rename prompts. A single match
+fills the component; several matches open the fuzzy picker. Later path components are
+retained. Directory navigation offers directories only and expands ~/. Filename prompts
+complete literal paths. Hidden names appear when the component begins with a dot.
+Prompts retain typed text when the terminal is resized. Oversized resolved paths fail instead
+of being silently truncated.
+
 ## Fuzzy navigation
 
 Press z to run fzf in the physical current directory. One chosen directory opens in CupidFM;
@@ -262,7 +269,7 @@ their snapshots and source pins here.
 | Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
-| Input editing/history/completion | Partial | UTF-8 editing, undo/redo, purpose-specific session history; no modal input or completion picker |
+| Input editing/history/completion | Partial | UTF-8 editing, undo/redo, Purpose-specific history, undo/redo, component completion and fuzzy picker; no modal input |
 | Help/which-key | Partial | Scrollable, searchable help and chord indicator; no action picker or action sequences |
 | TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
 | Lua plugin API and preset plugins | Missing | CupidScript remains; the Lua runtime is not implemented |

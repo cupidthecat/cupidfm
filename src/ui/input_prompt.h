@@ -9,6 +9,9 @@ typedef enum { INPUT_CURSOR_END, INPUT_CURSOR_START, INPUT_CURSOR_BEFORE_EXT } I
 typedef struct {
     InputCursor cursor;
     const char *history;
+    const char *directory;
+    bool directories_only;
+    bool expand_home;
     void (*changed)(const char *text, void *context);
     void *context;
 } InputPromptOptions;

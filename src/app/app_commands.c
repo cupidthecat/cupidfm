@@ -44,6 +44,10 @@ typedef struct {
 static void filter_changed(const char *query, void *data) {
     FilterContext *context = data;
     AppState *state = context->state;
+    if (resized) {
+        redraw_all_windows(state);
+        resized = 0;
+    }
     (void)app_search_poll(state);
     state->search_mode = SEARCH_MODE_SMART;
     state->search_active = *query != 0;
@@ -214,7 +218,10 @@ static void open_selected(AppState *state, bool interactive) {
 
 static void create_entry(AppState *state) {
     char name[MAX_PATH_LENGTH] = {0}, path[MAX_PATH_LENGTH];
-    if (!input_prompt("Create (end with / for a directory)", name, sizeof(name)) || !name[0])
+    if (!input_prompt_ex(
+            "Create (end with / for a directory)", name, sizeof(name),
+            &(InputPromptOptions){.history = "create", .directory = state->current_directory}) ||
+        !name[0])
         return;
     bool directory = name[strlen(name) - 1] == '/';
     while (name[0] && name[strlen(name) - 1] == '/')
@@ -354,8 +361,12 @@ static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int k
         else {
             char path[MAX_PATH_LENGTH] = {0};
             const char *home = getenv("HOME");
-            if (key == ' ' && !input_prompt_ex("Change directory", path, sizeof(path),
-                                               &(InputPromptOptions){.history = "directory"}))
+            if (key == ' ' &&
+                !input_prompt_ex("Change directory", path, sizeof(path),
+                                 &(InputPromptOptions){.history = "directory",
+                                                       .directory = state->current_directory,
+                                                       .directories_only = true,
+                                                       .expand_home = true}))
                 return APP_KEY_HANDLED;
             if (home && (key == 'h' || key == 'c' || key == 'd'))
                 snprintf(path, sizeof(path), "%s%s", home,
@@ -364,7 +375,11 @@ static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int k
                                       : "/Downloads");
             if (path[0] == '~' && (!path[1] || path[1] == '/') && home) {
                 char expanded[MAX_PATH_LENGTH];
-                snprintf(expanded, sizeof(expanded), "%s%s", home, path + 1);
+                int length = snprintf(expanded, sizeof(expanded), "%s%s", home, path + 1);
+                if (length < 0 || (size_t)length >= sizeof(expanded)) {
+                    notify_result(false, "Directory path is too long");
+                    return APP_KEY_HANDLED;
+                }
                 snprintf(path, sizeof(path), "%s", expanded);
             }
             if (path[0])

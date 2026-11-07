@@ -8,7 +8,8 @@
 // Ensures the parent directory of path exists (mkdir -p one level). Returns true on success.
 bool ensure_parent_dir_local(const char *path);
 
-// Resolve a path relative to cwd into out (absolute if path already absolute).
+// Resolve a path relative to cwd (absolute paths are retained). Aliasing is safe.
+// On overflow, out is empty and errno is ENAMETOOLONG; paths are never truncated.
 void resolve_path_under_cwd(char out[MAX_PATH_LENGTH], const char *cwd, const char *path);
 
 // Return pointer to basename portion of path (no allocations).

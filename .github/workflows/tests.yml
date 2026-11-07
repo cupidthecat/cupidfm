@@ -42,8 +42,9 @@ jobs:
           ./tests/test_process_status
       - name: Check live input and recursive search with sanitizers
         run: |
-          make -B -C tests test_input_prompt test_file_search CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          make -B -C tests test_input_prompt test_file_search test_app_paths CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_input_prompt
+          ./tests/test_app_paths
           ./tests/test_file_search
       - name: Check openers, picker, and bulk rename with sanitizers
         run: |

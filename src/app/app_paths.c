@@ -44,20 +44,23 @@ bool ensure_parent_dir_local(const char *path) {
 void resolve_path_under_cwd(char out[MAX_PATH_LENGTH], const char *cwd, const char *path) {
     if (!out)
         return;
-    out[0] = '\0';
-    if (!path || !*path)
-        return;
-    if (path[0] == '/') {
-        strncpy(out, path, MAX_PATH_LENGTH - 1);
-        out[MAX_PATH_LENGTH - 1] = '\0';
+    if (!path || !*path) {
+        out[0] = 0;
         return;
     }
-    if (!cwd || !*cwd) {
-        strncpy(out, path, MAX_PATH_LENGTH - 1);
-        out[MAX_PATH_LENGTH - 1] = '\0';
+    char resolved[MAX_PATH_LENGTH];
+    int length;
+    if (path[0] == '/' || !cwd || !*cwd)
+        length = snprintf(resolved, sizeof(resolved), "%s", path);
+    else
+        length = snprintf(resolved, sizeof(resolved), "%s%s%s", cwd,
+                          cwd[strlen(cwd) - 1] == '/' ? "" : "/", path);
+    if (length < 0 || (size_t)length >= sizeof(resolved)) {
+        out[0] = 0;
+        errno = ENAMETOOLONG;
         return;
     }
-    path_join(out, cwd, path);
+    memcpy(out, resolved, (size_t)length + 1);
 }
 
 const char *basename_ptr(const char *p) {

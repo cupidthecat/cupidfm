@@ -1,15 +1,21 @@
 #define _GNU_SOURCE
 #include "input_prompt.h"
 
+#include <dirent.h>
 #include <limits.h>
 #include <ncurses.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <wchar.h>
 
 #include "browser_ui.h"
 #include "globals.h"
 #include "main.h"
+#include "picker.h"
 #include "utils.h"
 
 static size_t previous_char(const char *text, size_t position) {
@@ -121,6 +127,113 @@ static int cells(const char *text, size_t length) {
     return result;
 }
 
+static int completion_compare(const void *a, const void *b) {
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+static void complete_path(char *text, size_t *position, size_t capacity,
+                          const InputPromptOptions *options) {
+    if (!options || !options->directory)
+        return;
+    if (options->expand_home && !strcmp(text, "~") && *position == 1 && capacity >= 3) {
+        strcpy(text, "~/");
+        *position = 2;
+        return;
+    }
+    const char *slash = memrchr(text, '/', *position);
+    size_t stem = slash ? (size_t)(slash - text) + 1 : 0;
+    size_t typed = *position - stem;
+    const char *tail = strchr(text + *position, '/');
+    if (!tail)
+        tail = text + strlen(text);
+    char *prefix = strndup(text, stem), *directory = NULL;
+    if (!prefix)
+        return;
+    const char *home = getenv("HOME");
+    if (*prefix == '/')
+        directory = strdup(prefix);
+    else if (options->expand_home && !strncmp(prefix, "~/", 2) && home) {
+        if (asprintf(&directory, "%s/%s", home, prefix + 2) < 0)
+            directory = NULL;
+    } else if (asprintf(&directory, "%s/%s", options->directory, prefix) < 0)
+        directory = NULL;
+    DIR *entries = directory ? opendir(directory) : NULL;
+    char **choices = NULL;
+    size_t count = 0, allocated = 0;
+    if (!entries)
+        goto done;
+    struct dirent *entry;
+    while ((entry = readdir(entries))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") ||
+            (entry->d_name[0] == '.' && (!typed || text[stem] != '.')) ||
+            strncmp(entry->d_name, text + stem, typed))
+            continue;
+        bool folder = entry->d_type == DT_DIR;
+        if (entry->d_type == DT_UNKNOWN || entry->d_type == DT_LNK) {
+            char *path = NULL;
+            struct stat info;
+            if (asprintf(&path, "%s/%s", directory, entry->d_name) < 0)
+                continue;
+            folder = !stat(path, &info) && S_ISDIR(info.st_mode);
+            free(path);
+        }
+        if ((options->directories_only || *tail == '/') && !folder)
+            continue;
+        if (count == allocated) {
+            size_t next = allocated ? allocated * 2 : 32;
+            if (next < allocated || next > SIZE_MAX / sizeof(char *))
+                goto done;
+            char **grown = realloc(choices, next * sizeof(char *));
+            if (!grown)
+                goto done;
+            choices = grown;
+            allocated = next;
+        }
+        size_t length = strlen(entry->d_name);
+        char *name = malloc(length + 2);
+        if (!name)
+            goto done;
+        memcpy(name, entry->d_name, length);
+        if (folder)
+            name[length++] = '/';
+        name[length] = 0;
+        choices[count++] = name;
+    }
+    closedir(entries);
+    entries = NULL;
+    if (!count)
+        goto done;
+    qsort(choices, count, sizeof(*choices), completion_compare);
+    int chosen =
+        count == 1 ? 0 : picker_choose("Complete path", (const char *const *)choices, count);
+    if (chosen < 0)
+        goto done;
+    const char *name = choices[chosen];
+    size_t length = strlen(name);
+    if (*tail == '/' && length && name[length - 1] == '/')
+        tail++;
+    size_t rest = strlen(tail);
+    if (stem >= capacity || length >= capacity - stem || rest >= capacity - stem - length)
+        goto done;
+    char *replacement = malloc(stem + length + rest + 1);
+    if (!replacement)
+        goto done;
+    memcpy(replacement, text, stem);
+    memcpy(replacement + stem, name, length);
+    memcpy(replacement + stem + length, tail, rest + 1);
+    memcpy(text, replacement, stem + length + rest + 1);
+    *position = stem + length;
+    free(replacement);
+done:
+    if (entries)
+        closedir(entries);
+    for (size_t i = 0; i < count; i++)
+        free(choices[i]);
+    free(choices);
+    free(directory);
+    free(prefix);
+}
+
 bool input_prompt_ex(const char *title, char *value, size_t capacity,
                      const InputPromptOptions *options) {
     if (!title || !value || !capacity)
@@ -145,12 +258,24 @@ bool input_prompt_ex(const char *title, char *value, size_t capacity,
     InputSnapshot undo[32] = {0}, redo[32] = {0};
     size_t undo_count = 0, redo_count = 0;
     int delay = wgetdelay(stdscr);
-    wtimeout(stdscr, options && options->changed ? 100 : -1);
+    wtimeout(stdscr, 100);
     curs_set(1);
     bool submitted = false;
     if (options && options->changed)
         options->changed(text, options->context);
     for (;;) {
+        if (resized) {
+            struct winsize terminal = {0};
+            if (!ioctl(STDOUT_FILENO, TIOCGWINSZ, &terminal) && terminal.ws_row &&
+                terminal.ws_col && (terminal.ws_row != LINES || terminal.ws_col != COLS))
+                resize_term(terminal.ws_row, terminal.ws_col);
+            if (getmaxx(notifwin) != COLS || getbegy(notifwin) != LINES - 1) {
+                mvwin(notifwin, 0, 0);
+                wresize(notifwin, 1, COLS);
+                mvwin(notifwin, LINES - 1, 0);
+            }
+        }
+        wnoutrefresh(stdscr);
         int width = getmaxx(notifwin);
         werase(notifwin);
         wmove(notifwin, 0, 0);
@@ -184,12 +309,17 @@ bool input_prompt_ex(const char *title, char *value, size_t capacity,
         }
         if (key == KEY_RESIZE) {
             resized = 1;
-            break;
+            if (options && options->changed)
+                options->changed(text, options->context);
+            continue;
         }
         char *before = strdup(text);
         size_t before_position = position;
         bool history_navigation = false, undoing = false;
-        if (key == KEY_LEFT || key == 2)
+        if (key == '\t') {
+            complete_path(text, &position, capacity, options);
+            length = strlen(text);
+        } else if (key == KEY_LEFT || key == 2)
             position = previous_char(text, position);
         else if (key == KEY_RIGHT || key == 6)
             position = next_char(text, position);

@@ -6,7 +6,10 @@
 #include <ncurses.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 WINDOW *notifwin;
 volatile sig_atomic_t resized;
@@ -73,10 +76,51 @@ int main(void) {
     keys("_edit\033");
     assert(!input_prompt_ex("Filter", value, sizeof(value), &options));
     assert(!strcmp(value, "before") && !strcmp(last_live, "before_edit") && updates > 1);
+    char directory[] = "/tmp/cupidfm-complete-XXXXXX";
+    assert(mkdtemp(directory));
+    char path[512];
+    const char *names[] = {"a.md", "a.txt"};
+    for (size_t i = 0; i < 2; i++) {
+        snprintf(path, sizeof(path), "%s/%s", directory, names[i]);
+        FILE *file = fopen(path, "w");
+        assert(file && !fclose(file));
+    }
+    snprintf(path, sizeof(path), "%s/child", directory);
+    assert(!mkdir(path, 0700));
+    snprintf(path, sizeof(path), "%s/linked", directory);
+    assert(!symlink("child", path));
+    options = (InputPromptOptions){.directory = directory};
+    value[0] = 0;
+    keys("a\tj\n\n");
+    assert(input_prompt_ex("Create", value, sizeof(value), &options));
+    assert(!strcmp(value, "a.txt"));
+    options.directories_only = true;
+    value[0] = 0;
+    keys("\tj\n\n");
+    assert(input_prompt_ex("Directory", value, sizeof(value), &options));
+    assert(!strcmp(value, "linked/"));
+    options.cursor = INPUT_CURSOR_START;
+    snprintf(value, sizeof(value), "child/leaf/file");
+    keys("\tj\n\n");
+    assert(input_prompt_ex("Directory", value, sizeof(value), &options));
+    assert(!strcmp(value, "linked/leaf/file"));
+    value[0] = 0;
+    keys("kept\n");
+    ungetch(KEY_RESIZE);
+    assert(input_prompt("Resize", value, sizeof(value)) && !strcmp(value, "kept"));
+    for (size_t i = 0; i < 2; i++) {
+        snprintf(path, sizeof(path), "%s/%s", directory, names[i]);
+        assert(!unlink(path));
+    }
+    snprintf(path, sizeof(path), "%s/linked", directory);
+    assert(!unlink(path));
+    snprintf(path, sizeof(path), "%s/child", directory);
+    assert(!rmdir(path) && !rmdir(directory));
     delwin(notifwin);
     endwin();
     delscreen(screen);
     fclose(input);
     fclose(output);
-    puts("Prompt cursor presets, UTF-8 undo/redo, history, live updates, and cancellation passed");
+    puts("Prompt cursor presets, UTF-8 undo/redo, history, live updates, completion, resize, and "
+         "cancellation passed");
 }

@@ -713,13 +713,15 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
     snprintf(new_name, sizeof(new_name), "%s", basename);
     struct stat info;
     bool directory = !stat(old_path, &info) && S_ISDIR(info.st_mode);
-    InputPromptOptions options = {.cursor = directory ? INPUT_CURSOR_END : INPUT_CURSOR_BEFORE_EXT,
-                                  .history = "rename"};
-    if (!input_prompt_ex("Rename", new_name, sizeof(new_name), &options) || !*new_name)
-        return false;
-    char parent[MAX_PATH_LENGTH], new_path[MAX_PATH_LENGTH];
+    char parent[MAX_PATH_LENGTH];
     snprintf(parent, sizeof(parent), "%s", old_path);
     char *dir = dirname(parent);
+    InputPromptOptions options = {.cursor = directory ? INPUT_CURSOR_END : INPUT_CURSOR_BEFORE_EXT,
+                                  .history = "rename",
+                                  .directory = dir};
+    if (!input_prompt_ex("Rename", new_name, sizeof(new_name), &options) || !*new_name)
+        return false;
+    char new_path[MAX_PATH_LENGTH];
     int written = new_name[0] == '/' ? snprintf(new_path, sizeof(new_path), "%s", new_name)
                                      : snprintf(new_path, sizeof(new_path), "%s/%s", dir, new_name);
     if (written < 0 || (size_t)written >= sizeof(new_path) ||

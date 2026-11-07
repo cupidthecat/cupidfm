@@ -67,6 +67,7 @@ const char *app_help_vim(void) {
            "  Ctrl+Z            Suspend\n"
            "  Input: Ctrl+Z or Ctrl+_: undo; Ctrl+Y: redo; Ctrl+W: delete previous word.\n"
            "  Input: Up/Down or Ctrl+P/N recall filter, path, rename, or shell history.\n"
+           "  Path input: Tab completes a component; several choices open a fuzzy picker.\n"
            "  F1, ~             Help; / fuzzy-finds commands in the help screen\n";
 }
 
