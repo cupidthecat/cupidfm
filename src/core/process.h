@@ -6,6 +6,8 @@
 /* Run literal arguments, optionally redirecting stdin/stdout. -1 inherits the
  * corresponding descriptor. Only a normal exit with status zero succeeds. */
 bool run_process(char *const argv[], int input_fd, int output_fd);
+bool run_process_in_directory(char *const argv[], const char *directory, int input_fd,
+                              int output_fd);
 bool file_command_copy(const char *src, const char *dst, bool recursive);
 bool file_command_move(const char *src, const char *dst);
 bool file_command_remove_directory(const char *path);

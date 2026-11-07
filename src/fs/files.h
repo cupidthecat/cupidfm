@@ -35,6 +35,7 @@
 #include "config.h"
 #include "vector.h"
 #include <curses.h>
+#include <sys/types.h>
 
 // Forward declaration
 struct PluginManager;
@@ -49,6 +50,45 @@ struct PluginManager;
 
 typedef struct FileAttributes *FileAttr;
 
+typedef enum {
+    FILE_SORT_NONE,
+    FILE_SORT_ALPHABETICAL,
+    FILE_SORT_NATURAL,
+    FILE_SORT_EXTENSION,
+    FILE_SORT_SIZE,
+    FILE_SORT_MTIME,
+    FILE_SORT_BTIME,
+    FILE_SORT_RANDOM
+} FileSort;
+
+typedef enum {
+    FILE_LINE_NONE,
+    FILE_LINE_SIZE,
+    FILE_LINE_PERMISSIONS,
+    FILE_LINE_MTIME,
+    FILE_LINE_BTIME,
+    FILE_LINE_OWNER
+} FileLineMode;
+
+typedef struct {
+    FileSort sort;
+    bool show_hidden;
+    bool sensitive;
+    bool reverse;
+    bool dir_first;
+    FileLineMode linemode;
+    unsigned random_seed;
+} FileListingOptions;
+
+FileListingOptions file_listing_options(void);
+void file_listing_configure(FileListingOptions options);
+void file_listing_sort(Vector *files, const char *directory);
+bool FileAttr_selected(FileAttr fa);
+void FileAttr_select(FileAttr fa, bool selected);
+void FileAttr_visual_begin(FileAttr fa);
+void FileAttr_visual_apply(FileAttr fa, bool in_range, bool unset);
+
+FileAttr mk_attr(const char *name, bool is_dir, ino_t inode);
 const char *FileAttr_get_name(FileAttr fa);
 bool FileAttr_is_dir(FileAttr fa);
 GitStatus FileAttr_get_git_status(FileAttr fa);

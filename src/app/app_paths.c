@@ -14,16 +14,31 @@
 bool ensure_parent_dir_local(const char *path) {
     if (!path || !*path)
         return false;
+    if (strlen(path) >= MAX_PATH_LENGTH) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
     char tmp[MAX_PATH_LENGTH];
-    strncpy(tmp, path, sizeof(tmp) - 1);
-    tmp[sizeof(tmp) - 1] = '\0';
-    char *slash = strrchr(tmp, '/');
-    if (!slash || slash == tmp)
+    strcpy(tmp, path);
+    char *last = strrchr(tmp, '/');
+    if (!last || last == tmp)
         return true;
-    *slash = '\0';
-    if (mkdir(tmp, 0700) == 0)
-        return true;
-    return (errno == EEXIST);
+    *last = '\0';
+    for (char *at = tmp + 1;; at++) {
+        if (*at && *at != '/')
+            continue;
+        char saved = *at;
+        *at = '\0';
+        struct stat info;
+        if (mkdir(tmp, 0755) && (errno != EEXIST || stat(tmp, &info) || !S_ISDIR(info.st_mode))) {
+            *at = saved;
+            return false;
+        }
+        *at = saved;
+        if (!saved)
+            break;
+    }
+    return true;
 }
 
 void resolve_path_under_cwd(char out[MAX_PATH_LENGTH], const char *cwd, const char *path) {

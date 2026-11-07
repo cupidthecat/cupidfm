@@ -4,6 +4,10 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It pr
 
 ![preview](../img/preview2.png)
 
+The original shortcuts below describe the cupidfm keymap. See the
+[Yazi browser guide and comparison](yazi-parity.md) for tabs, selection, background tasks,
+and the remaining differences from Yazi.
+
 ## Demo
 
 ![Demo 1](../img/imagedemo.png)
@@ -54,12 +58,14 @@ Image preview can use Kitty graphics, Sixel, ANSI truecolor, or 256-color blocks
 
 System/third-party dependencies:
 - [ncurses](https://invisible-island.net/ncurses/) (terminal UI)
-- [libmagic](https://github.com/file/file) (MIME/type detection)
+- [libmagic](https://github.com/file/file) (MIME descriptions, source types, and fallbacks)
+- [GLib/GIO](https://docs.gtk.org/gio/) (background operations and recoverable system trash)
 - [OpenSSL](https://www.openssl.org/) (TLS/HTTPS support for cupidscript)
 - [zlib](https://zlib.net/), [bzip2](https://sourceware.org/bzip2/), and [xz/liblzma](https://tukaani.org/xz/) (compression backends used by archive preview)
 - [xclip](https://github.com/astrand/xclip) (clipboard integration)
 
-Project libraries (customized/updated versions):
+Project libraries (pinned source snapshots):
+- [CupidMIME](https://github.com/cupidthecat/cupidMIME) for bounded byte detection
 - [cupidconf](https://github.com/cupidthecat/cupidconf) for configuration loading
 - [cupidscript](https://github.com/cupidthecat/cupidscript) for plugin scripting
 - [cupidarchive](https://github.com/cupidthecat/cupidarchive) for archive previews
@@ -70,7 +76,8 @@ These libraries are built from the source snapshots under `lib/<library>/`. [lib
 
 To build and run cupidfm, you must have the following packages installed:
 
-- **A C Compiler & Build Tools** (e.g. `gcc`, `make`)
+- Clang, make, and pkg-config
+- GLib/GIO development headers for background operations and system trash
 - **ncurses** development libraries (for terminal handling)
 - **libmagic** development libraries (for MIME type detection)
 - **OpenSSL** development libraries (for HTTPS support in cupidscript)
@@ -83,7 +90,7 @@ Open a terminal and run:
 
 ```bash
 sudo apt update
-sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev xclip
+sudo apt install build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev zlib1g-dev libbz2-dev liblzma-dev xclip
 ```
 
 ### Installing Dependencies on Arch Linux
@@ -92,12 +99,12 @@ Open a terminal and run:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -S base-devel ncurses file openssl zlib bzip2 xz xclip
+sudo pacman -S base-devel clang glib2 pkgconf ncurses file openssl zlib bzip2 xz xclip
 ```
 
 *Notes:*
 - On Arch, the package named **file** provides libmagic.
-- The package **base-devel** installs gcc, make, and other essential build tools.
+- Install Clang alongside base-devel; CupidFM selects Clang by default.
 
 ---
 
@@ -611,7 +618,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 
 ### High Priority
 - [ ] Add file filtering options
-- [ ] Write custom magic library for in-house MIME type detection
+- [X] Integrate CupidMIME for bounded file-content detection
 
 ### Features
 - [ ] Add a quick select feature for selecting file names, dir names, and current directory
@@ -682,7 +689,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [X] Optimize memory usage for file preview
 - [X] Cache directory contents for faster navigation
 - [X] Improve MIME type detection performance
-- [X] Implement background loading for directory contents
+- [X] Load legacy listings in batches; sorted Yazi listings currently scan on the UI thread
 - [X] Banner bug when its going lefct the fisrst tick it goes in it goes to the right one tick then back like normal 
 - [X] Implement text editing shortcuts:
   - [X] Shift+arrow for selection

@@ -13,6 +13,8 @@ typedef struct {
     SIZE num_files;
 } CursorAndSlice;
 
+int browser_draw_name(WINDOW *window, const char *text, int columns);
+
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas);
 

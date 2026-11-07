@@ -15,6 +15,9 @@ typedef struct {
 
 bool clipboard_set_paths(const char *const *paths, size_t count, bool cut);
 bool clipboard_read_paths(FILE *stream, ClipboardPaths *out);
+bool clipboard_get_paths(ClipboardPaths *out);
+void clipboard_clear_paths(void);
+bool clipboard_set_text(const char *text);
 void clipboard_paths_free(ClipboardPaths *paths);
 
 #endif // CLIPBOARD_H

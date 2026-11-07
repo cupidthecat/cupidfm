@@ -9,8 +9,10 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <magic.h>
+#include <pwd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
+#include <wctype.h>
 
 #include "cupidarchive.h"
 #include "cupidimage.h"
@@ -264,7 +268,7 @@ static bool is_image_file(const char *path) {
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
         const char *mime_type =
-            mime_file_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+            mime_type_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                              mime_buffer, sizeof(mime_buffer));
         bool is_image = (mime_type != NULL && strncmp(mime_type, "image/", 6) == 0);
         magic_close(magic_cookie);
@@ -814,7 +818,7 @@ static void show_directory_tree(WINDOW *window, const char *dir_path, int level,
         } else if (magic_cookie) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
                 char mime_buffer[512];
-                const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+                const char *mime_type = mime_type_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
                                                          mime_buffer, sizeof(mime_buffer));
                 emoji = get_file_emoji(mime_type, entries[i].name);
             } else {
@@ -954,182 +958,168 @@ bool preview_can_scroll_down(const char *path, int start, int width, int rows) {
     return count > start + rows;
 }
 
+/* Render filesystem bytes without allowing controls or partial UTF-8 to move
+ * outside the row. Invalid byte sequences remain visible as question marks. */
+int browser_draw_name(WINDOW *window, const char *text, int columns) {
+    mbstate_t conversion = {0};
+    size_t left = strlen(text);
+    int used = 0;
+    while (left && used < columns) {
+        wchar_t character;
+        size_t bytes = mbrtowc(&character, text, left, &conversion);
+        if (bytes == (size_t)-1 || bytes == (size_t)-2 || !bytes) {
+            memset(&conversion, 0, sizeof(conversion));
+            waddch(window, '?');
+            text++;
+            left--;
+            used++;
+            continue;
+        }
+        int width = wcwidth(character);
+        if (width < 0 || iswcntrl(character)) {
+            const char *replacement = character == '\n' ? "\\n" : character == '\t' ? "\\t" : "?";
+            int size = (int)strlen(replacement);
+            if (used + size > columns)
+                break;
+            waddstr(window, replacement);
+            used += size;
+        } else {
+            if (used + width > columns)
+                break;
+            waddnstr(window, text, (int)bytes);
+            used += width;
+        }
+        text += bytes;
+        left -= bytes;
+    }
+    return used;
+}
+
+static void listing_details(const char *path, const struct stat *info, FileLineMode mode,
+                            char *text, size_t capacity) {
+    text[0] = '\0';
+    if (mode == FILE_LINE_SIZE) {
+        if (S_ISDIR(info->st_mode)) {
+            long size = get_directory_size_peek(path);
+            if (size >= 0)
+                format_file_size(text, (size_t)size);
+            else
+                snprintf(text, capacity, "-");
+        } else {
+            format_file_size(text, (size_t)info->st_size);
+        }
+    } else if (mode == FILE_LINE_OWNER) {
+        struct passwd *owner = getpwuid(info->st_uid);
+        if (owner)
+            snprintf(text, capacity, "%s", owner->pw_name);
+        else
+            snprintf(text, capacity, "%lu", (unsigned long)info->st_uid);
+    } else if (mode == FILE_LINE_PERMISSIONS) {
+        const char *bits = "rwxrwxrwx";
+        snprintf(text, capacity, "----------");
+        text[0] = S_ISDIR(info->st_mode) ? 'd' : S_ISLNK(info->st_mode) ? 'l' : '-';
+        for (int i = 0; i < 9; i++)
+            if (info->st_mode & (0400 >> i))
+                text[i + 1] = bits[i];
+        if (info->st_mode & S_ISUID)
+            text[3] = info->st_mode & S_IXUSR ? 's' : 'S';
+        if (info->st_mode & S_ISGID)
+            text[6] = info->st_mode & S_IXGRP ? 's' : 'S';
+        if (info->st_mode & S_ISVTX)
+            text[9] = info->st_mode & S_IXOTH ? 't' : 'T';
+    } else if (mode == FILE_LINE_MTIME || mode == FILE_LINE_BTIME) {
+        time_t timestamp = info->st_mtime;
+        bool available = mode == FILE_LINE_MTIME;
+#if defined(__linux__) && defined(STATX_BTIME)
+        if (mode == FILE_LINE_BTIME) {
+            struct statx extended;
+            if (!statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BTIME, &extended) &&
+                (extended.stx_mask & STATX_BTIME)) {
+                timestamp = extended.stx_btime.tv_sec;
+                available = true;
+            }
+        }
+#endif
+        struct tm local;
+        if (available && localtime_r(&timestamp, &local))
+            strftime(text, capacity, "%Y-%m-%d %H:%M", &local);
+        else
+            snprintf(text, capacity, "-");
+    }
+}
+
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas) {
-    int cols;
-    int rows;
+    if (!window || !cas)
+        return;
+    int rows, cols;
     getmaxyx(window, rows, cols);
-
-    size_t vec_len = files_vector ? Vector_len(*files_vector) : 0;
-    cas->num_files = (SIZE)vec_len;
-    if (cas->num_files < 0)
-        cas->num_files = 0;
-    if (cas->start < 0)
-        cas->start = 0;
-    if (cas->cursor < 0)
-        cas->cursor = 0;
-    if (cas->num_files == 0) {
-        cas->start = 0;
-        cas->cursor = 0;
-    } else {
-        if (cas->start >= cas->num_files)
-            cas->start = 0;
-        if (cas->cursor >= cas->num_files)
-            cas->cursor = cas->num_files - 1;
-    }
-
+    cas->num_files = files_vector ? (SIZE)Vector_len(*files_vector) : 0;
+    cas->num_lines = rows;
+    fix_cursor(cas);
     werase(window);
     box(window, 0, 0);
-
-    if (cas->num_files == 0) {
-        mvwprintw(window, 1, 1, "This directory is empty");
+    if (cols > 6) {
+        wmove(window, 0, 2);
+        browser_draw_name(window, directory, cols - 4);
+    }
+    if (!cas->num_files) {
+        mvwaddnstr(window, 1, 1, "This directory is empty", MAX(0, cols - 2));
         wrefresh(window);
         return;
     }
-
-    int max_visible_items = rows - 2;
-
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie == NULL || magic_load(magic_cookie, NULL) != 0) {
-        for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
-            FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-            const char *name = FileAttr_get_name(fa);
-
-            char full_path[MAX_PATH_LENGTH];
-            path_join(full_path, directory, name);
-
-            struct stat statbuf;
-            bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
-            char symlink_target[MAX_PATH_LENGTH] = {0};
-
-            if (is_symlink) {
-                ssize_t target_len =
-                    readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
-                if (target_len > 0) {
-                    symlink_target[target_len] = '\0';
-                }
-            }
-
-            const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
-            const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
-
-            wmove(window, i + 1, 1);
-            for (int j = 1; j < cols - 1; j++) {
-                waddch(window, ' ');
-            }
-
-            bool is_cursor = ((cas->start + i) == cas->cursor);
-            bool is_selected = g_select_all_highlight || is_cursor;
-            if (is_selected)
-                wattron(window, A_REVERSE);
-            if (g_select_all_highlight && is_cursor)
-                wattron(window, A_BOLD);
-
-            int name_len = (int)strlen(name);
-            int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
-            int total_len = name_len + (is_symlink ? (4 + target_len) : 0);
-            int available_width = cols - 8;
-
-            if (total_len > available_width) {
-                if (is_symlink && target_len > 0) {
-                    int name_part = available_width / 2;
-                    int target_part = available_width - name_part - 4;
-                    mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
-                              name_part, name, target_part, symlink_target);
-                } else {
-                    mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width,
-                              name);
-                }
-            } else {
-                if (is_symlink && target_len > 0) {
-                    mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
-                              symlink_target);
-                } else {
-                    mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
-                }
-            }
-
-            if (g_select_all_highlight && is_cursor)
-                wattroff(window, A_BOLD);
-            if (is_selected)
-                wattroff(window, A_REVERSE);
-        }
-
-        wrefresh(window);
-        return;
+    magic_t cookie = magic_open(MAGIC_MIME_TYPE);
+    if (cookie && magic_load(cookie, NULL)) {
+        magic_close(cookie);
+        cookie = NULL;
     }
-
-    for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
-        FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-        const char *name = FileAttr_get_name(fa);
-
-        char full_path[MAX_PATH_LENGTH];
-        path_join(full_path, directory, name);
-
-        struct stat statbuf;
-        bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
-        char symlink_target[MAX_PATH_LENGTH] = {0};
-
-        if (is_symlink) {
-            ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
-            if (target_len > 0) {
-                symlink_target[target_len] = '\0';
-            }
-        }
-
-        const char *emoji;
-        if (FileAttr_is_dir(fa)) {
-            emoji = "📁";
-        } else {
-            char mime_buffer[512];
-            const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
-                                                     mime_buffer, sizeof(mime_buffer));
-            emoji = get_file_emoji(mime_type, name);
-        }
-        const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
-
-        wmove(window, i + 1, 1);
-        for (int j = 1; j < cols - 1; j++) {
-            waddch(window, ' ');
-        }
-
-        bool is_cursor = ((cas->start + i) == cas->cursor);
-        bool is_selected = g_select_all_highlight || is_cursor;
-        if (is_selected)
+    FileListingOptions options = file_listing_options();
+    for (int row = 1; row < rows - 1 && cas->start + row - 1 < cas->num_files; row++) {
+        SIZE index = cas->start + row - 1;
+        FileAttr file = files_vector->el[index];
+        const char *name = FileAttr_get_name(file);
+        char path[MAX_PATH_LENGTH], mime[512], details[80] = {0};
+        path_join(path, directory, name);
+        struct stat info;
+        bool metadata = !lstat(path, &info);
+        const char *type = FileAttr_is_dir(file) ? NULL
+                                                 : mime_type_cached(cookie, path, MAGIC_MIME_TYPE,
+                                                                    mime, sizeof(mime));
+        const char *icon = FileAttr_is_dir(file) ? "📁" : get_file_emoji(type, name);
+        bool cursor = index == cas->cursor;
+        bool selected = g_select_all_highlight || FileAttr_selected(file);
+        if (cursor)
             wattron(window, A_REVERSE);
-        if (g_select_all_highlight && is_cursor)
+        if (selected)
             wattron(window, A_BOLD);
-
-        int name_len = (int)strlen(name);
-        int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
-        int total_len = name_len + (is_symlink ? (4 + target_len) : 0);
-        int available_width = cols - 8;
-
-        if (total_len > available_width) {
-            if (is_symlink && target_len > 0) {
-                int name_part = available_width / 2;
-                int target_part = available_width - name_part - 4;
-                mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji, name_part,
-                          name, target_part, symlink_target);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
-            }
-        } else {
-            if (is_symlink && target_len > 0) {
-                mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
-                          symlink_target);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
+        mvwprintw(window, row, 1, "%c %s %s ", selected ? '*' : ' ', icon,
+                  git_status_to_emoji(FileAttr_get_git_status(file)));
+        int x = getcurx(window);
+        if (metadata && cols >= 40)
+            listing_details(path, &info, options.linemode, details, sizeof(details));
+        int detail_width = MIN((int)strlen(details), MAX(0, cols / 2 - 2));
+        int available = MAX(0, cols - 2 - x - (detail_width ? detail_width + 1 : 0));
+        int used = browser_draw_name(window, name, available);
+        if (metadata && S_ISLNK(info.st_mode) && used + 5 < available) {
+            char target[MAX_PATH_LENGTH];
+            ssize_t length = readlink(path, target, sizeof(target) - 1);
+            if (length >= 0) {
+                target[length] = '\0';
+                waddstr(window, " -> ");
+                browser_draw_name(window, target, available - used - 4);
             }
         }
-
-        if (g_select_all_highlight && is_cursor)
+        if (detail_width) {
+            wmove(window, row, cols - detail_width - 2);
+            browser_draw_name(window, details, detail_width);
+        }
+        if (selected)
             wattroff(window, A_BOLD);
-        if (is_selected)
+        if (cursor)
             wattroff(window, A_REVERSE);
     }
-
-    magic_close(magic_cookie);
+    if (cookie)
+        magic_close(cookie);
     wrefresh(window);
 }
 
@@ -1260,7 +1250,7 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
-        const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+        const char *mime_type = mime_type_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
                                                  mime_buffer, sizeof(mime_buffer));
         if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
             is_image = true;
@@ -1340,7 +1330,7 @@ void fix_cursor(CursorAndSlice *cas) {
     cas->cursor = MIN(cas->cursor, cas->num_files - 1);
     cas->cursor = MAX(0, cas->cursor);
 
-    int visible_lines = cas->num_lines - 2;
+    int visible_lines = MAX(1, cas->num_lines - 2);
 
     if (cas->num_files <= visible_lines) {
         cas->start = 0;

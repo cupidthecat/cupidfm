@@ -9,13 +9,13 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It in
 On Ubuntu or Debian:
 
 ```sh
-sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev openssl \
+sudo apt install build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl \
     zlib1g-dev libbz2-dev liblzma-dev xclip python3
 make -j
 ./cupidfm
 ```
 
-The default build uses `-O2 -g`. Libraries are built from pinned source folders under `lib/`. See [Installation](https://github.com/cupidthecat/cupidfm/wiki/Installation) for other package managers, sanitizer builds, and terminal setup.
+The default build uses Clang with `-O2 -g`. Libraries are built from pinned source folders under `lib/`. See [Installation](https://github.com/cupidthecat/cupidfm/wiki/Installation) for other package managers, sanitizer builds, and terminal setup.
 
 ```sh
 ./cupidfm ~/Documents
@@ -36,6 +36,8 @@ With the default configuration, arrows navigate, Tab switches panes, F1 exits, a
 
 Scrolling preserves queued keys and reuses validated MIME results. See [the performance notes](PERFORMANCE.md) for measured workloads, benchmark commands, and limits.
 
+Set keymap=yazi in ~/.cupidfmrc, or run ./cupidfm --keymap=yazi, for Vim navigation, tabs, individual and range selection, sorting, filtering, and background tasks. The [browser guide and Yazi comparison](docs/yazi-parity.md) lists shortcuts, tested behavior, and remaining gaps.
+
 ## Documentation
 
 - [Wiki home](https://github.com/cupidthecat/cupidfm/wiki).
@@ -54,6 +56,8 @@ make test
 make test-libs
 python3 tests/test_terminal_smoke.py
 python3 tests/test_scroll_smoke.py
+python3 tests/test_yazi_smoke.py
+python3 tests/test_cli_output.py
 ```
 
 `./dev.sh` builds with AddressSanitizer and UndefinedBehaviorSanitizer and prompts before launching. Hosted checks also run focused allocation, input, MIME, preview, and terminal regressions.

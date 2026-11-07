@@ -18,6 +18,8 @@ static void keycode_to_config_string(int keycode, char *buf, size_t buf_size);
 static void write_kv_line(FILE *fp, const char *key, int keycode, const char *comment);
 
 void load_default_keybindings(KeyBindings *kb) {
+    kb->yazi_keymap = false;
+
     // Navigation keys
     kb->key_up = KEY_UP;
     kb->key_down = KEY_DOWN;
@@ -194,6 +196,7 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "edit_uppercase", kb->edit_uppercase, "Uppercase selection");
     fputc('\n', fp);
 
+    fprintf(fp, "keymap=%s\n", kb->yazi_keymap ? "yazi" : "cupidfm");
     fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
 
     bool ok = (fclose(fp) == 0);
@@ -321,6 +324,18 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer,
                 snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
                          "Invalid label_width: %s\n", label_val);
             }
+        }
+    }
+
+    const char *keymap = cupidconf_get(conf, "keymap");
+    if (keymap) {
+        if (!strcasecmp(keymap, "yazi") || !strcasecmp(keymap, "cupidfm"))
+            kb->yazi_keymap = !strcasecmp(keymap, "yazi");
+        else {
+            errors++;
+            if (error_buffer && buffer_size > strlen(error_buffer))
+                snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
+                         "Invalid keymap: %s\n", keymap);
         }
     }
 

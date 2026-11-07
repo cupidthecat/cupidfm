@@ -2,16 +2,22 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "mime.h"
+#include "cupidmime.h"
 #include <errno.h>
+#include <fcntl.h>
+#include <fnmatch.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 typedef struct {
     bool valid;
     int flags;
+    bool native;
     struct stat identity;
     uint64_t used;
     char path[4096];
@@ -52,9 +58,56 @@ static const char *copy_mime(const char *type, char *result, size_t capacity) {
     return result;
 }
 
-const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *result,
-                             size_t capacity) {
-    if (!cookie || !path || !result || !capacity) {
+static bool detect_native(const char *path, int flags, const struct stat *identity,
+                          cm_result *detected) {
+    if (!S_ISREG(identity->st_mode) || (flags & MAGIC_MIME) != MAGIC_MIME_TYPE)
+        return false;
+    int fd =
+        open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK | ((flags & MAGIC_SYMLINK) ? 0 : O_NOFOLLOW));
+    if (fd < 0)
+        return false;
+    struct stat opened;
+    if (fstat(fd, &opened) || !S_ISREG(opened.st_mode) || !same_identity(identity, &opened)) {
+        close(fd);
+        return false;
+    }
+    size_t limit =
+        identity->st_size > (off_t)CM_SCAN_LIMIT ? CM_SCAN_LIMIT : (size_t)identity->st_size;
+    unsigned char *bytes = malloc(limit ? limit : 1);
+    if (!bytes) {
+        close(fd);
+        return false;
+    }
+    size_t used = 0;
+    bool ok = true;
+    while (used < limit) {
+        ssize_t count = read(fd, bytes + used, limit - used);
+        if (count < 0 && errno == EINTR)
+            continue;
+        if (count < 0) {
+            ok = false;
+            break;
+        }
+        if (!count)
+            break;
+        used += (size_t)count;
+    }
+    struct stat after;
+    ok = ok && !fstat(fd, &after) && same_identity(identity, &after);
+    if (ok) {
+        cm_status status = (off_t)used < identity->st_size ? cm_detect_prefix(bytes, used, detected)
+                                                           : cm_detect(bytes, used, detected);
+        ok = status == CM_OK;
+    }
+    free(bytes);
+    close(fd);
+    return ok;
+}
+
+static const char *mime_lookup_cached(magic_t cookie, const char *path, int flags, char *result,
+                                      size_t capacity, bool native) {
+
+    if ((!cookie && !native) || !path || !result || !capacity) {
         errno = EINVAL;
         return NULL;
     }
@@ -65,7 +118,8 @@ const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *
     MimeCacheEntry *target = NULL, *oldest = &mime_cache[0];
     for (size_t i = 0; i < sizeof(mime_cache) / sizeof(*mime_cache); i++) {
         MimeCacheEntry *entry = &mime_cache[i];
-        if (entry->valid && entry->flags == flags && !strcmp(entry->path, path)) {
+        if (entry->valid && entry->flags == flags && entry->native == native &&
+            !strcmp(entry->path, path)) {
             if (same_identity(&entry->identity, &identity) && settled_identity(&identity)) {
                 entry->used = ++mime_cache_clock;
                 const char *answer = copy_mime(entry->type, result, capacity);
@@ -82,11 +136,25 @@ const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *
     }
     if (!target)
         target = oldest;
-    const char *type = magic_file(cookie, path);
+    cm_result detected;
+    bool identified = native && detect_native(path, flags, &identity, &detected);
+    const char *type = NULL;
+    if (identified && detected.evidence >= CM_SIGNATURE &&
+        !(detected.flags & (CM_TRUNCATED | CM_MALFORMED | CM_AMBIGUOUS)))
+        type = detected.mime;
+    if (!type && cookie)
+        type = magic_file(cookie, path);
+    if (!type && identified)
+        type = detected.mime;
     const char *answer = copy_mime(type, result, capacity);
-    if (answer && strlen(path) < sizeof(target->path) && strlen(type) < sizeof(target->type)) {
+    struct stat after;
+    bool unchanged = !(flags & MAGIC_SYMLINK ? stat(path, &after) : lstat(path, &after)) &&
+                     same_identity(&identity, &after);
+    if (answer && unchanged && strlen(path) < sizeof(target->path) &&
+        strlen(type) < sizeof(target->type)) {
         target->identity = identity;
         target->flags = flags;
+        target->native = native;
         strcpy(target->path, path);
         strcpy(target->type, type);
         target->used = ++mime_cache_clock;
@@ -94,6 +162,16 @@ const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *
     }
     pthread_mutex_unlock(&mime_cache_mutex);
     return answer;
+}
+
+const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *result,
+                             size_t capacity) {
+    return mime_lookup_cached(cookie, path, flags, result, capacity, false);
+}
+
+const char *mime_type_cached(magic_t cookie, const char *path, int flags, char *result,
+                             size_t capacity) {
+    return mime_lookup_cached(cookie, path, flags, result, capacity, true);
 }
 
 void mime_cache_clear(void) {
@@ -260,6 +338,11 @@ const char *get_file_emoji(const char *mime_type, const char *filename) {
         return from_ext ? from_ext : default_icon;
     }
 
+    if (strcmp(mime_type, "text/plain") == 0) {
+        const char *from_ext = emoji_from_extension(ext);
+        return from_ext ? from_ext : "📄";
+    }
+
     if (strncmp(mime_type, "text/", 5) == 0) {
         if (strstr(mime_type, "python"))
             return "🐍";
@@ -312,11 +395,6 @@ const char *get_file_emoji(const char *mime_type, const char *filename) {
         if (strstr(mime_type, "ini"))
             return "🔧";
         return "📄";
-    }
-
-    if (strcmp(mime_type, "text/plain") == 0) {
-        const char *from_ext = emoji_from_extension(ext);
-        return from_ext ? from_ext : "📄";
     }
 
     if (strncmp(mime_type, "image/", 6) == 0) {
@@ -458,7 +536,7 @@ bool is_supported_mime_type(const char *mime_type) {
         return false;
 
     for (size_t i = 0; i < num_supported_mime_types; i++) {
-        if (strncmp(mime_type, supported_mime_types[i], strlen(supported_mime_types[i])) == 0) {
+        if (fnmatch(supported_mime_types[i], mime_type, 0) == 0) {
             return true;
         }
     }

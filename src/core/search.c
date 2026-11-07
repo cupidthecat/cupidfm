@@ -174,9 +174,12 @@ size_t search_rebuild(AppState *state, const char *query) {
         return count;
     }
 
-    if (state->search_mode == SEARCH_MODE_REGEX) {
+    if (state->search_mode == SEARCH_MODE_REGEX || state->search_mode == SEARCH_MODE_SMART) {
         regex_t re;
-        if (regcomp(&re, query, REG_EXTENDED | REG_NOSUB) != 0) {
+        bool sensitive = state->search_mode != SEARCH_MODE_SMART;
+        for (const unsigned char *p = (const unsigned char *)query; *p; p++)
+            sensitive |= isupper(*p) != 0;
+        if (regcomp(&re, query, REG_EXTENDED | REG_NOSUB | (sensitive ? 0 : REG_ICASE)) != 0) {
             return 0;
         }
         size_t count = 0;

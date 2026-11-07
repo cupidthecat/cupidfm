@@ -51,6 +51,43 @@ static bool test_clear_selected_paths_preserves_plugin_state(void) {
     return true;
 }
 
+static bool test_browser_selection_paths_are_owned(void) {
+    cs_vm *vm = cs_vm_new();
+    ASSERT_NOT_NULL(vm, "VM should allocate");
+    PluginManager pm = {0};
+    snprintf(pm.cwd, sizeof(pm.cwd), "/tmp");
+    snprintf(pm.selected, sizeof(pm.selected), "hover");
+    Vector files = Vector_new(2);
+    FileAttr hovered = mk_attr("hover", false, 1), selected = mk_attr("selected", false, 2);
+    ASSERT_NOT_NULL(files.el, "View should allocate");
+    ASSERT_NOT_NULL(hovered, "Hovered entry should allocate");
+    ASSERT_NOT_NULL(selected, "Selected entry should allocate");
+    files.el[0] = hovered;
+    files.el[1] = selected;
+    Vector_set_len_no_free(&files, 2);
+    pm.view = &files;
+    FileAttr_select(selected, true);
+    for (int mode = 0; mode < 2; mode++) {
+        for (int i = 0; i < 100; i++) {
+            cs_value out = cs_nil();
+            ASSERT_EQ(nf_fm_selected_paths(vm, &pm, 0, NULL, &out), 0, "Paths should return");
+            ASSERT_EQ(out.type, CS_T_LIST, "Paths should be a list");
+            cs_list_obj *list = out.as.p;
+            ASSERT_EQ(list->len, 1, "One path should be returned");
+            ASSERT_TRUE(!strcmp(cs_to_cstr(list->items[0]), mode ? "/tmp/hover" : "/tmp/selected"),
+                        "Marked entries should take precedence over hover");
+            cs_value_release(out);
+        }
+        FileAttr_select(selected, false);
+    }
+    free_attr(hovered);
+    free_attr(selected);
+    Vector_set_len_no_free(&files, 0);
+    Vector_bye(&files);
+    cs_vm_free(vm);
+    return true;
+}
+
 static int open_fd_count(void) {
     int count = 0;
     for (int fd = 0; fd < 1024; fd++) {
@@ -201,6 +238,7 @@ static bool test_mime_information_and_entries_are_owned(void) {
 int main(void) {
     printf("=== Plugin API Tests ===\n\n");
 
+    RUN_TEST(test_browser_selection_paths_are_owned);
     RUN_TEST(test_mime_information_and_entries_are_owned);
     RUN_TEST(test_clear_selected_paths_preserves_plugin_state);
     RUN_TEST(test_exec_closes_partial_pipe_failure);

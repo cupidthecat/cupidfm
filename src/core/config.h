@@ -47,6 +47,8 @@ typedef struct {
     int edit_redo;
     int edit_uppercase;
 
+    bool yazi_keymap;
+
     // file
     int info_label_width;
 } KeyBindings;

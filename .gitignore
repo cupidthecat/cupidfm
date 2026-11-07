@@ -47,3 +47,7 @@ __pycache__/
 
 /tests/test_image_preview
 /tests/test_image_preview_ui
+
+/tests/test_browser_session
+/tests/test_tasks
+/tests/test_mime_native

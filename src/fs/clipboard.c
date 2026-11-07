@@ -47,6 +47,64 @@ static bool valid_path(const char *path) {
     return *base && strcmp(base, ".") != 0 && strcmp(base, "..") != 0;
 }
 
+static ClipboardPaths yanked;
+static bool owns_yank;
+
+void clipboard_clear_paths(void) {
+    clipboard_paths_free(&yanked);
+    owns_yank = true;
+}
+
+bool clipboard_get_paths(ClipboardPaths *out) {
+    if (!out)
+        return false;
+    *out = (ClipboardPaths){0};
+    if (owns_yank) {
+        if (!yanked.count)
+            return false;
+        out->paths = calloc(yanked.count, sizeof(char *));
+        if (!out->paths)
+            return false;
+        out->count = yanked.count;
+        out->cut = yanked.cut;
+        for (size_t i = 0; i < out->count; i++) {
+            out->paths[i] = strdup(yanked.paths[i]);
+            if (!out->paths[i]) {
+                clipboard_paths_free(out);
+                return false;
+            }
+        }
+        return true;
+    }
+    FILE *stream = tmpfile();
+    if (!stream)
+        return false;
+    char *x11[] = {"xclip", "-selection", "clipboard", "-o", NULL};
+    char *wayland[] = {"wl-paste", "--no-newline", NULL};
+    bool ok = run_process(getenv("WAYLAND_DISPLAY") ? wayland : x11, -1, fileno(stream)) &&
+              !fseek(stream, 0, SEEK_SET) && clipboard_read_paths(stream, out);
+    fclose(stream);
+    return ok;
+}
+
+bool clipboard_set_text(const char *text) {
+    if (!text)
+        return false;
+    FILE *stream = tmpfile();
+    if (!stream)
+        return false;
+    size_t length = strlen(text);
+    bool ok =
+        fwrite(text, 1, length, stream) == length && !fflush(stream) && !fseek(stream, 0, SEEK_SET);
+    if (ok) {
+        char *wayland[] = {"wl-copy", NULL};
+        char *x11[] = {"xclip", "-selection", "clipboard", "-i", NULL};
+        ok = run_process(getenv("WAYLAND_DISPLAY") ? wayland : x11, fileno(stream), -1);
+    }
+    fclose(stream);
+    return ok;
+}
+
 bool clipboard_set_paths(const char *const *paths, size_t count, bool cut) {
     if (!paths || !count || count > CLIP_MAX_ITEMS)
         return false;
@@ -73,8 +131,20 @@ bool clipboard_set_paths(const char *const *paths, size_t count, bool cut) {
     if (ok)
         ok = fflush(stream) == 0 && fseek(stream, 0, SEEK_SET) == 0;
     if (ok) {
-        char *args[] = {"xclip", "-selection", "clipboard", "-i", NULL};
-        ok = run_process(args, fileno(stream), -1);
+        ClipboardPaths replacement = {0};
+        ok = clipboard_read_paths(stream, &replacement);
+        if (ok) {
+            clipboard_paths_free(&yanked);
+            yanked = replacement;
+            owns_yank = true;
+            rewind(stream);
+            char *x11[] = {"xclip", "-selection", "clipboard", "-i", NULL};
+            char *wayland[] = {"wl-copy", NULL};
+            if (getenv("WAYLAND_DISPLAY"))
+                (void)run_process(wayland, fileno(stream), -1);
+            else if (getenv("DISPLAY"))
+                (void)run_process(x11, fileno(stream), -1);
+        }
     }
     fclose(stream);
     return ok;

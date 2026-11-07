@@ -1,9 +1,11 @@
+#define _GNU_SOURCE
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "process.h"
 
 #include <errno.h>
+#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -11,13 +13,20 @@
 extern char **environ;
 
 bool run_process(char *const argv[], int input_fd, int output_fd) {
+    return run_process_in_directory(argv, NULL, input_fd, output_fd);
+}
+
+bool run_process_in_directory(char *const argv[], const char *directory, int input_fd,
+                              int output_fd) {
     if (!argv || !argv[0])
         return false;
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0)
         return false;
     int error = 0;
-    if (input_fd >= 0)
+    if (directory)
+        error = posix_spawn_file_actions_addchdir_np(&actions, directory);
+    if (!error && input_fd >= 0)
         error = posix_spawn_file_actions_adddup2(&actions, input_fd, STDIN_FILENO);
     if (!error && output_fd >= 0)
         error = posix_spawn_file_actions_adddup2(&actions, output_fd, STDOUT_FILENO);
@@ -26,8 +35,24 @@ bool run_process(char *const argv[], int input_fd, int output_fd) {
     if (!error && output_fd > STDERR_FILENO && output_fd != input_fd)
         error = posix_spawn_file_actions_addclose(&actions, output_fd);
     pid_t child;
+    posix_spawnattr_t attributes;
+    int attribute_error = posix_spawnattr_init(&attributes);
     if (!error)
-        error = posix_spawnp(&child, argv[0], &actions, NULL, argv, environ);
+        error = attribute_error;
+    if (!attribute_error) {
+        sigset_t defaults;
+        sigemptyset(&defaults);
+        sigaddset(&defaults, SIGINT);
+        sigaddset(&defaults, SIGQUIT);
+        sigaddset(&defaults, SIGTSTP);
+        if (!error)
+            error = posix_spawnattr_setsigdefault(&attributes, &defaults);
+        if (!error)
+            error = posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETSIGDEF);
+        if (!error)
+            error = posix_spawnp(&child, argv[0], &actions, &attributes, argv, environ);
+        posix_spawnattr_destroy(&attributes);
+    }
     posix_spawn_file_actions_destroy(&actions);
     if (error) {
         errno = error;

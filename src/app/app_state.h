@@ -5,8 +5,9 @@
 #include <time.h>
 
 #include "browser_ui.h" // CursorAndSlice
-#include "globals.h"    // MAX_PATH_LENGTH
-#include "undo.h"       // UndoState
+#include "files.h"
+#include "globals.h" // MAX_PATH_LENGTH
+#include "undo.h"    // UndoState
 #include "vector.h"
 
 typedef struct PluginManager PluginManager;
@@ -36,6 +37,21 @@ typedef struct {
     Vector search_files;
     UndoState undo_state;
     PluginManager *plugins;
+    FileListingOptions listing;
+    const char *chooser_file;
+    bool quit_requested;
+    bool no_cwd_file;
+    char *history[128];
+    char *history_hover[128];
+    size_t history_length;
+    size_t history_position;
+    char tab_name[80];
+    int prefix_key;
+    bool visual_active;
+    bool visual_unset;
+    int visual_wraps;
+    SIZE visual_anchor;
+    char find_query[MAX_PATH_LENGTH];
 } AppState;
 
 #endif // APP_STATE_H

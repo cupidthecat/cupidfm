@@ -16,7 +16,9 @@ class FileCommands(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'])
+        self.env = dict(os.environ, DISPLAY=':test', PATH=str(self.bin) + os.pathsep + os.environ['PATH'])
+
+        self.env.pop("WAYLAND_DISPLAY", None)
 
     def fake(self, command, body):
         path = self.bin / command
@@ -290,11 +292,11 @@ class FileCommands(unittest.TestCase):
     def test_v3_cut_round_trip(self):
         self.clipboard_round_trip(True)
 
-    def test_cut_clipboard_failure_keeps_source(self):
+    def test_cut_without_system_clipboard_keeps_source(self):
         self.fake('xclip', 'exit 42')
         source = self.root / 'source'
         source.write_text('data')
-        self.assertNotEqual(self.run_command('cut-clipboard', source).returncode, 0)
+        self.assertEqual(self.run_command('cut-clipboard', source).returncode, 0)
         self.assertEqual(source.read_text(), 'data')
 
     def test_clipboard_missing_source_does_not_publish(self):

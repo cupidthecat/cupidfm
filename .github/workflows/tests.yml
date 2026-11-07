@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3
       - name: Verify committed library source trees
         run: python3 tools/verify_library_sources.py
       - name: Build application
@@ -22,10 +22,20 @@ jobs:
         run: python3 tests/test_terminal_smoke.py
       - name: Preserve queued scrolling through slow plugin work
         run: python3 tests/test_scroll_smoke.py
+      - name: Check Yazi browser workflows
+        run: |
+          python3 tests/test_yazi_smoke.py
+          python3 tests/test_cli_output.py
       - name: Run bundled library tests
         run: make -j2 test-libs
       - name: Run tests
         run: make test
+      - name: Check browser state and tasks with sanitizers
+        run: |
+          make -B -C tests test_browser_session test_tasks test_mime_native CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_browser_session
+          ./tests/test_tasks
+          ./tests/test_mime_native
       - name: Run file-command regressions with sanitizers
         run: |
           rm tests/file_command_driver

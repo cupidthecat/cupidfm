@@ -1,21 +1,23 @@
 .DEFAULT_GOAL := all
-CC = gcc
+CC = clang
 CFLAGS = -Wall -Wextra -g -std=c2x
 INCLUDES = -I../src -I../src/app -I../src/core -I../src/ui -I../src/fs -I../src/ds -I.
 LIBS =
+CUPIDMIME_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-mime-lib)
+override LIBS += $(CUPIDMIME_LIB)
 CUPIDIMAGE_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-image-lib)
 CUPIDARCHIVE_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-archive-lib)
 CUPIDSCRIPT_LIB ?= $(shell $(MAKE) --no-print-directory -s -C .. print-script-lib)
-INCLUDES += -I../lib/cupidconf -I../lib/cupidgit -I../lib/cupidimage/src -I../lib/cupidscript/src -I../lib/cupidarchive
+INCLUDES += -I../lib/cupidmime/include -I../lib/cupidconf -I../lib/cupidgit -I../lib/cupidimage/src -I../lib/cupidscript/src -I../lib/cupidarchive
 ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
+TEST_TARGETS = test_tasks test_mime_native test_browser_session test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
 
 # Test sources include application code directly; header changes must rebuild them.
 TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
-$(TEST_TARGETS): $(TEST_HEADERS) Makefile
+$(TEST_TARGETS): $(TEST_HEADERS) Makefile $(CUPIDMIME_LIB)
 
 # Benchmark executable
 BENCHMARK_TARGET = benchmark
@@ -23,6 +25,18 @@ BENCHMARK_TARGET = benchmark
 .PHONY: all clean test test-asan test-valgrind run-benchmark
 
 all: $(TEST_TARGETS)
+
+$(CUPIDMIME_LIB):
+	$(MAKE) -C .. mime-library CC="$(CC)"
+
+test_tasks: test_tasks.c ../src/core/tasks.c
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs gio-2.0) $(LIBS) -pthread
+
+test_mime_native: test_mime_native.c ../src/fs/mime.c
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(LIBS) -lmagic -pthread
+
+test_browser_session: test_browser_session.c ../src/app/app_session.c ../src/core/search.c ../src/fs/files.c ../src/core/utils.c ../src/ui/browser_ui.c ../src/ds/vector.c ../src/core/undo.c
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $(filter %.c,$^) $(LIBS) -lncursesw
 
 test_vector: test_vector.c test_runner.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ test_vector.c ../src/ds/vector.c $(LIBS)
@@ -133,6 +147,9 @@ test_editor_ranges: test_editor_ranges.c ../src/fs/files.c
 
 test: all
 	@echo "Running all tests..."
+	@./test_tasks
+	@./test_mime_native
+	@./test_browser_session
 	@./test_vector
 	@./test_path_join
 	@./test_memory_safety
@@ -182,6 +199,9 @@ test-asan: clean
 	@echo "  - Stack buffer overflow"
 	@echo "  - Memory leaks"
 	@echo ""
+	@./test_tasks
+	@./test_mime_native
+	@./test_browser_session
 	@./test_vector
 	@./test_path_join
 	@./test_memory_safety

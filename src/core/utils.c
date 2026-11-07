@@ -391,23 +391,10 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         log->src = NULL;
         log->dst = NULL;
     }
-    FILE *temp = tmpfile();
-    if (!temp)
-        return -1;
-    char *args[] = {"xclip", "-selection", "clipboard", "-o", NULL};
-    if (!run_process(args, -1, fileno(temp))) {
-        fprintf(stderr, "Error: Unable to read from clipboard.\n");
-        fclose(temp);
-        return -1;
-    }
-    rewind(temp);
-
     ClipboardPaths paths;
-    if (!clipboard_read_paths(temp, &paths)) {
-        fclose(temp);
+    if (!clipboard_get_paths(&paths))
         return -1;
-    }
-    fclose(temp);
+
     (void)filename; /* Names come from validated source paths, not local clipboard state. */
     PasteKind kind = paths.cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
     int pasted = 0;
@@ -938,6 +925,14 @@ void reload_directory_lazy(Vector *files, const char *current_directory, size_t 
     // Empties the vector
     Vector_set_len_no_free(files, 0);
     *files_loaded = 0;
+
+    /* A sort must see the entire directory, including entries beyond a lazy batch. */
+    if (file_listing_options().sort != FILE_SORT_NONE) {
+        append_files_to_vec(files, current_directory);
+        *files_loaded = Vector_len(*files);
+        *total_files = *files_loaded;
+        return;
+    }
 
     // Count total files first (for display purposes)
     *total_files = count_directory_files(current_directory);
