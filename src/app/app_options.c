@@ -57,6 +57,8 @@ void app_options_usage(FILE *stream, const char *program) {
             "Chooser output contains one selected path per line.\n\n",
             program);
     fputs(app_help_vim(), stream);
+    fputc('\n', stream);
+    fputs(app_help_tabs(), stream);
     fputs("\nDefault editor keys: Ctrl+E opens, Ctrl+S saves, Ctrl+Q returns to browsing.\n"
           "Editor bindings and original-profile browser bindings can be set in ~/.cupidfmrc.\n\n",
           stream);

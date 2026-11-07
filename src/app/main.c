@@ -26,6 +26,7 @@
 
 // Local includes
 #include "app_commands.h"
+#include "app_help.h"
 #include "app_input.h"
 #include "app_navigation.h"
 #include "app_options.h"
@@ -1656,6 +1657,10 @@ int main(int argc, char **argv) {
 
         app_draw_browser(&state);
         app_draw_tab_bar(&state, &tabs);
+        if (state.prefix_key) {
+            show_notification(notifwin, "%s", app_help_prefix(state.prefix_key));
+            should_clear_notif = false;
+        }
         wrefresh(notifwin);
 
         clock_gettime(CLOCK_MONOTONIC, &last_frame_time);

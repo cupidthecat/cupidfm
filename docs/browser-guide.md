@@ -99,8 +99,14 @@ In the Vim profile, F1 or ~ opens help; the original profile uses its configured
 The help screen shows the active browser profile and configured editor keys.
 
 Use j/k or the arrow keys to scroll, PageUp/PageDown for a page, and Home/End for either end.
-Press / to search the help text without case sensitivity, then n or N for the next or previous
-match. Press q or Esc to return to browsing. Text wraps when the terminal is resized.
+Press / to fuzzy-find help commands. Results update as you type and rank closer matches first.
+Queries ignore case and spaces: ntab finds the new-tab command. Enter keeps the results;
+j/k, arrows, or n/N scroll through them. Backspace edits the query and Ctrl+U clears it.
+Esc cancels an edit or clears the results; q closes help. Text wraps when the terminal is resized.
+
+Some commands use two keys. Press t, then t to create a tab, or t, then r to rename it.
+The g, comma, m, and c prefixes cover navigation, sorting, details, and copying text.
+Pressing a prefix shows its available next keys in the notification line; Esc cancels it.
 
 ## Mouse navigation
 

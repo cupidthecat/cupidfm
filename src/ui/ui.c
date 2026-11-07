@@ -16,7 +16,6 @@
 #include "app_help.h"
 #include "app_input.h" // for keycode_to_string
 #include "globals.h"
-#include "input_prompt.h"
 #include "main.h" // for banner globals and draw_scrolling_banner
 #include "utils.h"
 
@@ -296,6 +295,8 @@ static void build_help_content(StrVec *out, const KeyBindings *kb) {
     strvec_init(out);
     if (kb->vim_keymap) {
         help_text(out, app_help_vim());
+        strvec_push(out, "");
+        help_text(out, app_help_tabs());
         help_editor(out, kb);
         return;
     }
@@ -380,17 +381,52 @@ static void build_help_content(StrVec *out, const KeyBindings *kb) {
     strvec_push(out, line_buf);
     snprintf(line_buf, sizeof(line_buf), "  %-20s - Exit", keycode_to_string(kb->key_exit));
     strvec_push(out, line_buf);
+    strvec_push(out, "");
+    strvec_push(out, "Additional browser keys (when not assigned to a configured action)");
+    help_text(out, app_help_tabs());
+    help_text(out, app_help_prefix('g'));
+    help_text(out, app_help_prefix(','));
     help_editor(out, kb);
 }
 
-static void build_help_lines(StrVec *out, const KeyBindings *kb, int width) {
+typedef struct {
+    const char *text;
+    int score;
+    size_t order;
+} HelpMatch;
+
+static int help_match_compare(const void *a, const void *b) {
+    const HelpMatch *left = a, *right = b;
+    if (left->score != right->score)
+        return left->score < right->score ? -1 : 1;
+    return (left->order > right->order) - (left->order < right->order);
+}
+
+static void build_help_lines(StrVec *out, const KeyBindings *kb, int width, const char *query) {
     StrVec source;
     strvec_init(&source);
     strvec_init(out);
     build_help_content(&source, kb);
     width = MAX(1, width);
+    HelpMatch *matches = calloc(source.count ? source.count : 1, sizeof(*matches));
+    if (!matches) {
+        strvec_free(&source);
+        return;
+    }
+    size_t count = 0;
+    bool filtering = query && *query;
     for (size_t i = 0; i < source.count; i++) {
-        const char *line = source.lines[i];
+        int score = filtering ? app_help_fuzzy_score(query, source.lines[i]) : 0;
+        if (score >= 0)
+            matches[count++] = (HelpMatch){source.lines[i], score, i};
+    }
+    if (filtering)
+        qsort(matches, count, sizeof(*matches), help_match_compare);
+    if (!count)
+        matches[count++] = (HelpMatch){
+            "No matching help commands. Edit the query or press Esc to clear it.", 0, 0};
+    for (size_t i = 0; i < count; i++) {
+        const char *line = matches[i].text;
         if (!*line)
             strvec_push(out, "");
         while (*line) {
@@ -418,6 +454,7 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int width) {
                 line++;
         }
     }
+    free(matches);
     strvec_free(&source);
 }
 
@@ -433,7 +470,7 @@ void show_help_menu(const KeyBindings *kb) {
     // Build help content
     StrVec help_lines;
     strvec_init(&help_lines);
-    build_help_lines(&help_lines, kb, 120);
+    build_help_lines(&help_lines, kb, 120, "");
 
     if (help_lines.count == 0) {
         strvec_free(&help_lines);
@@ -441,15 +478,15 @@ void show_help_menu(const KeyBindings *kb) {
     }
 
     const char *title = "CupidFM - Help Menu";
-    const char *footer = "j/k: scroll  PgUp/Dn  /: find  n/N: next/prev  q/Esc: close";
+    const char *footer = "j/k: scroll  PgUp/Dn  /: fuzzy find  Esc: clear find/close  q: close";
 
     WINDOW *popup_win = NULL;
     WINDOW *content_pad = NULL;
 
     int scroll_pos = 0;
-    int found_row = -1;
     int original_delay = wgetdelay(stdscr);
-    char query[128] = {0};
+    char query[128] = {0}, saved_query[128] = {0};
+    bool finding = false;
     bool done = false;
 
     // Track terminal + geometry so we only recreate on resize
@@ -537,8 +574,7 @@ void show_help_menu(const KeyBindings *kb) {
                 content_width = 1;
 
             strvec_free(&help_lines);
-            build_help_lines(&help_lines, kb, content_width);
-            found_row = -1;
+            build_help_lines(&help_lines, kb, content_width, query);
             max_line_len = (size_t)content_width;
 
             // Pad dims: tall enough for all lines, wide enough for longest line
@@ -626,8 +662,18 @@ void show_help_menu(const KeyBindings *kb) {
             int footer_space = popup_cols - 4;
             if (footer_space < 0)
                 footer_space = 0;
-            mvwaddnstr(popup_win, footer_y, 2, popup_cols < 50 ? "j/k / q: close" : footer,
-                       footer_space);
+            char find_footer[256];
+            const char *shown = popup_cols < 65 ? "/ fuzzy find; q close" : footer;
+            if (finding || *query) {
+                snprintf(find_footer, sizeof(find_footer), "%s: %s%s",
+                         finding ? "Fuzzy find (Enter done, Esc cancel)"
+                                 : "Find (/ edit; Esc clear)",
+                         query, finding ? "_" : "");
+                shown = find_footer;
+                if ((int)strlen(shown) > footer_space)
+                    shown = find_footer + strlen(find_footer) - (size_t)footer_space;
+            }
+            mvwaddnstr(popup_win, footer_y, 2, shown, footer_space);
 
             need_frame_redraw = false;
             force_repaint = true;
@@ -690,40 +736,60 @@ void show_help_menu(const KeyBindings *kb) {
             continue;
         }
 
-        if (ch == '/' || ch == 'n' || ch == 'N') {
-            if (ch != '/' || input_prompt("Help search", query, sizeof(query))) {
-                if (*query) {
-                    int count = (int)help_lines.count;
-                    int from = ch == '/' || found_row < 0 ? scroll_pos : found_row;
-                    for (int step = ch == '/' ? 0 : 1; step < count; step++) {
-                        int at = (from + (ch == 'N' ? count - step : step)) % count;
-                        const char *line = help_lines.lines[at];
-                        bool match = false;
-                        for (; *line && !match; line++) {
-                            size_t i = 0;
-                            while (query[i] && line[i] &&
-                                   tolower((unsigned char)query[i]) ==
-                                       tolower((unsigned char)line[i]))
-                                i++;
-                            match = !query[i];
-                        }
-                        if (match) {
-                            found_row = scroll_pos = at;
-                            break;
-                        }
-                    }
+        if (finding) {
+            size_t length = strlen(query);
+            bool changed = false;
+            if (ch == 27) {
+                snprintf(query, sizeof(query), "%s", saved_query);
+                finding = false;
+                changed = true;
+            } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+                finding = false;
+            } else if (ch == 21) {
+                query[0] = 0;
+                changed = true;
+            } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+                if (length) {
+                    do {
+                        length--;
+                    } while (length && ((unsigned char)query[length] & 0xc0) == 0x80);
+                    query[length] = 0;
+                    changed = true;
                 }
+            } else if (ch >= 32 && ch <= 255 && length + 1 < sizeof(query)) {
+                query[length] = (char)ch;
+                query[length + 1] = 0;
+                changed = true;
+            } else if (ch == KEY_RESIZE) {
+                need_recreate = true;
             }
-            force_repaint = true;
+            if (changed) {
+                scroll_pos = 0;
+                need_recreate = true;
+            }
             need_frame_redraw = true;
             continue;
         }
+        if (ch == '/') {
+            snprintf(saved_query, sizeof(saved_query), "%s", query);
+            finding = true;
+            need_frame_redraw = true;
+            continue;
+        }
+        if (ch == 27 && *query) {
+            query[0] = 0;
+            scroll_pos = 0;
+            need_recreate = true;
+            continue;
+        }
         switch (ch) {
+            case 'N':
             case 'k':
             case KEY_UP:
                 if (scroll_pos > 0)
                     scroll_pos--;
                 break;
+            case 'n':
             case 'j':
             case KEY_DOWN:
                 if (scroll_pos < max_scroll)

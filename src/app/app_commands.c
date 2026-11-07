@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "app_commands.h"
+#include "app_help.h"
 #include "app_mouse.h"
 #include "app_panes.h"
 
@@ -416,6 +417,9 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
     if (state->prefix_key) {
         int prefix = state->prefix_key;
         state->prefix_key = 0;
+        werase(notifwin);
+        wrefresh(notifwin);
+        should_clear_notif = true;
         if (ch == 27)
             return APP_KEY_HANDLED;
         return prefix_key(state, tabs, prefix, ch);
@@ -433,7 +437,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
     }
     if (ch == ',' || ch == 't' || ch == 'g' || (vim && (ch == 'm' || ch == 'c'))) {
         state->prefix_key = ch;
-        show_notification(notifwin, "%c ...", ch);
+        show_notification(notifwin, "%s", app_help_prefix(ch));
         should_clear_notif = false;
         return APP_KEY_HANDLED;
     }
