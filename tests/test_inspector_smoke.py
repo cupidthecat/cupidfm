@@ -7,13 +7,14 @@ import os
 from pathlib import Path
 import pty
 import re
-import select
 import signal
 import struct
 import subprocess
 import tempfile
 import termios
 import time
+
+from terminal_wait import wait_for_terminal
 
 binary = Path(os.environ.get("CUPIDFM_TEST_BINARY", Path(__file__).resolve().parents[1] / "cupidfm"))
 with tempfile.TemporaryDirectory(prefix="cupidfm-inspector-") as temporary:
@@ -57,22 +58,7 @@ fn on_key(key) {
                                        start_new_session=True)
             os.close(secondary); output = bytearray(); checks = 0
             def wait(predicate, timeout=10):
-                deadline = time.monotonic() + timeout
-                while time.monotonic() < deadline:
-                    if predicate(): return
-                    if process.poll() is not None: break
-                    if select.select([primary], [], [], 0.01)[0]:
-                        try: output.extend(os.read(primary, 65536))
-                        except OSError:
-                            # PTY EOF can arrive before the child becomes waitable.
-                            try:
-                                process.wait(timeout=0.05)
-                            except subprocess.TimeoutExpired:
-                                pass
-                            continue
-                if predicate(): return
-                errors.seek(0)
-                raise AssertionError((process.poll(), errors.read(), bytes(output[-2000:])))
+                wait_for_terminal(process, primary, predicate, output, errors, timeout)
             def send(keys): os.write(primary, keys)
             def clipboard():
                 return re.findall(rb"\x1b]52;c;([A-Za-z0-9+/=]*)\x1b\\", bytes(output))

@@ -203,6 +203,7 @@ test: all
 	@./test_bulk_create
 	@./test_clipboard_terminal
 	@./test_process_status
+	@python3 test_terminal_wait.py
 	@./test_file_info
 	@./test_app_paths
 	@./test_header
@@ -270,6 +271,7 @@ test-asan: clean
 	@./test_bulk_create
 	@./test_clipboard_terminal
 	@./test_process_status
+	@python3 test_terminal_wait.py
 	@./test_file_info
 	@./test_app_paths
 	@./test_header

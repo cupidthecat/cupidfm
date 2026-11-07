@@ -8,13 +8,14 @@ import io
 import os
 from pathlib import Path
 import pty
-import select
 import struct
 import subprocess
 import tarfile
 import tempfile
 import termios
 import time
+
+from terminal_wait import wait_for_terminal
 import zipfile
 
 binary = Path(os.environ.get("CUPIDFM_TEST_BINARY", Path(__file__).resolve().parents[1] / "cupidfm"))
@@ -96,17 +97,8 @@ fn on_key(key) {
         process = subprocess.Popen([str(binary), str(source)], env=environment, stdin=secondary,
                                    stdout=secondary, stderr=errors, start_new_session=True)
         os.close(secondary); output = bytearray(); checks = 0
-        def wait(predicate, timeout=15):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                if predicate(): return
-                if process.poll() is not None: break
-                if select.select([primary], [], [], 0.01)[0]:
-                    try: output.extend(os.read(primary, 65536))
-                    except OSError: break
-            if predicate(): return
-            errors.seek(0)
-            raise AssertionError((process.poll(), errors.read(), bytes(output[-3000:])))
+        def wait(predicate, timeout=10):
+            wait_for_terminal(process, primary, predicate, output, errors, timeout)
         def send(keys):
             os.write(primary, keys)
         def snapshot(keys=b""):
