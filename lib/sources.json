@@ -21,8 +21,8 @@
   },
   "cupidmime": {
     "repository": "https://github.com/cupidthecat/cupidMIME",
-    "commit": "374eb1a61d8716afcbb24b5a462adf0119ef014f",
-    "tree": "bca70175b81f6d901979bc82b57bb58611403656"
+    "commit": "8dfde2bb9e59647314e47547380cc99df0e47fbf",
+    "tree": "4b01633e9d89369121d0f3ba938aa65d25641f7c"
   },
   "cupidscript": {
     "repository": "https://github.com/cupidthecat/cupidscript",

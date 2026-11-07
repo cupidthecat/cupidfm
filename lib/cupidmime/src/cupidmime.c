@@ -447,9 +447,20 @@ static int binary(const byte *p, size_t n, cm_result *r) {
             reject(r, CM_MALFORMED, "Invalid ELF class, endian or version");
         else if (n < len)
             reject(r, CM_TRUNCATED, "ELF file header is incomplete");
-        else
-            match(r, "application/x-elf", CM_STRUCTURE,
-                  "ELF identification and header length checked");
+        else {
+            unsigned type = p[5] == 1 ? le16(p + 16) : (unsigned)p[16] * 256 + p[17];
+            if (type == 1)
+                match(r, "application/x-object", CM_STRUCTURE, "ELF relocatable object header");
+            else if (type == 2)
+                match(r, "application/x-executable", CM_STRUCTURE, "ELF executable header");
+            else if (type == 4)
+                match(r, "application/x-coredump", CM_STRUCTURE, "ELF core dump header");
+            else {
+                match(r, "application/x-elf", CM_STRUCTURE,
+                      "ELF family; shared object or executable subtype unresolved");
+                r->flags |= CM_AMBIGUOUS;
+            }
+        }
         return 1;
     }
     if (at(p, n, 0, "SQLite format 3\0", 16)) {

@@ -10,7 +10,7 @@ CLANG_FORMAT = clang-format-18
 FORMAT_SOURCES = $(wildcard include/*.h src/*.c src/*.h tests/*.c tests/*.h)
 FONT_SOURCE = /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
 
-.PHONY: all test sanitize clean install fuzz-smoke integration-audio integration-ebml integration-fonts format format-check
+.PHONY: all test sanitize clean install fuzz-smoke integration-audio integration-ebml integration-fonts integration-elf format format-check
 format:
 	$(CLANG_FORMAT) -i $(FORMAT_SOURCES)
 format-check:
@@ -65,6 +65,8 @@ integration-audio: all
 	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" sh tests/audio_integration.sh
 integration-ebml: all
 	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" sh tests/ebml_integration.sh
+integration-elf: all
+	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" CC="$(CC)" sh tests/elf_integration.sh
 integration-fonts: all
 	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" python3 tests/font_integration.py "$(FONT_SOURCE)"
 $(BUILD)/fuzz: tests/fuzz.c src/cupidmime.c src/zip.c src/audio.c src/mpeg.c src/ebml.c src/font.c src/markup.c src/zip.h src/audio.h src/mpeg.h src/ebml.h src/font.h src/markup.h include/cupidmime.h | $(BUILD)

@@ -19,7 +19,7 @@ This table describes the checks in the source. A structural result means these p
 | EPUB container | `application/epub+zip` | Complete supported ZIP layout, one first stored mimetype entry, exact payload and marker CRC; publication content unchecked |
 | gzip | `application/gzip` | Fixed header, DEFLATE method, reserved bits, extra field extent, name/comment terminators and optional header CRC; minimum payload/trailer space; DEFLATE, trailer CRC and concatenated members unchecked |
 | PDF | `application/pdf` | Offset-zero version line with major 1 or 2 and one decimal minor digit; objects and EOF unchecked |
-| ELF | `application/x-elf` | Identification, class, byte order, version and file header length; type and section tables unchecked |
+| ELF | `application/x-object`, `application/x-executable`, `application/x-coredump`, `application/x-elf` | Identification, class, byte order, version, file header length and object type; dynamic types remain ambiguous; program/section tables and payloads unchecked |
 | SQLite | `application/vnd.sqlite3` | Database magic, 100-byte header, page size, read/write versions and payload fractions; pages unchecked |
 | WebAssembly | `application/wasm` | Magic and version 1; sections unchecked |
 | ISO BMFF | `video/mp4`, `audio/mp4`, `image/avif` | Complete 32-bit ftyp box, alignment, major and compatible brands; extended boxes and media tracks unsupported |

@@ -29,7 +29,9 @@ jobs:
           python3 tests/test_open_bulk_smoke.py
           python3 tests/test_recursive_search.py
       - name: Run bundled library tests
-        run: make -j2 test-libs
+        run: |
+          make -j2 test-libs
+          make -C lib/cupidmime integration-elf CC=clang
       - name: Run tests
         run: make test
       - name: Check live input and recursive search with sanitizers

@@ -36,6 +36,13 @@ without a declaration or namespace can remain `text/plain`.
 
 ## Ambiguity and limits
 
+ELF identifies relocatable objects, executables, and core dumps from the header's object-type
+field using its declared byte order. Dynamic ELF files keep a generic ambiguous family:
+shared libraries and position-independent executables share that header type. A caller can
+refine it with another detector. Program/section headers, dynamic tags, symbols, relocations,
+and payloads are not validated.
+
+
 Font detection checks supported SFNT, collection and WOFF directories before selecting a font MIME type. Table offsets are not dereferenced until the relevant bytes are available. Readable uncompressed headers receive additional checks; compressed WOFF tables remain unchecked. A directory can establish a type while missing declared payload bytes add a truncation flag. The [font policy](fonts.md) records the limits and unsupported profiles.
 
 EBML detection follows supported header and track metadata rather than searching for document-type strings. Declared video presence can establish WebM or Matroska in a prefix; an audio-only result needs a complete supported view. Unknown-sized children, unknown profiles, unsupported codecs and conflicting metadata prevent that audio-only claim. The [EBML policy](ebml.md) lists the checks and the schema/payload limits.

@@ -9,12 +9,13 @@
 #include <unistd.h>
 
 static int magic_calls;
+static const char *magic_answer = "application/example+xml";
 
 const char *__wrap_magic_file(magic_t cookie, const char *path) {
     (void)cookie;
     (void)path;
     magic_calls++;
-    return "application/example+xml";
+    return magic_answer;
 }
 
 static void write_text(const char *path, const char *text) {
@@ -66,6 +67,24 @@ int main(void) {
     assert(!strcmp(type, "application/example+xml") && magic_calls == 1);
     assert(is_supported_mime_type(type));
     assert(!is_supported_mime_type("application/example+xml-invalid"));
+    unsigned char elf[64] = {0};
+    memcpy(elf, "\177ELF", 4);
+    elf[4] = 2;
+    elf[5] = 1;
+    elf[6] = 1;
+    elf[16] = 3;
+    file = fopen(path, "wb");
+    assert(file && fwrite(elf, 1, sizeof(elf), file) == sizeof(elf) && !fclose(file));
+    mime_cache_clear();
+    magic_answer = "application/x-pie-executable";
+    assert(mime_type_cached(cookie, path, MAGIC_MIME_TYPE, type, sizeof(type)));
+    assert(!strcmp(type, magic_answer) && magic_calls == 2);
+    elf[16] = 1;
+    file = fopen(path, "wb");
+    assert(file && fwrite(elf, 1, sizeof(elf), file) == sizeof(elf) && !fclose(file));
+    mime_cache_clear();
+    assert(mime_type_cached(cookie, path, MAGIC_MIME_TYPE, type, sizeof(type)));
+    assert(!strcmp(type, "application/x-object") && magic_calls == 2);
     magic_close(cookie);
     assert(!unlink(path));
     assert(!mime_type_cached(NULL, path, MAGIC_MIME_TYPE, type, sizeof(type)));

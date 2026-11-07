@@ -182,9 +182,11 @@ output paths are resolved against the directory from which CupidFM was launched.
 ## Libraries
 
 CupidMIME is pinned in lib/cupidmime to upstream commit
-374eb1a61d8716afcbb24b5a462adf0119ef014f. Recognized binary formats and supported XML subtypes
+8dfde2bb9e59647314e47547380cc99df0e47fbf. Recognized binary formats and supported XML subtypes
 use its bounded byte detector. SVG root tags and namespaces distinguish images from generic XML;
 XHTML, Atom, and RSS retain their text previews. Generic XML permits a more specific fallback.
+ELF objects, executables, and core dumps retain specific types; dynamic ELF permits system
+refinement so position-independent executables do not get stuck with a generic label.
 libmagic supplies source-language types, descriptions, encodings, and format fallbacks.
 Native detection does not open directories, FIFOs, or device nodes. Preview dispatch also skips
 special files, including FIFOs with image, archive, or source-file extensions. Cache entries distinguish

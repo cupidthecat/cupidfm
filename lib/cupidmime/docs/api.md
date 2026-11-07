@@ -26,6 +26,11 @@ Flags are independent bits:
 | `CM_PARTIAL` | The caller supplied a prefix, or the buffer exceeded the scan limit |
 | `CM_AMBIGUOUS` | A container subtype or format candidate remains unresolved |
 
+Generic ELF retains `CM_AMBIGUOUS` when its object-type field does not distinguish a supported
+specific type. In particular, dynamic ELF needs further inspection to distinguish shared
+libraries from position-independent executables. Generic family results should permit a more
+specific result from another detector.
+
 Generic XML retains `CM_AMBIGUOUS` because the declaration or root namespace alone does not
 identify its subtype. Supported SVG, XHTML, Atom, and RSS roots can refine this result. These
 are signature results, including when the root start tag is complete within a prefix; they do
