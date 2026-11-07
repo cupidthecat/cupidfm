@@ -781,7 +781,7 @@ bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t o
     snprintf(new_path, sizeof(new_path), "%s/%s", dir, new_name);
 
     // Attempt to rename
-    if (rename(old_path, new_path) == 0) {
+    if (file_command_rename(old_path, new_path)) {
         show_notification(win, "✅ Renamed to: %s", new_name);
         should_clear_notif = false;
         if (out_new_path && out_len > 0) {

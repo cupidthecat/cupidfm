@@ -10,6 +10,8 @@ bool run_process_in_directory(char *const argv[], const char *directory, int inp
                               int output_fd);
 bool file_command_copy(const char *src, const char *dst, bool recursive);
 bool file_command_move(const char *src, const char *dst);
+/* Rename without replacing an existing destination (atomic on Linux). */
+bool file_command_rename(const char *src, const char *dst);
 bool file_command_remove_directory(const char *path);
 
 #endif

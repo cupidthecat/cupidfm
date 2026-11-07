@@ -38,7 +38,8 @@ a resize message. Scrolloff ranges from 0 to 100 and is limited to half the visi
 Selections belong to the tab and keep their full paths when you navigate, filter, hide files,
 or reload. Yank, file tasks, openers, shell commands, and chooser output use every selected path,
 including paths outside the current directory. With no selection, they use the hovered entry.
-Rename accepts one selected path and keeps it selected under its new name. File information and
+Rename accepts one selected path, preserves existing destinations, and keeps the item selected under
+its new name. File information and
 permissions still use the hovered entry. Esc clears the tab's selection after leaving
 find, visual, and filter modes. A directory and its descendants cannot be selected together.
 Reloading prunes missing paths and finishes any visual range; hidden selections remain active.

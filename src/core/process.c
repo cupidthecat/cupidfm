@@ -5,8 +5,12 @@
 #include "process.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -79,6 +83,29 @@ bool file_command_move(const char *src, const char *dst) {
         return false;
     char *args[] = {"mv", "--", (char *)src, (char *)dst, NULL};
     return run_process(args, -1, -1);
+}
+
+bool file_command_rename(const char *src, const char *dst) {
+    if (!src || !*src || !dst || !*dst) {
+        errno = EINVAL;
+        return false;
+    }
+    if (!strcmp(src, dst)) {
+        struct stat info;
+        return lstat(src, &info) == 0;
+    }
+#ifdef __linux__
+    return renameat2(AT_FDCWD, src, AT_FDCWD, dst, RENAME_NOREPLACE) == 0;
+#else
+    struct stat existing;
+    if (!lstat(dst, &existing)) {
+        errno = EEXIST;
+        return false;
+    }
+    if (errno != ENOENT)
+        return false;
+    return rename(src, dst) == 0;
+#endif
 }
 
 bool file_command_remove_directory(const char *path) {

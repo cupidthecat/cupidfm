@@ -139,6 +139,9 @@ fn on_key(key) {
             snapshot(b"gg ")
             snapshot(b"g " + str(empty).encode() + b"\n")
             assert snapshot()[2:4] == ["0", "1"]
+            snapshot(b"rnested.txt\n")
+            assert (target / "file2.txt").read_text() == "file2.txt\n"
+            assert (target / "nested.txt").read_text() == "nested\n"
             snapshot(b"rrenamed.txt\n")
             wait_for((target / "renamed.txt").exists)
             assert snapshot()[3] == "1"

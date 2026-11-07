@@ -63,6 +63,42 @@ class FileCommands(unittest.TestCase):
         source.write_text('data')
         self.assertNotEqual(self.run_command('copy', source, self.root/'dest').returncode, 0)
 
+    def test_rename_preserves_existing_destinations(self):
+        source = self.root / 'source'
+        source.write_text('original')
+        destination = self.root / 'destination'
+        destination.write_text('keep this')
+        self.assertNotEqual(self.run_command('rename', source, destination).returncode, 0)
+        self.assertEqual(source.read_text(), 'original')
+        self.assertEqual(destination.read_text(), 'keep this')
+        destination.unlink()
+        destination.symlink_to('missing')
+        self.assertNotEqual(self.run_command('rename', source, destination).returncode, 0)
+        self.assertEqual(os.readlink(destination), 'missing')
+        self.assertEqual(source.read_text(), 'original')
+        destination.unlink()
+        destination.mkdir()
+        self.assertNotEqual(self.run_command('rename', source, destination).returncode, 0)
+        self.assertTrue(destination.is_dir())
+        self.assertEqual(source.read_text(), 'original')
+
+    def test_rename_literal_paths_and_directories(self):
+        source = self.root / 'literal$(touch injected)'
+        source.write_text('original')
+        destination = self.root / '-renamed'
+        self.assertEqual(self.run_command('rename', source, destination).returncode, 0)
+        self.assertFalse(source.exists())
+        self.assertEqual(destination.read_text(), 'original')
+        self.assertFalse((self.root / 'injected').exists())
+        self.assertEqual(self.run_command('rename', destination, destination).returncode, 0)
+        folder = self.root / 'folder'
+        folder.mkdir()
+        (folder / 'child').write_text('child')
+        moved = self.root / 'new-folder'
+        self.assertEqual(self.run_command('rename', folder, moved).returncode, 0)
+        self.assertEqual((moved / 'child').read_text(), 'child')
+        self.assertNotEqual(self.run_command('rename', 'missing', 'missing').returncode, 0)
+
     def test_move_preserves_dangling_destination_symlink(self):
         source = self.root / 'source'
         source.write_text('data')
