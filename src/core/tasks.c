@@ -168,7 +168,8 @@ static bool perform_file(Task *task, const char *path, GError **error) {
         }
         free(physical_source);
         free(physical_directory);
-        if (g_file_equal(source, destination) || recursive) {
+        bool copying = task->info.kind == TASK_COPY || task->info.kind == TASK_MOVE;
+        if (g_file_equal(source, destination) || (copying && recursive)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                                 "Destination is the source or inside the source directory");
         } else if (task->info.kind == TASK_COPY) {

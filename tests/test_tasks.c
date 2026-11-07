@@ -187,6 +187,15 @@ int main(void) {
     wait_for_task(17, TASK_CANCELLED);
     snprintf(target, sizeof(target), "%s/cancelled-should-not-run", dest);
     assert(access(target, F_OK));
+    /* Linking a directory inside itself is legal and must not traverse the link. */
+    snprintf(nested, sizeof(nested), "%s/link-directory", root);
+    assert(!mkdir(nested, 0700));
+    const char *directory_link[] = {nested};
+    assert(tasks_submit(TASK_RELATIVE_LINK, directory_link, 1, nested, false));
+    wait_for_task(18, TASK_DONE);
+    snprintf(target, sizeof(target), "%s/link-directory", nested);
+    ssize_t linked_size = readlink(target, value, sizeof(value) - 1);
+    assert(linked_size == 1 && value[0] == '.');
     tasks_stop();
     /* Trashing never uses CupidFM's session-temporary cleanup path. */
     snprintf(target, sizeof(target), "%s/Trash/files/literal$(touch injected)", data);
