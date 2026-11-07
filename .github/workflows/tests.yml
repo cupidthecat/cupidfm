@@ -25,6 +25,7 @@ jobs:
       - name: Check Vim browser workflows
         run: |
           python3 tests/test_browser_smoke.py
+          python3 tests/test_ctrlf_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
           python3 tests/test_recursive_search.py
@@ -147,6 +148,7 @@ jobs:
           python3 tests/test_terminal_smoke.py
           python3 tests/test_scroll_smoke.py
           python3 tests/test_browser_smoke.py
+          python3 tests/test_ctrlf_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
           python3 tests/test_recursive_search.py

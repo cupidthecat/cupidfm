@@ -150,7 +150,7 @@ test_mime_cache: test_mime_cache.c ../src/fs/mime.c ../src/fs/mime.h
 	$(CC) $(CFLAGS) $(INCLUDES) -Wl,--wrap=magic_file -o $@ test_mime_cache.c ../src/fs/mime.c $(LIBS) -lmagic -pthread
 
 test_search_capacity: test_search_capacity.c ../src/core/search.c ../src/ds/vector.c ../src/ds/vecstack.c
-	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=malloc,--wrap=realloc -o $@ test_search_capacity.c ../src/core/search.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=malloc,--wrap=realloc,--wrap=wgetch -o $@ test_search_capacity.c ../src/core/search.c ../src/ds/vector.c ../src/ds/vecstack.c $(LIBS) -lncursesw
 
 test_text_preview: test_text_preview.c ../src/ui/text_preview.c ../src/ui/text_preview.h ../src/ui/syntax.c ../src/ui/syntax_rules.c ../lib/cupidconf/cupidconf.c
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=getline -o $@ test_text_preview.c ../src/ui/text_preview.c ../src/ui/syntax.c ../src/ui/syntax_rules.c ../lib/cupidconf/cupidconf.c $(shell pkg-config --cflags --libs glib-2.0) $(LIBS) -lncursesw

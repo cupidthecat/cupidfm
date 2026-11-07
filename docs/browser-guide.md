@@ -330,3 +330,10 @@ common choices, detached launches, reviewed rename and creation batches, and con
 Navigation tests exercise controlled backends and the real fzf and zoxide commands.
 
 See [browser responsiveness](performance-input.md) for benchmark commands, measured results, and input behavior.
+
+In the original profile, Ctrl+F opens live filename search. One Escape cancels the prompt,
+clears its filter, and restores the hovered entry. Enter keeps the results; Escape from
+the browser clears that filter. Up/Down and PageUp/PageDown move through matches.
+Idle search rebuilds results only after another listing batch arrives. Queued typing
+skips intermediate preview paints, and queued Escape takes priority over another paint.
+An already-running synchronous preview must still finish before input can be read.
