@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the Yazi keymap, tabs, selection, filters, background copies, and persistent trash."""
+"""Exercise the Vim keymap, tabs, selection, filters, background copies, and persistent trash."""
 import fcntl
 import os
 from pathlib import Path
@@ -12,7 +12,7 @@ import termios
 import time
 
 binary = Path(os.environ.get("CUPIDFM_TEST_BINARY", Path(__file__).resolve().parents[1] / "cupidfm"))
-with tempfile.TemporaryDirectory(prefix="cupidfm-yazi-") as temporary:
+with tempfile.TemporaryDirectory(prefix="cupidfm-vim-") as temporary:
     root = Path(temporary)
     home = root / "home"; home.mkdir()
     source = root / "source"; source.mkdir()
@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-yazi-") as temporary:
     child = source / "child folder"; child.mkdir()
     (home / ".config").mkdir()
     data = home / ".local/share"; data.mkdir(parents=True)
-    (home / ".cupidfmrc").write_text("keymap=yazi\n")
+    (home / ".cupidfmrc").write_text("keymap=vim\n")
     for name in ("file2.txt", "file10.txt", ".hidden"):
         (source / name).write_text(name + "\n")
     plugins = home / ".cupidfm/plugins"; plugins.mkdir(parents=True)
@@ -74,6 +74,16 @@ fn on_key(key) {
         try:
             wait_for((root / "ready").exists)
             assert snapshot()[:3] == ["child folder", "0", "3"]
+            clicked = snapshot(b"\x1b[<0;5;8M\x1b[<0;5;8m")
+            assert clicked[:2] == ["file2.txt", "2"], clicked
+            assert snapshot(b"\x1b[<64;5;8M")[:2] == ["child folder", "0"]
+            assert snapshot(b"\x1b[<65;5;8M")[:2] == ["file2.txt", "2"]
+            snapshot(b"\x1b[<0;5;6M")
+            snapshot(b"\x1b[<32;5;8M")
+            assert snapshot(b"\x1b[<0;5;8m")[3] == "3"
+            snapshot(b"\x1b")
+            snapshot(b"gg")
+
             assert snapshot(b"k")[:2] == ["file2.txt", "2"], "single-step previous wraps"
             assert snapshot(b"j")[:2] == ["child folder", "0"]
             assert snapshot(b"  ")[3] == "2", "individual selections reach plugins"
@@ -118,4 +128,4 @@ fn on_key(key) {
             if process.poll() is None:
                 process.kill(); process.wait()
             os.close(primary)
-print("Yazi keys, natural sort, selection, tabs, history, filter, background paste, and trash passed")
+print("Vim keys, natural sort, selection, tabs, history, filter, background paste, and trash passed")

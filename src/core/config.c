@@ -18,7 +18,7 @@ static void keycode_to_config_string(int keycode, char *buf, size_t buf_size);
 static void write_kv_line(FILE *fp, const char *key, int keycode, const char *comment);
 
 void load_default_keybindings(KeyBindings *kb) {
-    kb->yazi_keymap = false;
+    kb->vim_keymap = false;
 
     // Navigation keys
     kb->key_up = KEY_UP;
@@ -196,7 +196,7 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "edit_uppercase", kb->edit_uppercase, "Uppercase selection");
     fputc('\n', fp);
 
-    fprintf(fp, "keymap=%s\n", kb->yazi_keymap ? "yazi" : "cupidfm");
+    fprintf(fp, "keymap=%s\n", kb->vim_keymap ? "vim" : "cupidfm");
     fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
 
     bool ok = (fclose(fp) == 0);
@@ -329,8 +329,8 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer,
 
     const char *keymap = cupidconf_get(conf, "keymap");
     if (keymap) {
-        if (!strcasecmp(keymap, "yazi") || !strcasecmp(keymap, "cupidfm"))
-            kb->yazi_keymap = !strcasecmp(keymap, "yazi");
+        if (!strcasecmp(keymap, "vim") || !strcasecmp(keymap, "cupidfm"))
+            kb->vim_keymap = !strcasecmp(keymap, "vim");
         else {
             errors++;
             if (error_buffer && buffer_size > strlen(error_buffer))

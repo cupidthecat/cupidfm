@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-cli-output-") as temporary:
         fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         env = dict(os.environ, TERM="xterm-256color", HOME=str(home), CUPIDFM_READY=str(ready_path))
         with tempfile.TemporaryFile() as errors:
-            process = subprocess.Popen([str(binary), "--keymap=yazi", *options, "source"], cwd=root,
+            process = subprocess.Popen([str(binary), "--keymap=vim", *options, "source"], cwd=root,
                                        env=env, stdin=secondary, stdout=secondary, stderr=errors,
                                        start_new_session=True)
             os.close(secondary)

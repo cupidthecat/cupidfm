@@ -5,8 +5,8 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It pr
 ![preview](../img/preview2.png)
 
 The original shortcuts below describe the cupidfm keymap. See the
-[Yazi browser guide and comparison](yazi-parity.md) for tabs, selection, background tasks,
-and the remaining differences from Yazi.
+[Vim browser guide and comparison](browser-guide.md) for tabs, selection, background tasks,
+and the remaining differences from Vim.
 
 ## Demo
 
@@ -689,7 +689,7 @@ See `plugins/examples/` for example scripts (not auto-loaded) and `CUPIDFM_CUPID
 - [X] Optimize memory usage for file preview
 - [X] Cache directory contents for faster navigation
 - [X] Improve MIME type detection performance
-- [X] Load legacy listings in batches; sorted Yazi listings currently scan on the UI thread
+- [X] Load legacy listings in batches; sorted Vim listings currently scan on the UI thread
 - [X] Banner bug when its going lefct the fisrst tick it goes in it goes to the right one tick then back like normal 
 - [X] Implement text editing shortcuts:
   - [X] Shift+arrow for selection

@@ -39,6 +39,7 @@ void app_selection_clear(AppState *state) {
         FileAttr_select(state->files.el[i], false);
     state->select_all_active = false;
     g_select_all_highlight = false;
+    state->mouse_drag = false;
     state->visual_active = false;
 }
 
@@ -48,6 +49,7 @@ void app_selection_toggle_all(AppState *state, bool invert) {
         FileAttr_select(view->el[i], !invert || !FileAttr_selected(view->el[i]));
     state->select_all_active = false;
     g_select_all_highlight = false;
+    state->mouse_drag = false;
     state->visual_active = false;
 }
 

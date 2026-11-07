@@ -36,7 +36,7 @@ The application Makefile watches nested library C files and headers. `python3 te
 
 ## Browser state and background tasks
 
-The [Yazi comparison](yazi-parity.md) records the reference revision and current gaps.
+The [browser guide](browser-guide.md) records the current behavior and remaining work.
 app_session.c owns tab snapshots, history, selection changes, and directory replacement.
 Only inactive tabs have heap snapshots. The active AppState owns its vectors and paths directly.
 Search vectors borrow file attributes and must never free those entries.

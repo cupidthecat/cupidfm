@@ -294,6 +294,7 @@ int main(int argc, char **argv) {
         // Configuration loaded successfully
         show_notification(notifwin, "Configuration loaded successfully.");
     } else if (config_errors == 1) {
+        kb.vim_keymap = true;
         // Configuration file not found; create a default config file
         if (write_default_config_file(config_path, &kb, error_buffer, sizeof(error_buffer))) {
             // Notify the user about the creation of the default config file
@@ -318,7 +319,11 @@ int main(int argc, char **argv) {
     }
 
     if (options.keymap)
-        kb.yazi_keymap = !strcmp(options.keymap, "yazi");
+        kb.vim_keymap = !strcmp(options.keymap, "vim");
+    if (kb.vim_keymap) {
+        mouseinterval(0);
+        mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
+    }
 
     // If help == exit, help can never trigger (and banner would be confusing).
     if (kb.key_help == kb.key_exit) {
@@ -337,8 +342,8 @@ int main(int argc, char **argv) {
     char exit_key_buf[32];
     char help_key_buf[32];
     snprintf(exit_key_buf, sizeof(exit_key_buf), "%s",
-             keycode_to_string(kb.yazi_keymap ? 'q' : kb.key_exit));
-    if (kb.yazi_keymap)
+             keycode_to_string(kb.vim_keymap ? 'q' : kb.key_exit));
+    if (kb.vim_keymap)
         snprintf(help_key_buf, sizeof(help_key_buf), "F1");
     else
         banner_help_key_to_string(&kb, help_key_buf, sizeof(help_key_buf));
@@ -387,7 +392,7 @@ int main(int argc, char **argv) {
     git_update_directory(state.current_directory);
 
     FileListingOptions initial_listing = file_listing_options();
-    if (kb.yazi_keymap) {
+    if (kb.vim_keymap) {
         initial_listing.sort = FILE_SORT_ALPHABETICAL;
         initial_listing.show_hidden = false;
         file_listing_configure(initial_listing);
@@ -496,12 +501,12 @@ int main(int argc, char **argv) {
     app_history_remember(&state);
     while (true) {
         ch = app_input_next_key();
-        if (!kb.yazi_keymap && ch == kb.key_exit) {
+        if (!kb.vim_keymap && ch == kb.key_exit) {
             if (task_ui_can_quit())
                 break;
             continue;
         }
-        bool files_changed = kb.yazi_keymap && file_watch_poll(&watcher, state.current_directory);
+        bool files_changed = kb.vim_keymap && file_watch_poll(&watcher, state.current_directory);
         if (tasks_take_changed() || files_changed)
             app_reload_view(&state);
         app_history_remember(&state);
@@ -1098,7 +1103,7 @@ int main(int argc, char **argv) {
         if (ch != ERR) {
             dir_size_note_user_activity();
 
-            if (active_window == DIRECTORY_WIN_ACTIVE || kb.yazi_keymap) {
+            if (active_window == DIRECTORY_WIN_ACTIVE || kb.vim_keymap) {
                 AppKeyResult result = app_browser_key(&state, &tabs, &ch, &kb);
                 if (result == APP_KEY_QUIT)
                     break;
@@ -1205,7 +1210,7 @@ int main(int argc, char **argv) {
 
             // 6) EDIT
             else if (ch == kb.key_edit) {
-                if (active_window == PREVIEW_WIN_ACTIVE || kb.yazi_keymap) {
+                if (active_window == PREVIEW_WIN_ACTIVE || kb.vim_keymap) {
                     char file_path[MAX_PATH_LENGTH];
                     path_join(file_path, state.current_directory, state.selected_entry);
                     edit_file_in_terminal(previewwin, file_path, notifwin, &kb, state.plugins);

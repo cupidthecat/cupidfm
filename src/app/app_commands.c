@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "app_commands.h"
+#include "app_mouse.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -336,7 +337,7 @@ static void show_browser_help(void) {
                                "Y/X: unyank    -/_: symlink/relative    Ctrl+_: hardlink\n"
                                "J/K: preview seek    :/;: blocking/background shell    w: tasks\n"
                                "q: quit    Ctrl+z: suspend    F1/~: help\n"
-                               "Set keymap=yazi in ~/.cupidfmrc for this keymap.\n"
+                               "Set keymap=vim in ~/.cupidfmrc for this keymap.\n"
                                "CupidFM's editor remains available through Ctrl+E.");
 }
 
@@ -411,11 +412,49 @@ static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int k
     return APP_KEY_HANDLED;
 }
 
+static void seek_preview(AppState *state, int amount) {
+    char path[MAX_PATH_LENGTH];
+    if (state->preview_override_active)
+        snprintf(path, sizeof(path), "%s", state->preview_override_path);
+    else
+        path_join(path, state->current_directory,
+                  state->selected_entry ? state->selected_entry : "");
+    for (int i = 0; i < abs(amount); i++) {
+        if (amount < 0)
+            state->preview_start_line = MAX(0, state->preview_start_line - 1);
+        else if (previewwin &&
+                 preview_can_scroll_down(path, state->preview_start_line, getmaxx(previewwin) - 4,
+                                         getmaxy(previewwin) - 8))
+            state->preview_start_line++;
+    }
+}
+
 AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const KeyBindings *kb) {
     int ch = *key;
-    bool yazi = kb->yazi_keymap;
+    bool vim = kb->vim_keymap;
     if (ch == ERR)
         return APP_KEY_PASS;
+    if (ch == KEY_MOUSE && vim) {
+        MEVENT event;
+        if (getmouse(&event) == OK) {
+            AppMouseResult result = app_mouse_event(state, &event);
+            if (result == APP_MOUSE_PREVIEW_UP || result == APP_MOUSE_PREVIEW_DOWN)
+                seek_preview(state, result == APP_MOUSE_PREVIEW_UP ? -3 : 3);
+            if (result == APP_MOUSE_ENTER) {
+                Vector *view = active_files(state);
+                SIZE at = state->dir_window_cas.cursor;
+                if (at >= 0 && (size_t)at < Vector_len(*view) && FileAttr_is_dir(view->el[at]))
+                    (void)app_change_directory(state, FileAttr_get_name(view->el[at]));
+                else
+                    open_selected(state, false);
+            }
+        }
+        return state->quit_requested ? APP_KEY_QUIT : APP_KEY_HANDLED;
+    }
+    if (state->mouse_drag) {
+        state->mouse_drag = false;
+        state->visual_active = false;
+    }
     if (state->prefix_key) {
         int prefix = state->prefix_key;
         state->prefix_key = 0;
@@ -423,7 +462,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             return APP_KEY_HANDLED;
         return prefix_key(state, tabs, prefix, ch);
     }
-    if (!yazi) {
+    if (!vim) {
         const int assigned[] = {
             kb->key_up,          kb->key_down,       kb->key_left, kb->key_right, kb->key_tab,
             kb->key_exit,        kb->key_edit,       kb->key_copy, kb->key_paste, kb->key_cut,
@@ -434,7 +473,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             if (ch == assigned[i])
                 return APP_KEY_PASS;
     }
-    if (ch == ',' || ch == 't' || ch == 'g' || (yazi && (ch == 'm' || ch == 'c'))) {
+    if (ch == ',' || ch == 't' || ch == 'g' || (vim && (ch == 'm' || ch == 'c'))) {
         state->prefix_key = ch;
         show_notification(notifwin, "%c ...", ch);
         should_clear_notif = false;
@@ -470,8 +509,8 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         return APP_KEY_HANDLED;
     }
     if (ch == KEY_HOME || ch == KEY_END || ch == KEY_PPAGE || ch == KEY_NPAGE ||
-        (yazi && (ch == 'G' || ch == 21 || ch == 4 || ch == 2 || ch == 6 || ch == 'j' ||
-                  ch == 'k' || ch == KEY_UP || ch == KEY_DOWN))) {
+        (vim && (ch == 'G' || ch == 21 || ch == 4 || ch == 2 || ch == 6 || ch == 'j' || ch == 'k' ||
+                 ch == KEY_UP || ch == KEY_DOWN))) {
         SIZE count = (SIZE)Vector_len(*active_files(state));
         SIZE page = MAX(1, state->dir_window_cas.num_lines - 2);
         SIZE next = state->dir_window_cas.cursor;
@@ -518,7 +557,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         (void)app_tab_switch(tabs, state, (size_t)(ch - '1'));
         return APP_KEY_HANDLED;
     }
-    if (!yazi)
+    if (!vim)
         return APP_KEY_PASS;
     if (ch == 'q' || ch == 'Q') {
         if (!task_ui_can_quit())
@@ -563,7 +602,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             app_move_cursor(state, 0);
         }
     } else if (ch == 'J' || ch == 'K') {
-        state->preview_start_line = MAX(0, state->preview_start_line + (ch == 'J' ? 5 : -5));
+        seek_preview(state, ch == 'J' ? 5 : -5);
     } else if (ch == 'Y' || ch == 'X') {
         clipboard_clear_paths();
         copied_filename[0] = '\0';
@@ -632,7 +671,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
 }
 
 void app_draw_tab_bar(AppState *state, const AppTabs *tabs) {
-    if (tabs->count == 1 && !g_kb.yazi_keymap)
+    if (tabs->count == 1 && !g_kb.vim_keymap)
         return;
     int width = getmaxx(mainwin);
     int x = 2;

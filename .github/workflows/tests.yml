@@ -22,9 +22,9 @@ jobs:
         run: python3 tests/test_terminal_smoke.py
       - name: Preserve queued scrolling through slow plugin work
         run: python3 tests/test_scroll_smoke.py
-      - name: Check Yazi browser workflows
+      - name: Check Vim browser workflows
         run: |
-          python3 tests/test_yazi_smoke.py
+          python3 tests/test_browser_smoke.py
           python3 tests/test_cli_output.py
       - name: Run bundled library tests
         run: make -j2 test-libs
@@ -112,4 +112,6 @@ jobs:
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
           python3 tests/test_terminal_smoke.py
           python3 tests/test_scroll_smoke.py
+          python3 tests/test_browser_smoke.py
+          python3 tests/test_cli_output.py
           python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

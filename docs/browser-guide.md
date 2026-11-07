@@ -1,21 +1,18 @@
-# Yazi comparison and browser guide
-
-CupidFM uses the local Yazi checkout at commit
-[6882e1ac279b3df2722aaa0ab5dc049ce02d21eb](https://github.com/sxyazi/yazi/tree/6882e1ac279b3df2722aaa0ab5dc049ce02d21eb)
-as its behavior reference. This is an implementation checkpoint, not a claim of complete parity.
+# Browser guide
 
 ## Choose a keymap
 
-CupidFM keeps its original keymap by default. Add this setting to ~/.cupidfmrc:
+New configurations use Vim browser keys. Existing configurations retain their bindings.
+To select the browser keymap explicitly, add this setting to ~/.cupidfmrc:
 
-    keymap=yazi
+    keymap=vim
 
-You can also run ./cupidfm --keymap=yazi. The Yazi profile starts with alphabetical sorting,
+You can also run ./cupidfm --keymap=vim. The Vim profile starts with alphabetical sorting,
 directories first, and hidden files disabled. Tabs keep their directory, cursor, filter,
 selection, sorting preferences, and navigation history. Switching tabs refreshes their contents.
 
 The original profile retains F1 to exit and Tab to switch panes. Its Ctrl+D delete and the plugin
-fm.delete() API still use the existing session trash and undo mechanism. In the Yazi profile,
+fm.delete() API still use the existing session trash and undo mechanism. In the Vim profile,
 d uses recoverable system trash through GIO, and D requests permanent deletion. Both ask for
 confirmation. System trash survives shutdown; session trash does not.
 
@@ -66,6 +63,13 @@ File yanks are held in the process, so copying between tabs does not require a d
 CupidFM also publishes its file clipboard payload through X11 or Wayland when available.
 Copying text fields through c chords requires xclip or wl-copy.
 
+## Mouse navigation
+
+Click an entry to move the cursor. Right-click to enter a directory or open a file.
+Drag with the left button to select a range. Scrolling over the directory pane moves
+three entries; scrolling over the preview pane seeks up to three lines. Borders and
+empty rows do not open files. Preview seeking stops at the available content.
+
 ## Chords and tabs
 
 | Prefix | Second key | Action |
@@ -84,12 +88,12 @@ Birth time is shown as "-" when unavailable. Directory sizes use the existing si
 
 Sorting reads the whole directory before displaying it, including entries beyond the legacy
 200-entry batch. The scan currently runs on the UI thread. Linux directory watches refresh the
-active Yazi tab after external changes, with a 100 ms debounce.
+active Vim tab after external changes, with a 100 ms debounce.
 
 ## Shell integration
 
-    cupidfm --keymap=yazi --cwd-file=/tmp/cupidfm-cwd
-    cupidfm --keymap=yazi --chooser-file=/tmp/cupidfm-selection
+    cupidfm --keymap=vim --cwd-file=/tmp/cupidfm-cwd
+    cupidfm --keymap=vim --chooser-file=/tmp/cupidfm-selection
 
 The cwd file contains the final directory without a trailing newline. Q leaves it untouched.
 Opening with the chooser option writes the selected paths, one per line, and exits. Relative
@@ -116,9 +120,9 @@ their snapshots and source pins here.
 ## Coverage and remaining work
 
 "Covered" identifies behavior exercised by the implementation and its regressions.
-"Partial" identifies a working subset with material differences from Yazi.
+"Partial" identifies a working subset with remaining work.
 
-| Yazi system | Status | Coverage or remaining work |
+| Browser system | Status | Coverage or remaining work |
 | --- | --- | --- |
 | Step, top/bottom, and page movement | Covered | Wrapping steps and clamped page movement |
 | Parent/child navigation | Covered | Leaving restores the child entry |
@@ -137,7 +141,7 @@ their snapshots and source pins here.
 | Rename | Partial | Single-entry prompt; no bulk workflow or cursor presets |
 | Copy/move/paste and overwrite | Partial | Background recursion; no conflict policy editor or aggregate progress estimate |
 | Absolute/relative/hard links | Covered | Yanked local paths, preserving existing destinations |
-| Trash and permanent deletion | Partial | GIO trash for Yazi keys; no trash browser, restore UI, or empty action |
+| Trash and permanent deletion | Partial | GIO trash for Vim keys; no trash browser, restore UI, or empty action |
 | Yank and unyank | Covered | Internal yank, literal paths, optional desktop publication |
 | Copy path/URL/name/stem | Partial | Hovered entry and X11/Wayland; no OSC 52 |
 | Blocking/background shell | Partial | Positional paths, output capture, cancellation; no full placeholder/rule system |
@@ -145,35 +149,23 @@ their snapshots and source pins here.
 | Directory watching | Partial | Active local Linux directory; inactive tabs refresh on switch |
 | Text/code previews | Partial | Existing bounded index and syntax definitions; work runs on UI thread |
 | Image/graphics previews | Partial | Kitty/Sixel/ANSI; no complete terminal or multiplexer coverage |
-| PDF/SVG/video/font/JSON preview pipelines | Partial | Library capabilities and text fallback do not cover all Yazi plugins |
+| PDF/SVG/video/font/JSON preview pipelines | Partial | Library capabilities and text fallback do not cover all preview formats |
 | Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
-| Mouse click, wheel, and drag | Missing | No browser mouse dispatch |
+| Mouse click, wheel, and drag | Covered | Click to hover, right-click to enter/open, wheel to scroll, drag to select |
 | Input editing/history/completion | Partial | Basic UTF-8 editing; no modal input, undo/history, or completion picker |
 | Help/which-key | Partial | Static help and chord indicator; no searchable picker or action sequences |
 | TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
-| Lua plugin API and preset plugins | Missing | CupidScript remains; Yazi plugins cannot load directly |
+| Lua plugin API and preset plugins | Missing | CupidScript remains; the Lua runtime is not implemented |
 | Async fetch/preload/peek/seek/spot lifecycle | Missing | Existing hooks do not implement this lifecycle |
-| Plugin/package manager and flavors | Missing | No ya pkg equivalent |
-| IPC, emit, pub/sub, remote control | Missing | No ya protocol equivalent |
+| Plugin/package manager and flavors | Missing | No package management commands |
+| IPC, emit, pub/sub, remote control | Missing | No IPC command interface |
 | Local/archive/remote/trash URL model | Missing | Local filesystem paths remain |
 | SFTP and remote transfers/caches | Missing | No remote browser backend |
 | CLI cwd/chooser output | Covered | Keymap override and Q cwd suppression |
 | Multiple startup entries and file reveal | Missing | One startup directory |
 | Native Windows/macOS behavior | Missing | This checkpoint targets Linux/WSL |
 | Notifications and theme components | Partial | Existing ncurses notifications and colors |
-
-Source locations used for the comparison:
-
-- yazi-config/preset/keymap-default.toml and yazi-default.toml
-- yazi-actor/src/mgr, tasks, input, spot, cmp, which, and help
-- yazi-widgets/src/step.rs, yazi-fs/src/sorter.rs, and yazi-core/src/tab
-- yazi-scheduler, yazi-watcher, yazi-vfs, yazi-sftp, and yazi-dds
-- yazi-plugin/preset/plugins, yazi-cli, and yazi-boot/src/args.rs
-
-The next architectural work is a persistent path-based selection model and an asynchronous
-directory snapshot. Those are needed for cross-directory operations, large sorted directories,
-remote URLs, and search views to match Yazi without adding more special cases to the UI loop.
 
 ## Verification
 
@@ -182,12 +174,13 @@ remote URLs, and search views to match Yazi without adding more special cases to
     make test-libs CC=clang
     python3 tests/test_terminal_smoke.py
     python3 tests/test_scroll_smoke.py
-    python3 tests/test_yazi_smoke.py
+    python3 tests/test_browser_smoke.py
     python3 tests/test_cli_output.py
 
-The browser session test checks tab ownership, history branching, visual ranges, and sorting
+The browser session test checks mouse geometry and dragging, tab ownership, history branching,
+visual ranges, and sorting
 beyond 200 entries. The task test checks recursive copying, symlink traversal, source/destination
 conflicts, overwrite, literal shell paths, cancellation, moving, and recoverable trash.
 The native MIME test checks CupidMIME routing and nonblocking special-file handling.
-The Yazi terminal test covers keys, selection reaching plugins, tabs, history, filtering,
+The Vim terminal test covers keys, selection reaching plugins, tabs, history, filtering,
 external changes, paste without X11, and trash that survives shutdown.

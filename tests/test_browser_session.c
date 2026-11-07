@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "app_mouse.h"
 #include "app_navigation.h"
 #include "app_session.h"
 #include "git.h"
@@ -16,6 +17,8 @@
 bool g_select_all_highlight;
 bool should_clear_notif;
 WINDOW *notifwin;
+WINDOW *dirwin;
+WINDOW *previewwin;
 
 GitStatus git_query_file_status(const char *path) {
     (void)path;
@@ -72,6 +75,57 @@ int main(void) {
     assert(!strcmp(name_at(&state, 0), "child"));
     assert(!strcmp(name_at(&state, 1), "file2.txt"));
     assert(!strcmp(name_at(&state, 2), "file10.txt"));
+    FILE *input = tmpfile(), *output = tmpfile();
+    assert(input && output);
+    SCREEN *screen = newterm("xterm-256color", output, input);
+    assert(screen);
+    set_term(screen);
+    assert(resizeterm(32, 120) != ERR);
+    dirwin = newwin(26, 35, 4, 1);
+    previewwin = newwin(26, 75, 4, 40);
+    assert(dirwin && previewwin);
+    MEVENT event = {.x = 5, .y = 7, .bstate = BUTTON1_PRESSED};
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(state.dir_window_cas.cursor == 2);
+    event.y = 4; /* The border does not select an entry. */
+    event.bstate = BUTTON1_RELEASED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_NONE);
+    assert(!state.mouse_drag && state.dir_window_cas.cursor == 2);
+    event.y = 5;
+    event.bstate = BUTTON1_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    event.y = 7;
+    event.bstate = REPORT_MOUSE_POSITION | BUTTON1_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(app_selection_count(&state) == 3);
+    event.y = 6;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(app_selection_count(&state) == 2);
+    event.bstate = BUTTON1_RELEASED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(!state.mouse_drag && !state.visual_active);
+    app_selection_clear(&state);
+    event.bstate = BUTTON4_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(state.dir_window_cas.cursor == 0);
+#ifdef BUTTON5_PRESSED
+    event.bstate = BUTTON5_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    assert(state.dir_window_cas.cursor == 2);
+#endif
+    event.y = 15; /* Empty rows cannot open the hovered entry. */
+    event.bstate = BUTTON3_PRESSED;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_HANDLED);
+    event.y = 5;
+    assert(app_mouse_event(&state, &event) == APP_MOUSE_ENTER);
+    assert(state.dir_window_cas.cursor == 0);
+    delwin(dirwin);
+    delwin(previewwin);
+    dirwin = previewwin = NULL;
+    endwin();
+    delscreen(screen);
+    fclose(input);
+    fclose(output);
     app_move_cursor(&state, 2);
     FileAttr_select(state.files.el[1], true);
     assert(app_selection_count(&state) == 1);

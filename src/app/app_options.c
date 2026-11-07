@@ -38,7 +38,7 @@ bool app_options_parse(int argc, char **argv, AppOptions *options) {
             options->directory = argument;
         }
     }
-    return !options->keymap || !strcmp(options->keymap, "yazi") ||
+    return !options->keymap || !strcmp(options->keymap, "vim") ||
            !strcmp(options->keymap, "cupidfm");
 }
 
@@ -46,7 +46,7 @@ void app_options_usage(FILE *stream, const char *program) {
     fprintf(stream,
             "Usage: %s [OPTIONS] [--] [DIRECTORY]\n"
             "Open DIRECTORY, or the current directory when omitted.\n\n"
-            "  --keymap=yazi|cupidfm  Choose browser shortcuts\n"
+            "  --keymap=vim|cupidfm  Choose browser shortcuts\n"
             "  --cwd-file=FILE        Write the final directory on quit (Q skips it)\n"
             "  --chooser-file=FILE    Write opened file paths and quit\n"
             "  -h, --help             Show this help\n",

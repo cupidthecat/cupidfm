@@ -36,7 +36,9 @@ With the default configuration, arrows navigate, Tab switches panes, F1 exits, a
 
 Scrolling preserves queued keys and reuses validated MIME results. See [the performance notes](PERFORMANCE.md) for measured workloads, benchmark commands, and limits.
 
-Set keymap=yazi in ~/.cupidfmrc, or run ./cupidfm --keymap=yazi, for Vim navigation, tabs, individual and range selection, sorting, filtering, and background tasks. The [browser guide and Yazi comparison](docs/yazi-parity.md) lists shortcuts, tested behavior, and remaining gaps.
+New configurations use Vim browser keys. Existing configurations keep their bindings.
+Use `./cupidfm --keymap=vim` for tabs, selection, sorting, filtering, mouse navigation,
+and background tasks. The [browser guide](docs/browser-guide.md) lists shortcuts and current limits.
 
 ## Documentation
 
@@ -56,7 +58,7 @@ make test
 make test-libs
 python3 tests/test_terminal_smoke.py
 python3 tests/test_scroll_smoke.py
-python3 tests/test_yazi_smoke.py
+python3 tests/test_browser_smoke.py
 python3 tests/test_cli_output.py
 ```
 

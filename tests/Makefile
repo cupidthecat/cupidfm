@@ -35,7 +35,7 @@ test_tasks: test_tasks.c ../src/core/tasks.c
 test_mime_native: test_mime_native.c ../src/fs/mime.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(LIBS) -lmagic -pthread
 
-test_browser_session: test_browser_session.c ../src/app/app_session.c ../src/core/search.c ../src/fs/files.c ../src/core/utils.c ../src/ui/browser_ui.c ../src/ds/vector.c ../src/core/undo.c
+test_browser_session: test_browser_session.c ../src/app/app_mouse.c ../src/app/app_session.c ../src/core/search.c ../src/fs/files.c ../src/core/utils.c ../src/ui/browser_ui.c ../src/ds/vector.c ../src/core/undo.c
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $(filter %.c,$^) $(LIBS) -lncursesw
 
 test_vector: test_vector.c test_runner.h

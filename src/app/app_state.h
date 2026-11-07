@@ -47,6 +47,7 @@ typedef struct {
     size_t history_position;
     char tab_name[80];
     int prefix_key;
+    bool mouse_drag;
     bool visual_active;
     bool visual_unset;
     int visual_wraps;
