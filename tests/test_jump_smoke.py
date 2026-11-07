@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-jump-") as temporary:
     history = root / "history\nplace"; history.mkdir()
     names = ["a ' $(not-a-command).txt", "b\nnewline.txt"]
     for name in names: (source / name).write_text(name)
+    (source / ".hidden").write_text("hidden")
     (source / "broken").symlink_to(root / "does-not-exist")
     (home / ".cupidfmrc").write_text("keymap=vim\n")
     plugins = home / ".cupidfm/plugins"; plugins.mkdir(parents=True)
@@ -115,6 +116,9 @@ sys.exit(int((root/(name+"-code")).read_text()) if (root/(name+"-code")).exists(
             assert snapshot(b"z")["name"] == "child"
             fzf_result(names)
             assert snapshot(b"z")["count"] == "2"
+            fzf_result([".hidden"])
+            state=snapshot(b"z")
+            assert state["cwd"] == str(source) and state["name"] == ".hidden", state
             os.write(primary,b"q");process.wait(timeout=10)
             errors.seek(0); error=errors.read().decode(errors="replace")
             assert process.returncode==0 and "AddressSanitizer" not in error and "runtime error:" not in error,error

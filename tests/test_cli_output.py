@@ -31,6 +31,7 @@ fn snapshot(base) {
 }
 fn on_load() {
     let ready = getenv("CUPIDFM_READY");
+    snapshot(ready);
     write_file(ready, "ready");
 }
 fn on_key(key) {
@@ -86,6 +87,8 @@ fn on_key(key) {
     hidden = ".hidden\nname"
     (source / hidden).write_text("hidden")
     launch([], b"!2!3!4!1!q", ["source/selected.txt", "empty/", "source/broken", "source/" + hidden])
+    assert (root / "ready-cwd").read_text() == str(source)
+    assert (root / "ready-name").read_text() == "selected.txt", "startup hook sees the hovered file"
     for index, (directory, name) in enumerate(((source, "selected.txt"), (empty, ""),
                                                (source, "broken"), (source, hidden),
                                                (source, "selected.txt")), start=1):

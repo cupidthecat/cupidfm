@@ -54,7 +54,18 @@ static bool reveal(AppState *state, const char *path, bool enter) {
     char *parent = g_path_get_dirname(path), *name = g_path_get_basename(path);
     bool ok = app_change_directory(state, parent);
     if (ok) {
+        FileListingOptions listing = file_listing_options();
+        if (name[0] == '.' && !listing.show_hidden) {
+            listing.show_hidden = true;
+            file_listing_configure(listing);
+            state->listing = listing;
+            app_reload_view(state);
+        }
         SIZE index = find_loaded_index_by_name(&state->files, name);
+        if (index == (SIZE)-1) {
+            app_reload_view(state);
+            index = find_loaded_index_by_name(&state->files, name);
+        }
         if (index != (SIZE)-1)
             app_move_cursor(state, index);
         else

@@ -42,8 +42,9 @@ typedef struct {
     char arg1[MAX_PATH_LENGTH]; // dst_dir (copy/move) | new_name (rename) | name/path (mkdir/touch)
 } PluginFileOp;
 
-// Initialize and load all plugins. Safe to call even if no plugin dirs exist.
-PluginManager *plugins_create(void);
+// Initialize context before running startup hooks, then load plugins.
+// Safe if no plugin directories exist; initial_context may be NULL.
+PluginManager *plugins_create(const PluginsContext *initial_context);
 void plugins_destroy(PluginManager *pm);
 
 // Update context available to plugins (copied internally).

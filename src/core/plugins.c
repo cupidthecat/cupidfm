@@ -121,7 +121,7 @@ static void load_plugins_from_dir(PluginManager *pm, const char *dir_path) {
     closedir(d);
 }
 
-static void plugins_init(PluginManager *pm) {
+static void plugins_init(PluginManager *pm, const PluginsContext *initial_context) {
     memset(pm, 0, sizeof(*pm));
     pm->cwd[0] = '\0';
     pm->selected[0] = '\0';
@@ -166,6 +166,9 @@ static void plugins_init(PluginManager *pm) {
     pm->clear_search_requested = false;
     pm->set_search_mode_requested = false;
     pm->requested_search_mode = SEARCH_MODE_FUZZY;
+
+    if (initial_context)
+        plugins_set_context_ex(pm, initial_context);
 
     // Candidate plugin dirs:
     // 1) ~/.cupidfm/plugins
@@ -304,11 +307,11 @@ static void plugins_shutdown(PluginManager *pm) {
     pm->context_initialized = false;
 }
 
-PluginManager *plugins_create(void) {
+PluginManager *plugins_create(const PluginsContext *initial_context) {
     PluginManager *pm = (PluginManager *)calloc(1, sizeof(PluginManager));
     if (!pm)
         return NULL;
-    plugins_init(pm);
+    plugins_init(pm, initial_context);
     return pm;
 }
 

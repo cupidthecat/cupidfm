@@ -162,7 +162,8 @@ Press z to run fzf in the physical current directory. One chosen directory opens
 one chosen file reveals its parent and moves the cursor to that file. Multiple choices add
 selections when nothing was selected. With an existing selection, fzf receives only those
 paths and multiple returned choices are removed from the selection. A single returned choice
-reveals its location while retaining the selection. Selected paths cross the process boundary
+reveals its location while retaining the selection. A returned hidden name enables hidden
+entries in that tab. Selected paths cross the process boundary
 as NUL-delimited records.
 
 Press Z to choose from the existing zoxide directory database. Set up that history through
@@ -210,7 +211,8 @@ Pass up to nine file or directory paths to open them in tabs, in argument order:
 
 The first tab is active. A file argument opens its parent and hovers its literal name,
 including a broken symlink. A symlink to a directory enters the target directory.
-Hidden file arguments enable hidden entries in that tab. Relative arguments resolve from
+Hidden file arguments enable hidden entries in that tab. Startup plugin hooks receive the
+initial tab's directory, hovered name, and listing. Relative arguments resolve from
 the launch directory. Use -- before a filename beginning with a dash.
 
 CupidFM checks every entry before starting the terminal interface. A missing, unreadable,

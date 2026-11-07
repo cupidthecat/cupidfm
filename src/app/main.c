@@ -372,9 +372,14 @@ int main(int argc, char **argv) {
         FileListingOptions listing = initial_listing;
         if (entries[i].name[0] == '.')
             listing.show_hidden = true;
+        bool reload =
+            entries[i].name[0] || listing.show_hidden != file_listing_options().show_hidden;
         file_listing_configure(listing);
         state.listing = listing;
-        app_reload_view(&state);
+        if (reload)
+            app_reload_view(&state);
+        else
+            app_move_cursor(&state, 0);
         if (entries[i].name[0]) {
             SIZE index = find_loaded_index_by_name(&state.files, entries[i].name);
             if (index != (SIZE)-1)
@@ -394,7 +399,7 @@ int main(int argc, char **argv) {
         show_notification(notifwin, "Unable to start background tasks");
 
     // Load plugins after the UI is drawn so their notifications aren't immediately overwritten.
-    state.plugins = plugins_create();
+    plugins_start(&state, active_window);
     if (state.plugins) {
         plugins_update_context(&state, active_window);
 

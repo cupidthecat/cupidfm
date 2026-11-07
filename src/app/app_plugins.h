@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 
+void plugins_start(AppState *state, int active_window);
 void plugins_update_context(AppState *state, int active_window);
 
 #endif // APP_PLUGINS_H
