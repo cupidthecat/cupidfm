@@ -54,6 +54,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | gg, G, Home, End | First or last file |
 | Ctrl+U/D, Ctrl+B/F, PageUp/Down | Half-page or full-page movement, clamped to the list |
 | H, L | Back or forward in directory history |
+| z, Z | Jump with fzf, or choose a directory from zoxide history |
 | Space | Toggle the hovered entry and move down one position |
 | v, V | Select or unset a range, including across the list boundary |
 | Ctrl+A, Ctrl+R | Select all visible entries or invert selection |
@@ -95,7 +96,11 @@ before retrying a batch.
 
 File yanks are held in the process, so copying between tabs does not require a display server.
 CupidFM also publishes its file clipboard payload through X11 or Wayland when available.
-Copying text fields through c chords requires xclip or wl-copy.
+Text copying tries wl-copy on Wayland and xclip on X11, then emits OSC 52 when stdout is a
+terminal. This also supports copying text over a remote terminal session. A tmux session gets
+a passthrough wrapper; allow-passthrough must be enabled there. The terminal decides whether
+to accept clipboard writes. The fallback emits at most 1 MiB per copy; it does not read the
+terminal clipboard or transfer files. The internal file yank remains independent.
 
 ## Help
 
@@ -143,6 +148,25 @@ Filters, directory paths, rename prompts, recursive queries, and shell commands 
 session histories. Up/Down or Ctrl+P/N recall them and return to the draft after the newest
 entry. Only submitted values are recorded. Each history keeps up to 32 entries, with at
 most 16 histories in memory; confirmation prompts have no history.
+
+## Fuzzy navigation
+
+Press z to run fzf in the physical current directory. One chosen directory opens in CupidFM;
+one chosen file reveals its parent and moves the cursor to that file. Multiple choices add
+selections when nothing was selected. With an existing selection, fzf receives only those
+paths and multiple returned choices are removed from the selection. A single returned choice
+reveals its location while retaining the selection. Selected paths cross the process boundary
+as NUL-delimited records.
+
+Press Z to choose from the existing zoxide directory database. Set up that history through
+your shell; CupidFM does not automatically add entries. The current directory is excluded.
+The external tools keep their normal environment settings, including FZF_DEFAULT_OPTS and
+_ZO_FZF_OPTS. The terminal is restored after the picker exits or is cancelled.
+
+Install fzf and zoxide to enable these commands. Filename generation with no prior selection
+uses fzf's own default command or walker. Its filename handling depends on that configuration;
+selected-path input and returned paths use NUL delimiters. Both commands retain the browser's
+existing 1023-byte path limit.
 
 ## Mouse navigation
 
@@ -220,7 +244,7 @@ their snapshots and source pins here.
 | Tabs, naming, cycling, movement, closing | Covered | Independent state, insertion after current tab, nine-tab limit |
 | Find and filter | Partial | Live filter with rollback and history; POSIX regex still differs from the full regex language |
 | Recursive filename/content search | Partial | Streamed fd/fdfind and rg views, NUL paths, cancellation, filtering, and physical file actions |
-| fzf/zoxide navigation | Missing | No built-in integration |
+| fzf/zoxide navigation | Partial | External interactive navigation, selected-path narrowing, file reveal, directory jumps; no built-in database setup |
 | Openers and open-with | Partial | MIME/path rules, common fuzzy picker, grouped dispatch, blocking/tasks/orphan modes; no full placeholder language |
 | File creation | Partial | Single paths and reviewed editor batches, including parent directories; no overwrite confirmation |
 | Rename | Partial | Cursor before extension for files, reviewed editor batches, dependency ordering, and destination protection |
@@ -228,7 +252,7 @@ their snapshots and source pins here.
 | Absolute/relative/hard links | Covered | Yanked local paths, preserving existing destinations |
 | Trash and permanent deletion | Partial | GIO trash for Vim keys; no trash browser, restore UI, or empty action |
 | Yank and unyank | Covered | Internal yank, literal paths, optional desktop publication |
-| Copy path/URL/name/stem | Partial | Hovered entry and X11/Wayland; no OSC 52 |
+| Copy path/URL/name/stem | Partial | Hovered physical paths, X11/Wayland, OSC 52 text writes and tmux framing; no terminal clipboard read or rich file-transfer protocol |
 | Blocking/background shell | Partial | Positional paths, output capture, cancellation; no full placeholder/rule system |
 | Task manager | Partial | Queue, counts, current-file bytes, cancellation, error/output inspection; one worker |
 | Directory watching | Partial | Active local Linux directory and side-pane listings; inactive tabs refresh on switch |

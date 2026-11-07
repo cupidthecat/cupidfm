@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check streamed recursive views, physical file operations, tab ownership, and cancellation."""
+import base64
+import re
 import fcntl
 import os
 from pathlib import Path
@@ -72,6 +74,16 @@ fn on_key(key) {
             snapshot(b"sa\\.txt$\n")
             wait_for(lambda: snapshot()[0] == "1")
             assert snapshot()[2] == "nested/a.txt"
+            def copied(keys, expected):
+                offset = len(output)
+                packet = re.compile(rb"\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\")
+                os.write(primary, keys)
+                wait_for(lambda: packet.search(output[offset:]) is not None)
+                payload = packet.search(output[offset:]).group(1)
+                assert base64.b64decode(payload) == expected
+            copied(b"cf", b"a.txt")
+            copied(b"cd", str(nested).encode())
+            copied(b"cC", (nested / "a.txt").as_uri().encode())
             snapshot(b"y")
             snapshot(b"g " + str(target).encode() + b"\n")
             os.write(primary, b"p")

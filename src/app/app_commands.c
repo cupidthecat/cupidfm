@@ -2,6 +2,7 @@
 #include "app_commands.h"
 #include "app_bulk.h"
 #include "app_help.h"
+#include "app_jump.h"
 #include "app_mouse.h"
 #include "app_open.h"
 #include "app_panes.h"
@@ -570,6 +571,8 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             find_next(state, ch == '?');
     } else if (ch == 'n' || ch == 'N') {
         find_next(state, ch == 'N');
+    } else if (ch == 'z' || ch == 'Z') {
+        app_jump(state, ch == 'Z');
     } else if (ch == 's' || ch == 'S') {
         app_search_prompt(state, ch == 'S');
     } else if (ch == 19) {

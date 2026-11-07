@@ -71,3 +71,7 @@ __pycache__/
 /tests/test_file_search
 
 /tests/test_bulk_create
+
+/tests/test_clipboard_terminal
+
+/tests/test_process_status

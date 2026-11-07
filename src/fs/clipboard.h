@@ -6,6 +6,8 @@
 #include <stdio.h>
 
 bool clipboard_set_from_file(const char *path);
+/* Emits a bounded terminal clipboard write. Success means written, not acknowledged. */
+bool clipboard_write_osc52(FILE *stream, const void *data, size_t length, bool tmux);
 
 typedef struct {
     char **paths;
