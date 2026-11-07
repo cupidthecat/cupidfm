@@ -32,6 +32,11 @@ int picker_choose(const char *title, const char *const *items, size_t count) {
     PickMatch *matches = calloc(count, sizeof(*matches));
     if (!matches)
         return -1;
+    WINDOW *background = dupwin(curscr);
+    if (!background) {
+        free(matches);
+        return -1;
+    }
     char query[256] = {0};
     bool finding = false, dirty = true;
     size_t selected = 0, visible = 0;
@@ -172,6 +177,11 @@ int picker_choose(const char *title, const char *const *items, size_t count) {
         delwin(window);
     free(matches);
     wtimeout(stdscr, delay);
+    int height = MIN(getmaxy(background), getmaxy(stdscr));
+    int width = MIN(getmaxx(background), getmaxx(stdscr));
+    if (height > 0 && width > 0)
+        copywin(background, stdscr, 0, 0, 0, 0, height - 1, width - 1, false);
+    delwin(background);
     touchwin(stdscr);
     refresh();
     return result;
