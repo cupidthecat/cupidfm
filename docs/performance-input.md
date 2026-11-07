@@ -41,7 +41,10 @@ finishes visual selection or clears selection. Path-prompt cancellation retains 
 rollback behavior.
 
 File icons, Git indicators, and filenames use fixed terminal-cell columns. A one-cell icon
-cannot shift a Git indicator into a neighboring column.
+cannot shift a Git indicator into a neighboring column. One-cell Unicode file symbols
+request text presentation explicitly, preventing terminal fonts from expanding them to emoji
+width after ncurses has computed the row positions. Two-cell file emoji and Git indicators
+retain their normal presentation.
 
 These changes do not make every preview asynchronous or remove directory scan costs.
 Archive decoding, image decoding, remote storage latency, and large-directory scans need

@@ -1052,6 +1052,24 @@ static void listing_details(const char *path, const struct stat *info, FileLineM
     }
 }
 
+static void draw_file_icon(WINDOW *window, const char *icon, int width) {
+    if (!icon || !*icon || width <= 0)
+        return;
+    mbstate_t state = {0};
+    wchar_t codepoint;
+    size_t length = mbrtowc(&codepoint, icon, strlen(icon), &state);
+    if (length != (size_t)-1 && length != (size_t)-2 && codepoint > 127 &&
+        wcwidth(codepoint) == 1) {
+        // Keep one-cell symbols in text presentation. Some fonts otherwise expand
+        // them to emoji width, which disagrees with ncurses' cursor accounting.
+        char text[MB_LEN_MAX + 4];
+        memcpy(text, icon, length);
+        memcpy(text + length, "\xef\xb8\x8e", 4);
+        browser_draw_name(window, text, width);
+    } else
+        browser_draw_name(window, icon, width);
+}
+
 void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const char *icon,
                                const char *status) {
     int left = g_kb.vim_keymap ? 0 : 1;
@@ -1062,7 +1080,7 @@ void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const cha
     int icon_column = left + (g_kb.vim_keymap ? 1 : 2);
     if (icon_column < width) {
         wmove(window, row, icon_column);
-        browser_draw_name(window, icon, MIN(2, width - icon_column));
+        draw_file_icon(window, icon, MIN(2, width - icon_column));
     }
     int name_column = icon_column + 3;
     if (!g_kb.vim_keymap) {

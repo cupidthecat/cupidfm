@@ -67,12 +67,21 @@ int main(void) {
     app_draw_tab_bar(&state, &tabs);
     assert(mvwinnstr(mainwin, 0, 0, text, 120) >= 0);
     assert(!strstr(text, "9:"));
-    const char *icons[] = {"📁", "⚙️", "x"};
+    const char *icons[] = {"📁", "⚙️", "x", "⚙", "🗄", "🖼", "λ"};
     for (int mode = 0; mode < 2; mode++) {
         g_kb.vim_keymap = mode;
-        for (int i = 0; i < 3; i++) {
+        for (size_t i = 0; i < sizeof(icons) / sizeof(*icons); i++) {
             browser_draw_entry_prefix(mainwin, i + 1, false, icons[i], "🟢");
             assert(getcurx(mainwin) == (mode ? 4 : 9));
+            if (i == 1) {
+                cchar_t cell;
+                wchar_t glyphs[CCHARW_MAX];
+                attr_t attributes;
+                short pair;
+                assert(mvwin_wch(mainwin, i + 1, mode ? 1 : 3, &cell) == OK);
+                assert(getcchar(&cell, glyphs, &attributes, &pair, NULL) == OK);
+                assert(glyphs[0] == 0x2699 && glyphs[1] == 0xfe0e);
+            }
             if (!mode) {
                 char symbol[16];
                 assert(mvwinnstr(mainwin, i + 1, 6, symbol, 4) >= 0);
