@@ -34,6 +34,7 @@
 #include "app_panes.h"
 #include "app_paths.h"
 #include "app_plugins.h"
+#include "app_search.h"
 #include "app_session.h"
 #include "app_state.h"
 #include "app_windows.h"
@@ -446,6 +447,7 @@ int main(int argc, char **argv) {
         bool files_changed = kb.vim_keymap && file_watch_poll(&watcher, state.current_directory);
         if (tasks_take_changed() || files_changed)
             app_reload_view(&state);
+        (void)app_search_poll(&state);
         app_history_remember(&state);
         if (ch != ERR)
             invalidate_image_preview_overlay();

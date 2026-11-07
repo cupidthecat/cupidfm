@@ -65,3 +65,7 @@ __pycache__/
 /tests/test_openers
 /tests/test_bulk_rename
 /tests/test_picker
+
+/tests/test_input_prompt
+
+/tests/test_file_search

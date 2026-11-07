@@ -6,6 +6,7 @@
 #include "app_open.h"
 #include "app_panes.h"
 #include "app_process.h"
+#include "app_search.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -32,6 +33,49 @@
 static void notify_result(bool ok, const char *action) {
     show_notification(notifwin, "%s%s", action, ok ? "" : ": failed");
     should_clear_notif = false;
+}
+
+typedef struct {
+    AppState *state;
+    AppTabs *tabs;
+} FilterContext;
+
+static void filter_changed(const char *query, void *data) {
+    FilterContext *context = data;
+    AppState *state = context->state;
+    (void)app_search_poll(state);
+    state->search_mode = SEARCH_MODE_SMART;
+    state->search_active = *query != 0;
+    snprintf(state->search_query, sizeof(state->search_query), "%s", query);
+    search_rebuild(state, query);
+    app_move_cursor(state, 0);
+    app_draw_browser(state);
+    app_draw_tab_bar(state, context->tabs);
+}
+
+static void filter_prompt(AppState *state, AppTabs *tabs) {
+    if (!state->file_search)
+        app_reload_view(state);
+    char query[MAX_PATH_LENGTH];
+    snprintf(query, sizeof(query), "%s", state->search_query);
+    int mode = state->search_mode;
+    bool active = state->search_active;
+    CursorAndSlice cursor = state->dir_window_cas;
+    char hover[MAX_PATH_LENGTH];
+    snprintf(hover, sizeof(hover), "%s", state->selected_entry ? state->selected_entry : "");
+    state->visual_active = false;
+    FilterContext context = {state, tabs};
+    InputPromptOptions options = {
+        .history = "filter", .changed = filter_changed, .context = &context};
+    if (!input_prompt_ex("Filter", query, sizeof(query), &options)) {
+        state->search_mode = mode;
+        state->search_active = active;
+        search_rebuild(state, query);
+        snprintf(state->search_query, sizeof(state->search_query), "%s", query);
+        state->dir_window_cas = cursor;
+        SIZE at = find_loaded_index_by_name(active_files(state), hover);
+        app_move_cursor(state, at == (SIZE)-1 ? cursor.cursor : at);
+    }
 }
 
 static void find_next(AppState *state, bool previous) {
@@ -201,9 +245,14 @@ static void copy_field(AppState *state, int key) {
     char path[MAX_PATH_LENGTH], value[MAX_PATH_LENGTH * 3 + 16];
     const char *name = state->selected_entry ? state->selected_entry : "";
     path_join(path, state->current_directory, name);
-    const char *source = key == 'd' || key == 'D' ? state->current_directory : path;
+    char parent[MAX_PATH_LENGTH];
+    snprintf(parent, sizeof(parent), "%s", path);
+    char *slash = strrchr(parent, '/');
+    if (slash)
+        slash[slash == parent ? 1 : 0] = 0;
+    const char *source = key == 'd' || key == 'D' ? parent : path;
     if (key == 'f' || key == 'n') {
-        snprintf(value, sizeof(value), "%s", name);
+        snprintf(value, sizeof(value), "%s", basename_ptr(path));
         if (key == 'n') {
             char *extension = strrchr(value + (value[0] == '.'), '.');
             if (extension)
@@ -304,7 +353,8 @@ static AppKeyResult prefix_key(AppState *state, AppTabs *tabs, int prefix, int k
         else {
             char path[MAX_PATH_LENGTH] = {0};
             const char *home = getenv("HOME");
-            if (key == ' ' && !input_prompt("Change directory", path, sizeof(path)))
+            if (key == ' ' && !input_prompt_ex("Change directory", path, sizeof(path),
+                                               &(InputPromptOptions){.history = "directory"}))
                 return APP_KEY_HANDLED;
             if (home && (key == 'h' || key == 'c' || key == 'd'))
                 snprintf(path, sizeof(path), "%s%s", home,
@@ -408,7 +458,9 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         else if (state->search_active) {
             search_clear(state);
             app_move_cursor(state, state->dir_window_cas.cursor);
-        } else if (state->select_all_active || app_selection_count(state))
+        } else if (state->file_search)
+            app_search_stop(state, true);
+        else if (state->select_all_active || app_selection_count(state))
             app_selection_clear(state);
         return APP_KEY_HANDLED;
     }
@@ -518,16 +570,17 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             find_next(state, ch == '?');
     } else if (ch == 'n' || ch == 'N') {
         find_next(state, ch == 'N');
-    } else if (ch == 'f') {
-        char query[MAX_PATH_LENGTH];
-        snprintf(query, sizeof(query), "%s", state->search_query);
-        if (input_prompt("Filter", query, sizeof(query))) {
-            state->search_mode = SEARCH_MODE_SMART;
-            snprintf(state->search_query, sizeof(state->search_query), "%s", query);
-            state->search_active = query[0] != '\0';
-            search_rebuild(state, query);
+    } else if (ch == 's' || ch == 'S') {
+        app_search_prompt(state, ch == 'S');
+    } else if (ch == 19) {
+        if (state->file_search)
+            app_search_stop(state, true);
+        else {
+            search_clear(state);
             app_move_cursor(state, 0);
         }
+    } else if (ch == 'f') {
+        filter_prompt(state, tabs);
     } else if (ch == 'J' || ch == 'K') {
         seek_preview(state, ch == 'J' ? 5 : -5);
     } else if (ch == 'Y' || ch == 'X') {
@@ -555,7 +608,8 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         submit_operation(state, kind, ch == 'P');
     } else if (ch == ':' || ch == ';') {
         char command[4096] = {0};
-        if (input_prompt("Shell (selected paths in \"$@\")", command, sizeof(command)) &&
+        if (input_prompt_ex("Shell (selected paths in \"$@\")", command, sizeof(command),
+                            &(InputPromptOptions){.history = "shell"}) &&
             command[0]) {
             if (ch == ':')
                 run_shell(state, command);

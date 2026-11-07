@@ -12,6 +12,7 @@
 #include "vector.h"
 
 typedef struct PluginManager PluginManager;
+typedef struct FileSearch FileSearch;
 
 typedef struct {
     char *directory_path;
@@ -33,6 +34,10 @@ typedef struct {
 typedef struct {
     char *current_directory;
     Vector files;
+    FileSearch *file_search;
+    size_t search_revision;
+    bool search_reported;
+    char search_origin_hover[MAX_PATH_LENGTH];
     PathSelection *selection;
     size_t selection_revision;
     char selection_directory[MAX_PATH_LENGTH];

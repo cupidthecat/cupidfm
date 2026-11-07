@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3 fd-find ripgrep
       - name: Verify committed library source trees
         run: python3 tools/verify_library_sources.py
       - name: Build application
@@ -27,10 +27,16 @@ jobs:
           python3 tests/test_browser_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_recursive_search.py
       - name: Run bundled library tests
         run: make -j2 test-libs
       - name: Run tests
         run: make test
+      - name: Check live input and recursive search with sanitizers
+        run: |
+          make -B -C tests test_input_prompt test_file_search CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_input_prompt
+          ./tests/test_file_search
       - name: Check openers, picker, and bulk rename with sanitizers
         run: |
           make -B -C tests test_openers test_picker test_bulk_rename CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
@@ -133,4 +139,5 @@ jobs:
           python3 tests/test_browser_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_recursive_search.py
           python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

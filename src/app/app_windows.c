@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -10,6 +11,7 @@
 #include "app_layout.h"
 #include "app_panes.h"
 #include "app_session.h"
+#include "file_search.h"
 #include "globals.h"
 #include "main.h"
 #include "search.h"
@@ -81,6 +83,15 @@ static void draw_status(AppState *state) {
     snprintf(text, sizeof(text), " %s  %zu selected  %zu/%zu  %zu%%  tasks %zu",
              state->visual_active ? (state->visual_unset ? "UNSET" : "SELECT") : "NORMAL", selected,
              index, count, count ? index * 100 / count : 0, running);
+    if (state->file_search) {
+        size_t used = strlen(text);
+        snprintf(text + used, sizeof(text) - used, "  %s %s: %.80s",
+                 file_search_error(state->file_search)  ? "Search failed"
+                 : file_search_done(state->file_search) ? "Found"
+                                                        : "Searching",
+                 file_search_content(state->file_search) ? "content" : "names",
+                 file_search_query(state->file_search));
+    }
     werase(statuswin);
     wattron(statuswin, A_REVERSE);
     whline(statuswin, ' ', getmaxx(statuswin));

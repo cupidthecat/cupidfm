@@ -59,8 +59,10 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | Ctrl+A, Ctrl+R | Select all visible entries or invert selection |
 | Esc | Clear find, finish visual mode, clear the filter, then clear selection |
 | J, K | Seek five lines down or up in the preview |
-| f | Filter names with a regular expression |
+| f | Filter names live with a regular expression |
 | /, ?, n, N | Find next/previous, then repeat in either direction |
+| s, S | Recursive filename/content search |
+| Ctrl+S | Leave recursive search or clear the filter |
 | . | Toggle hidden entries |
 | o, Enter, O | Open, or enter an opener command |
 | y, x, p, P | Yank, cut, paste, or paste with overwrite enabled |
@@ -109,6 +111,37 @@ Esc cancels an edit or clears the results; q closes help. Text wraps when the te
 Some commands use two keys. Press t, then t to create a tab, or t, then r to rename it.
 The g, comma, m, and c prefixes cover navigation, sorting, details, and copying text.
 Pressing a prefix shows its available next keys in the notification line; Esc cancels it.
+
+## Recursive search and input
+
+Press s to search filenames with fd or fdfind, or S to search file contents with rg.
+Both accept regular expressions, use smart case, and respect the tools' ignore files and
+the tab's hidden-file setting. Install fd-find and ripgrep on Debian/Ubuntu systems.
+Results stream into the current tab while navigation remains available. The status line
+shows whether the search is running, complete, or failed.
+
+Results use paths relative to the physical search root. Preview, opening, yank, copying,
+moving, deletion, rename, and chooser output use their physical paths. Enter a result
+directory with l or Right. Ctrl+S stops and reaps the search process, clears the view's
+filter, and restores the root's original hovered entry. Esc clears find, visual mode,
+and filtering before leaving a recursive view. Switching back to a search tab reruns
+its query; a new tab starts in the physical root directory.
+
+The browser supports paths up to its existing 1023-byte limit. Longer search results
+are omitted. Only the active search tab drains results; inactive search processes can
+pause when their output pipe fills. Root-directory watching does not watch every
+descendant. Use s or S again to refresh a query after nested external changes.
+
+The f filter updates while you type and keeps the selection. Esc restores its previous
+query and cursor. A single-file rename starts before the extension, or at the end of a
+directory name. Home/End and Ctrl+A/E move to either end of the prompt; Ctrl+U/K delete
+before/after the cursor, and Ctrl+W deletes the previous word. Ctrl+Z or Ctrl+_ undo;
+Ctrl+Y redoes. Editing respects UTF-8 character boundaries.
+
+Filters, directory paths, rename prompts, recursive queries, and shell commands keep separate
+session histories. Up/Down or Ctrl+P/N recall them and return to the draft after the newest
+entry. Only submitted values are recorded. Each history keeps up to 32 entries, with at
+most 16 histories in memory; confirmation prompts have no history.
 
 ## Mouse navigation
 
@@ -182,12 +215,12 @@ their snapshots and source pins here.
 | Scrolloff and pane ratios | Covered | Configurable margin and weights, parent/current/preview panes, narrow-terminal fallback |
 | Individual, all, inverse, and visual selection | Covered | Per-tab paths survive navigation, filtering, hidden toggles, and reload; ancestor conflicts are rejected |
 | Tabs, naming, cycling, movement, closing | Covered | Independent state, insertion after current tab, nine-tab limit |
-| Find and filter | Partial | Submitted POSIX regex; no live filter or Rust regex compatibility |
-| Recursive filename/content search | Missing | fd and rg search views are not wired |
+| Find and filter | Partial | Live filter with rollback and history; POSIX regex still differs from the full regex language |
+| Recursive filename/content search | Partial | Streamed fd/fdfind and rg views, NUL paths, cancellation, filtering, and physical file actions |
 | fzf/zoxide navigation | Missing | No built-in integration |
 | Openers and open-with | Partial | MIME/path rules, common fuzzy picker, grouped dispatch, blocking/tasks/orphan modes; no full placeholder language |
 | File creation | Partial | One file or nested directory path; no bulk create |
-| Rename | Partial | Single-entry prompt and reviewed editor batches, dependency ordering, destination protection; no cursor presets |
+| Rename | Partial | Cursor before extension for files, reviewed editor batches, dependency ordering, and destination protection |
 | Copy/move/paste and overwrite | Partial | Background recursion; no conflict policy editor or aggregate progress estimate |
 | Absolute/relative/hard links | Covered | Yanked local paths, preserving existing destinations |
 | Trash and permanent deletion | Partial | GIO trash for Vim keys; no trash browser, restore UI, or empty action |
@@ -202,7 +235,7 @@ their snapshots and source pins here.
 | Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
-| Input editing/history/completion | Partial | Basic UTF-8 editing; no modal input, undo/history, or completion picker |
+| Input editing/history/completion | Partial | UTF-8 editing, undo/redo, purpose-specific session history; no modal input or completion picker |
 | Help/which-key | Partial | Scrollable, searchable help and chord indicator; no action picker or action sequences |
 | TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
 | Lua plugin API and preset plugins | Missing | CupidScript remains; the Lua runtime is not implemented |

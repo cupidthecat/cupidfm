@@ -6,11 +6,13 @@
 #include <string.h>
 
 #include "app_panes.h"
+#include "app_search.h"
 #include "git.h"
 #include "search.h"
 #include "utils.h"
 
 void app_state_dispose(AppState *state) {
+    app_search_stop(state, false);
     for (size_t i = 0; i < Vector_len(state->files); i++)
         free_attr(state->files.el[i]);
     Vector_set_len_no_free(&state->files, 0);
@@ -165,6 +167,10 @@ void app_move_cursor(AppState *state, SIZE index) {
 }
 
 void app_reload_view(AppState *state) {
+    if (state->file_search) {
+        app_search_reload(state);
+        return;
+    }
     char hover[MAX_PATH_LENGTH], query[MAX_PATH_LENGTH];
     snprintf(hover, sizeof(hover), "%s", state->selected_entry ? state->selected_entry : "");
     app_selection_restore(state);
@@ -211,6 +217,7 @@ bool app_change_directory(AppState *state, const char *path) {
     state->visual_active = false;
     state->mouse_drag = false;
     search_clear(state);
+    app_search_stop(state, false);
     free(state->current_directory);
     free(state->lazy_load.directory_path);
     state->current_directory = canonical;

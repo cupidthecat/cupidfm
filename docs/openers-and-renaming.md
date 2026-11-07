@@ -48,7 +48,8 @@ selected entry. Change the names without adding, removing, or reordering lines. 
 destinations are accepted; relative destinations use the common parent.
 
 After the editor exits successfully, CupidFM shows the changed paths. Enter approves the batch;
-Esc cancels it. A hovered entry with no selection uses the single-entry prompt.
+Esc cancels it. A hovered entry with no selection uses the single-entry prompt, with the cursor before its
+extension. Directory names start with the cursor at the end.
 
 Rename chains run from the free end so one move can release the next destination. Existing
 destinations outside the batch, duplicate destinations, malformed lists, and overlapping sources

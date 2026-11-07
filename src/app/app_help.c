@@ -21,9 +21,11 @@ const char *app_help_vim(void) {
            "  Space             Toggle selection and move down\n"
            "  v/V               Select/unset a range\n"
            "  Ctrl+A/R          Select all visible/invert visible selection\n"
-           "  f                 Filter names with a regex\n"
+           "  f                 Live regex filter; Esc restores the previous view\n"
            "  /, ?              Find next/previous by regex\n"
            "  n/N               Repeat find in either direction\n"
+           "  s/S               Recursive name/content search with fd/rg\n"
+           "  Ctrl+S            Leave recursive search or clear the filter\n"
            "  Esc               Clear find, visual mode, filter, then selection\n"
            "  .                 Toggle hidden files\n"
            "  Selections belong to the tab and survive directory changes.\n"
@@ -34,7 +36,7 @@ const char *app_help_vim(void) {
            "  p/P               Paste / allow overwrite\n"
            "  Y/X               Clear the yank\n"
            "  a                 Create a file; end the name with / for a folder\n"
-           "  r                 Rename; selected paths use an editor list\n"
+           "  r                 Rename; cursor before extension; selections use an editor list\n"
            "  d/D               System trash/permanent delete; asks first\n"
            "  -/_/Ctrl+_        Absolute symlink/relative symlink/hardlink\n"
            "  :/;               Blocking/background shell; files are in \"$@\"\n"
@@ -60,6 +62,8 @@ const char *app_help_vim(void) {
            "Session\n"
            "  q/Q               Quit / quit without writing --cwd-file\n"
            "  Ctrl+Z            Suspend\n"
+           "  Input: Ctrl+Z or Ctrl+_: undo; Ctrl+Y: redo; Ctrl+W: delete previous word.\n"
+           "  Input: Up/Down or Ctrl+P/N recall filter, path, rename, or shell history.\n"
            "  F1, ~             Help; / fuzzy-finds commands in the help screen\n";
 }
 

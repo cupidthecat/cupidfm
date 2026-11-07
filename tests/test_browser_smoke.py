@@ -119,6 +119,8 @@ fn on_key(key) {
             assert snapshot(b"trsecond tab\n")[4] == str(source)
             assert snapshot(b"1")[4] == str(source)
             assert snapshot(b"f^file2\n")[:3] == ["file2.txt", "0", "1"]
+            assert snapshot(b"f\x15^no-match\x1b")[:3] == ["file2.txt", "0", "1"]
+            assert snapshot(b"f\x10\n")[:3] == ["file2.txt", "0", "1"]
             assert snapshot(b"\x1b")[2] == "3"
             assert snapshot(b".")[2] == "4"
             assert snapshot(b".")[2] == "3"
