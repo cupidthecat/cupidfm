@@ -1,0 +1,66 @@
+# Syntax: nix
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='nix'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.nix$'
+
+# Pattern 0: special (root).
+rule.0.parent=-1
+rule.0.group='special'
+rule.0.match='\b(Ellipsis|null|self|super|true|false|abort)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(let|in|with|import|rec|inherit)\b'
+
+# Pattern 2: symbol.operator (root).
+rule.2.parent=-1
+rule.2.group='symbol.operator'
+rule.2.match='([~^.:;,+*|=!\%@]|<|>|/|-|&)'
+
+# Pattern 3: symbol.brackets (root).
+rule.3.parent=-1
+rule.3.group='symbol.brackets'
+rule.3.match='([(){}]|\[|\])'
+
+# Pattern 4: constant.number (root).
+rule.4.parent=-1
+rule.4.group='constant.number'
+rule.4.match='\b[0-9](_?[0-9])*(\.([0-9](_?[0-9])*)?)?(e[0-9](_?[0-9])*)?\b'
+
+# Region 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.5.start='"'
+rule.5.end='"'
+
+# Region 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start=''''''
+rule.6.end=''''''
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='#'
+rule.7.end='$'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='/\*'
+rule.8.end='\*/'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

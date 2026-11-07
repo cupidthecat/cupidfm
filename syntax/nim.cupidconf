@@ -1,0 +1,100 @@
+# Syntax: nim
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='nim'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.nims?$|nim.cfg'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='[\{\|]\b(atom|lit|sym|ident|call|lvalue|sideeffect|nosideeffect|param|genericparam|module|type|let|var|const|result|proc|method|iterator|converter|macro|template|field|enumfield|forvar|label|nk[a-zA-Z]+|alias|noalias)\b[\}\|]'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(addr|and|as|asm|atomic|bind|block|break|case|cast|concept|const|continue|converter|defer|discard|distinct|div|do|elif|else|end|enum|except|export|finally|for|from|func|generic|if|import|in|include|interface|is|isnot|iterator|let|macro|method|mixin|mod|nil|not|notin|object|of|or|out|proc|ptr|raise|ref|return|shl|shr|static|template|try|tuple|type|using|var|when|while|with|without|xor|yield)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(deprecated|noSideEffect|constructor|destructor|override|procvar|compileTime|noReturn|acyclic|final|shallow|pure|asmNoStackFrame|error|fatal|warning|hint|line|linearScanEnd|computedGoto|unroll|immediate|checks|boundsChecks|overflowChecks|nilChecks|assertations|warnings|hints|optimization|patterns|callconv|push|pop|global|pragma|experimental|bitsize|volatile|noDecl|header|incompleteStruct|compile|link|passC|passL|emit|importc|importcpp|importobjc|codegenDecl|injectStmt|intdefine|strdefine|varargs|exportc|extern|bycopy|byref|union|packed|unchecked|dynlib|cdecl|thread|gcsafe|threadvar|guard|locks|compileTime)\b'
+
+# Pattern 3: symbol.operator (root).
+rule.3.parent=-1
+rule.3.group='symbol.operator'
+rule.3.match='[=\+\-\*/<>@\$~&%\|!\?\^\.:\\]+'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='\{\.|\.\}|\[\.|\.\]|\(\.|\.\)|;|,|`'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\.\.'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='\b(int|cint|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float|float32|float64|bool|char|enum|string|cstring|cstringArray|cdouble|csize_t|pointer|array|openarray|seq|varargs|tuple|object|set|void|auto|cshort|clong|range|nil|T|untyped|typedesc)\b'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='''[iI](8|16|32|64)?\b|''[uU](8|16|32|64)?\b|''[fF](32|64|128)?\b|''[dD]\b'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b[0-9]+\b'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='\b0[xX][0-9A-Fa-f][0-9_A-Fa-f]+\b'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b0[ocC][0-7][0-7_]+\b'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='\b0[bB][01][01_]+\b'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='\b[0-9_]((\.?)[0-9_]+)?[eE][+\-][0-9][0-9_]+\b'
+
+# Pattern 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+rule.13.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+rule.14.match='[[:space:]]*(?:[^\\]|^)#.*$'
+
+# Region 15: comment (root).
+rule.15.parent=-1
+rule.15.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='\#\['
+rule.15.end='\]\#'
+
+# Pattern 16: todo (root).
+rule.16.parent=-1
+rule.16.group='todo'
+rule.16.match='(TODO|FIXME|XXX):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=17

@@ -1,0 +1,66 @@
+# Syntax: tex
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='tex'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.tex$|\.bib$|\.cls$'
+
+# Region 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+# Start/end delimiters carry state between physical lines.
+rule.0.start='\{'
+rule.0.end='\}'
+
+# Region 1: identifier (root).
+rule.1.parent=-1
+rule.1.group='identifier'
+# Start/end delimiters carry state between physical lines.
+rule.1.start='\['
+rule.1.end='\]'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='\b[0-9]+(\.[0-9]+)?([[:space:]](pt|mm|cm|in|ex|em|bp|pc|dd|cc|nd|nc|sp))?\b'
+
+# Pattern 3: default (root).
+rule.3.parent=-1
+rule.3.group='default'
+rule.3.match='[{}\[\]]'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='[&\\]'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\\@?[a-zA-Z_]+'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\\%'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='[^\\]%|^%'
+rule.7.end='$'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='\\begin\{comment\}'
+rule.8.end='\\end\{comment\}'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

@@ -1,0 +1,275 @@
+# Syntax: d
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='d'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(d(i|d)?)$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='(\*|/|%|\+|-|>>|<<|>>>|&|\^(\^)?|\||~)?='
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\.\.(\.)?|!|\*|&|~|\(|\)|\[|\]|\\|/|\+|-|%|<|>|\?|:|;'
+
+# Pattern 2: error (root).
+rule.2.parent=-1
+rule.2.group='error'
+rule.2.match='(0[0-7_]*)(L[uU]?|[uU]L?)?'
+
+# Pattern 3: constant.number (root).
+rule.3.parent=-1
+rule.3.group='constant.number'
+rule.3.match='([0-9]|[1-9][0-9_]*)(L[uU]?|[uU]L?)?\b'
+
+# Pattern 4: constant (root).
+rule.4.parent=-1
+rule.4.group='constant'
+rule.4.match='(0[bB][01_]*)(L[uU]?|[uU]L?)?'
+
+# Pattern 5: constant.number (root).
+rule.5.parent=-1
+rule.5.group='constant.number'
+rule.5.match='[0-9][0-9_]*\.([0-9][0-9_]*)([eE][+-]?([0-9][0-9_]*))?[fFL]?i?'
+
+# Pattern 6: constant.number (root).
+rule.6.parent=-1
+rule.6.group='constant.number'
+rule.6.match='[0-9][0-9_]*([eE][+-]?([0-9][0-9_]*))[fFL]?i?'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='[^.]\.([0-9][0-9_]*)([eE][+-]?([0-9][0-9_]*))?[fFL]?i?'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='[0-9][0-9_]*([fFL]?i|[fF])'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='(0[xX]([0-9a-fA-F][0-9a-fA-F_]*|[0-9a-fA-F_]*[0-9a-fA-F]))(L[uU]?|[uU]L?)?'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='0[xX]([0-9a-fA-F][0-9a-fA-F_]*|[0-9a-fA-F_]*[0-9a-fA-F])(\.[0-9a-fA-F][0-9a-fA-F_]*|[0-9a-fA-F_]*[0-9a-fA-F])?[pP][+-]?([0-9][0-9_]*)[fFL]?i?'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='0[xX]\.([0-9a-fA-F][0-9a-fA-F_]*|[0-9a-fA-F_]*[0-9a-fA-F])[pP][+-]?([0-9][0-9_]*)[fFL]?i?'
+
+# Region 12: constant.string (root).
+rule.12.parent=-1
+rule.12.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.12.start=''''
+rule.12.end=''''
+# Mask escaped text before matching delimiters.
+rule.12.skip='\\.'
+
+# Pattern 13: constant.specialChar (inside region 12).
+rule.13.parent=12
+rule.13.group='constant.specialChar'
+rule.13.match='\\.'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(abstract|alias|align|asm|assert|auto|body|break|case|cast|catch|class|const|continue|debug|default|delegate|do|else|enum|export|extern)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='\b(false|final|finally|for|foreach|foreach_reverse|function|goto|if|immutable|import|in|inout|interface|invariant|is|lazy)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='\b(macro|mixin|module|new|nothrow|null|out|override|package|pragma|private|protected|public|pure|ref|return)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='\b(scope|shared|static|struct|super|switch|synchronized|template|this|throw|true|try|typeid|typeof|union|unittest|version|while|with)\b'
+
+# Pattern 18: statement (root).
+rule.18.parent=-1
+rule.18.group='statement'
+rule.18.match='\b(__FILE__|__MODULE__|__LINE__|__FUNCTION__|__PRETTY_FUNCTION__|__gshared|__traits|__vector|__parameters)\b'
+
+# Pattern 19: error (root).
+rule.19.parent=-1
+rule.19.group='error'
+rule.19.match='\b(delete|deprecated|typedef|volatile)\b'
+
+# Pattern 20: type (root).
+rule.20.parent=-1
+rule.20.group='type'
+rule.20.match='\b(bool|byte|cdouble|cent|cfloat|char|creal|dchar|double|float|idouble|ifloat|int|ireal|long|real|short|ubyte|ucent|uint|ulong|ushort|void|wchar)\b'
+
+# Pattern 21: type (root).
+rule.21.parent=-1
+rule.21.group='type'
+rule.21.match='\b(string|wstring|dstring|size_t|ptrdiff_t)\b'
+
+# Pattern 22: constant (root).
+rule.22.parent=-1
+rule.22.group='constant'
+rule.22.match='\b(__DATE__|__EOF__|__TIME__|__TIMESTAMP__|__VENDOR__|__VERSION__)\b'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start='"'
+rule.23.end='"'
+# Mask escaped text before matching delimiters.
+rule.23.skip='\\.'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\.'
+
+# Region 25: constant.string (root).
+rule.25.parent=-1
+rule.25.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='r"'
+rule.25.end='"'
+
+# Pattern 26: constant.specialChar (inside region 25).
+rule.26.parent=25
+rule.26.group='constant.specialChar'
+rule.26.match='\\.'
+
+# Region 27: constant.string (root).
+rule.27.parent=-1
+rule.27.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='`'
+rule.27.end='`'
+
+# Pattern 28: constant.specialChar (inside region 27).
+rule.28.parent=27
+rule.28.group='constant.specialChar'
+rule.28.match='\\.'
+
+# Region 29: constant.string (root).
+rule.29.parent=-1
+rule.29.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.29.start='x"'
+rule.29.end='"'
+
+# Pattern 30: constant.specialChar (inside region 29).
+rule.30.parent=29
+rule.30.group='constant.specialChar'
+rule.30.match='\\.'
+
+# Region 31: constant.string (root).
+rule.31.parent=-1
+rule.31.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.31.start='q"\('
+rule.31.end='\)"'
+
+# Pattern 32: constant.specialChar (inside region 31).
+rule.32.parent=31
+rule.32.group='constant.specialChar'
+rule.32.match='\\.'
+
+# Region 33: constant.string (root).
+rule.33.parent=-1
+rule.33.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.33.start='q"\{'
+rule.33.end='q"\}'
+
+# Pattern 34: constant.specialChar (inside region 33).
+rule.34.parent=33
+rule.34.group='constant.specialChar'
+rule.34.match='\\.'
+
+# Region 35: constant.string (root).
+rule.35.parent=-1
+rule.35.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.35.start='q"\['
+rule.35.end='q"\]'
+
+# Pattern 36: constant.specialChar (inside region 35).
+rule.36.parent=35
+rule.36.group='constant.specialChar'
+rule.36.match='\\.'
+
+# Region 37: constant.string (root).
+rule.37.parent=-1
+rule.37.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.37.start='q"<'
+rule.37.end='q">'
+
+# Pattern 38: constant.specialChar (inside region 37).
+rule.38.parent=37
+rule.38.group='constant.specialChar'
+rule.38.match='\\.'
+
+# Region 39: constant.string (root).
+rule.39.parent=-1
+rule.39.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.39.start='q"[^({[<"][^"]*$'
+rule.39.end='^[^"]+"'
+
+# Pattern 40: constant.specialChar (inside region 39).
+rule.40.parent=39
+rule.40.group='constant.specialChar'
+rule.40.match='\\.'
+
+# Region 41: constant.string (root).
+rule.41.parent=-1
+rule.41.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.41.start='q"([^({[<"])'
+rule.41.end='"'
+
+# Pattern 42: constant.specialChar (inside region 41).
+rule.42.parent=41
+rule.42.group='constant.specialChar'
+rule.42.match='\\.'
+
+# Region 43: comment (root).
+rule.43.parent=-1
+rule.43.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.43.start='//'
+rule.43.end='$'
+
+# Region 44: comment (root).
+rule.44.parent=-1
+rule.44.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.44.start='/\*'
+rule.44.end='\*/'
+
+# Region 45: comment (root).
+rule.45.parent=-1
+rule.45.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.45.start='/\+'
+rule.45.end='\+/'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=46

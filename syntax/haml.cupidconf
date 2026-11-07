@@ -1,0 +1,63 @@
+# Syntax: haml
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='haml'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.haml$'
+
+# Pattern 0: symbol (root).
+rule.0.parent=-1
+rule.0.group='symbol'
+rule.0.match='-|='
+
+# Pattern 1: default (root).
+rule.1.parent=-1
+rule.1.group='default'
+rule.1.match='->|=>'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='([  ]|^)%[0-9A-Za-z_]+>'
+
+# Pattern 3: special (root).
+rule.3.parent=-1
+rule.3.group='special'
+rule.3.match=':[0-9A-Za-z_]+>'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\.[A-Za-z_]+>'
+
+# Pattern 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+rule.5.match='"([^"]|(\\"))*"|%[QW]?\{[^}]*\}|%[QW]?\([^)]*\)|%[QW]?<[^>]*>|%[QW]?\$[^$]*\$|%[QW]?\^[^^]*\^|%[QW]?![^!]*!'
+
+# Pattern 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+rule.6.match='''([^'']|(\\''))*''|%[qw]\{[^}]*\}|%[qw]\([^)]*\)|%[qw]<[^>]*>|%[qw]\[[^]]*\]|%[qw]\$[^$]*\$|%[qw]\^[^^]*\^|%[qw]![^!]*!'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='#\{[^}]*\}'
+
+# Pattern 8: identifier.var (root).
+rule.8.parent=-1
+rule.8.group='identifier.var'
+rule.8.match='(@|@@)[0-9A-Z_a-z]+'
+
+# Pattern 9: comment (root).
+rule.9.parent=-1
+rule.9.group='comment'
+rule.9.match='#[^{].*$|#$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=10

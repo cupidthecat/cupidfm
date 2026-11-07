@@ -1,0 +1,89 @@
+# Syntax: graphql
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='graphql'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(gql|graphql)$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(?:(query|mutation|subscription|type|input|scalar|fragment|schema|union|on|extends?))\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(ID|Int|Float|Boolean|String|Datetime|Null)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(__\w+)'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='((\w+)(?:\:([\s]*)?)(?:\$))'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(QUERY|MUTATION|SUBSCRIPTION|FIELD|FRAGMENT_DEFINITION|FRAGMENT_SPREAD|INLINE_FRAGMENT|SCHEMA|SCALAR|OBJECT|FIELD_DEFINITION|ARGUMENT_DEFINITION|INTERFACE|UNION|ENUM|ENUM_VALUE|INPUT_OBJECT|INPUT_FIELD_DEFINITION)\b'
+
+# Pattern 5: constant (root).
+rule.5.parent=-1
+rule.5.group='constant'
+rule.5.match='(@\w+)'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='\b(Query|Mutation|Subscription|Schema|Root)\b'
+
+# Pattern 7: special (root).
+rule.7.parent=-1
+rule.7.group='special'
+rule.7.match='(\$\w+)'
+
+# Pattern 8: special (root).
+rule.8.parent=-1
+rule.8.group='special'
+rule.8.match='(!)'
+
+# Pattern 9: symbol (root).
+rule.9.parent=-1
+rule.9.group='symbol'
+rule.9.match='(:|=|\||\(|\)|\{|\}|\[|\])'
+
+# Pattern 10: constant.bool (root).
+rule.10.parent=-1
+rule.10.group='constant.bool'
+rule.10.match='\b(true|false)\b'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"'
+rule.11.end='"'
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Pattern 12: constant.specialChar (inside region 11).
+rule.12.parent=11
+rule.12.group='constant.specialChar'
+rule.12.match='\\.'
+
+# Region 13: comment (root).
+rule.13.parent=-1
+rule.13.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='#'
+rule.13.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=14

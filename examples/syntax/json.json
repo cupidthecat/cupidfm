@@ -1,0 +1,6 @@
+{
+  "message": "escaped \"quote\"",
+  "enabled": true,
+  "missing": null,
+  "items": [1, 2.5, -3e4]
+}

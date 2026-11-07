@@ -1,0 +1,35 @@
+# Syntax: freebsd-kernel
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='freebsd-kernel'
+
+# Detection: filename first, then header and content signature.
+detect.filename='GENERIC$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='^(cpu|ident|options|makeoptions|device|include)'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\s\S*'
+
+# Region 2: comment (root).
+rule.2.parent=-1
+rule.2.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='#'
+rule.2.end='$'
+
+# Pattern 3: todo (inside region 2).
+rule.3.parent=2
+rule.3.group='todo'
+rule.3.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=4

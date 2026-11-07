@@ -1,0 +1,185 @@
+# Syntax: ino
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='ino'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ino$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z_][0-9A-Z_]+\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b((s?size)|((u_?)?int(8|16|32|64|ptr)))_t\b'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='(?i)\b(HIGH|LOW|INPUT|OUTPUT)\b'
+
+# Pattern 3: constant (root).
+rule.3.parent=-1
+rule.3.group='constant'
+rule.3.match='(?i)\b(DEC|BIN|HEX|OCT|BYTE)\b'
+
+# Pattern 4: constant (root).
+rule.4.parent=-1
+rule.4.group='constant'
+rule.4.match='(?i)\b(PI|HALF_PI|TWO_PI)\b'
+
+# Pattern 5: constant (root).
+rule.5.parent=-1
+rule.5.group='constant'
+rule.5.match='(?i)\b(LSBFIRST|MSBFIRST)\b'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='(?i)\b(CHANGE|FALLING|RISING)\b'
+
+# Pattern 7: constant (root).
+rule.7.parent=-1
+rule.7.group='constant'
+rule.7.match='(?i)\b(DEFAULT|EXTERNAL|INTERNAL|INTERNAL1V1|INTERNAL2V56)\b'
+
+# Pattern 8: type (root).
+rule.8.parent=-1
+rule.8.group='type'
+rule.8.match='\b(boolean|byte|char|float|int|long|word)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(case|class|default|do|double|else|false|for|if|new|null|private|protected|public|short|signed|static|String|switch|this|throw|try|true|unsigned|void|while)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(goto|continue|break|return)\b'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='\b(abs|acos|asin|atan|atan2|ceil|constrain|cos|degrees|exp|floor|log|map|max|min|radians|random|randomSeed|round|sin|sq|sqrt|tan)\b'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='\b(bitRead|bitWrite|bitSet|bitClear|bit|highByte|lowByte)\b'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='\b(analogReference|analogRead|analogWrite)\b'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='\b(attachInterrupt|detachInterrupt)\b'
+
+# Pattern 15: identifier (root).
+rule.15.parent=-1
+rule.15.group='identifier'
+rule.15.match='\b(delay|delayMicroseconds|millis|micros)\b'
+
+# Pattern 16: identifier (root).
+rule.16.parent=-1
+rule.16.group='identifier'
+rule.16.match='\b(pinMode|digitalWrite|digitalRead)\b'
+
+# Pattern 17: identifier (root).
+rule.17.parent=-1
+rule.17.group='identifier'
+rule.17.match='\b(interrupts|noInterrupts)\b'
+
+# Pattern 18: identifier (root).
+rule.18.parent=-1
+rule.18.group='identifier'
+rule.18.match='\b(noTone|pulseIn|shiftIn|shiftOut|tone)\b'
+
+# Pattern 19: identifier (root).
+rule.19.parent=-1
+rule.19.group='identifier'
+rule.19.match='\b(Serial|Serial1|Serial2|Serial3|begin|end|peek|read|print|println|available|flush)\b'
+
+# Pattern 20: identifier (root).
+rule.20.parent=-1
+rule.20.group='identifier'
+rule.20.match='\b(setup|loop)\b'
+
+# Pattern 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+rule.21.match='^[[:space:]]*#[[:space:]]*(define|include(_next)?|(un|ifn?)def|endif|el(if|se)|if|warning|error|pragma)'
+
+# Pattern 22: constant (root).
+rule.22.parent=-1
+rule.22.group='constant'
+rule.22.match='(__attribute__[[:space:]]*\(\([^)]*\)\)|__(aligned|asm|builtin|hidden|inline|packed|restrict|section|typeof|weak)__)'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start='"'
+rule.23.end='"'
+# Mask escaped text before matching delimiters.
+rule.23.skip='\\.'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\.'
+
+# Region 25: constant.string (root).
+rule.25.parent=-1
+rule.25.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.25.start=''''
+rule.25.end=''''
+# Mask escaped text before matching delimiters.
+rule.25.skip='\\.'
+
+# Pattern 26: preproc (inside region 25).
+rule.26.parent=25
+rule.26.group='preproc'
+rule.26.match='..+'
+
+# Pattern 27: constant.specialChar (inside region 25).
+rule.27.parent=25
+rule.27.group='constant.specialChar'
+rule.27.match='\\.'
+
+# Region 28: comment (root).
+rule.28.parent=-1
+rule.28.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.28.start='//'
+rule.28.end='$'
+
+# Pattern 29: todo (inside region 28).
+rule.29.parent=28
+rule.29.group='todo'
+rule.29.match='(TODO|XXX|FIXME):?'
+
+# Region 30: comment (root).
+rule.30.parent=-1
+rule.30.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.30.start='/\*'
+rule.30.end='\*/'
+
+# Pattern 31: todo (inside region 30).
+rule.31.parent=30
+rule.31.group='todo'
+rule.31.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=32

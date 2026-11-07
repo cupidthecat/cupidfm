@@ -1,0 +1,164 @@
+# Syntax: renpy
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='renpy'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.rpy$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(python|init|early|define|default|label|call|jump|image|layeredimage|screen|style|transform|menu|show|hide|scene|at|with|zorder|behind|pause|play|stop|fadeout|fadein|queue)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(repeat|block|choice|parallel|(x|y|)(pos|offset|anchor|align|center|tile|zoom)|time|linear|easein|alpha|subpixel)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='\bpersistent\b'
+
+# Pattern 3: special (root).
+rule.3.parent=-1
+rule.3.group='special'
+rule.3.match='\$ '
+
+# Pattern 4: error (root).
+rule.4.parent=-1
+rule.4.group='error'
+rule.4.match='\t'
+
+# Included language: python. Local rules come first.
+
+# Pattern 5: constant (root).
+rule.5.parent=-1
+rule.5.group='constant'
+rule.5.match='\b(Ellipsis|None|self|cls|True|False)\b'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='\b(__bases__|__builtin__|__class__|__debug__|__dict__|__doc__|__file__|__members__|__methods__|__name__|__self__)\b'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='\b(abs|all|any|ascii|bin|bool|breakpoint|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dir|divmod|eval|exec|format|getattr|globals|hasattr|hash|help|hex|id|input|isinstance|issubclass|iter|len|locals|max|min|next|nonlocal|oct|open|ord|pow|print|repr|round|setattr|sorted|sum|vars|__import__)\b'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='\b__(abs|add|and|call|cmp|coerce|complex|concat|contains|delattr|delitem|delslice|del|dict|divmod|div|float|getattr|getitem|getslice|hash|hex|iadd|iand|iconcat|ifloordiv|ilshift|imatmul|imod|imul|init|int|invert|inv|ior|ipow|irshift|isub|iter|itruediv|ixor|len|long|lshift|mod|mul|neg|next|nonzero|oct|or|pos|pow|radd|rand|rcmp|rdivmod|rdiv|repeat|repr|rlshift|rmod|rmul|ror|rpow|rrshift|rshift|rsub|rxor|setattr|setitem|setslice|str|sub|xor)__\b'
+
+# Pattern 9: type (root).
+rule.9.parent=-1
+rule.9.group='type'
+rule.9.match='\b(bool|bytearray|bytes|classmethod|complex|dict|enumerate|filter|float|frozenset|int|list|map|memoryview|object|property|range|reversed|set|slice|staticmethod|str|super|tuple|type|zip)\b'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='def [a-zA-Z_0-9]+'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(and|as|assert|async|await|break|case|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|match|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b'
+
+# Pattern 12: preproc (root).
+rule.12.parent=-1
+rule.12.group='preproc'
+rule.12.match='^\s*@[^(]*'
+
+# Pattern 13: symbol.operator (root).
+rule.13.parent=-1
+rule.13.group='symbol.operator'
+rule.13.match='([~^.:;,+*|=!\%@]|<|>|/|-|&)'
+
+# Pattern 14: symbol.brackets (root).
+rule.14.parent=-1
+rule.14.group='symbol.brackets'
+rule.14.match='([(){}]|\[|\])'
+
+# Pattern 15: constant.number (root).
+rule.15.parent=-1
+rule.15.group='constant.number'
+rule.15.match='\b[0-9](_?[0-9])*(\.([0-9](_?[0-9])*)?)?(e[0-9](_?[0-9])*)?\b'
+
+# Pattern 16: constant.number (root).
+rule.16.parent=-1
+rule.16.group='constant.number'
+rule.16.match='\b0b(_?[01])+\b'
+
+# Pattern 17: constant.number (root).
+rule.17.parent=-1
+rule.17.group='constant.number'
+rule.17.match='\b0o(_?[0-7])+\b'
+
+# Pattern 18: constant.number (root).
+rule.18.parent=-1
+rule.18.group='constant.number'
+rule.18.match='\b0x(_?[0-9a-fA-F])+\b'
+
+# Region 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='"""'
+rule.19.end='"""'
+
+# Region 20: constant.string (root).
+rule.20.parent=-1
+rule.20.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.20.start=''''''''
+rule.20.end=''''''''
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='"'
+rule.21.end='("|$)'
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\.'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start=''''
+rule.23.end='(''|$)'
+# Mask escaped text before matching delimiters.
+rule.23.skip='\\.'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\.'
+
+# Region 25: comment (root).
+rule.25.parent=-1
+rule.25.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='#'
+rule.25.end='$'
+
+# Pattern 26: todo (inside region 25).
+rule.26.parent=25
+rule.26.group='todo'
+rule.26.match='(TODO|FIXME|HACK|BUG|NOTE|FAQ|MNEMONIC|REQ|RFE|IDEA|PORT|\?\?\?|!!!|GLOSS|SEE|TODOC|STAT|RVD|CRED):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=27

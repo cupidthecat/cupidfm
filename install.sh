@@ -66,4 +66,7 @@ ensure_packages
 install_fonts
 build_project
 install_binary
+log "Installing bundled syntax definitions"
+sudo install -d /usr/share/cupidfm/syntax
+sudo install -m 644 "$ROOT_DIR"/syntax/*.cupidconf "$ROOT_DIR"/syntax/LICENSE /usr/share/cupidfm/syntax/
 log "CupidFM installed successfully"

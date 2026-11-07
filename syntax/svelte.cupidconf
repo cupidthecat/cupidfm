@@ -1,0 +1,541 @@
+# Syntax: svelte
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='svelte'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.svelte$'
+
+# Region 0: default (root).
+rule.0.parent=-1
+rule.0.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.0.start='<script>'
+rule.0.end='</script>'
+
+# Included language: javascript. Local rules come first.
+
+# Pattern 1: constant.number (inside region 0).
+rule.1.parent=0
+rule.1.group='constant.number'
+rule.1.match='\b[-+]?([1-9][0-9]*|0[0-7]*|0x[0-9a-fA-F]+)([uU][lL]?|[lL][uU]?)?\b'
+
+# Pattern 2: constant.number (inside region 0).
+rule.2.parent=0
+rule.2.group='constant.number'
+rule.2.match='\b[-+]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([EePp][+-]?[0-9]+)?[fFlL]?'
+
+# Pattern 3: constant.number (inside region 0).
+rule.3.parent=0
+rule.3.group='constant.number'
+rule.3.match='\b[-+]?([0-9]+[EePp][+-]?[0-9]+)[fFlL]?'
+
+# Pattern 4: symbol.brackets (inside region 0).
+rule.4.parent=0
+rule.4.group='symbol.brackets'
+rule.4.match='[(){}]|\[|\]'
+
+# Pattern 5: symbol.operator (inside region 0).
+rule.5.parent=0
+rule.5.group='symbol.operator'
+rule.5.match='([-+/*=<>!~%?:&|]|[.]{3})'
+
+# Pattern 6: statement (inside region 0).
+rule.6.parent=0
+rule.6.group='statement'
+rule.6.match='\b(async|await|break|case|catch|const|continue|debugger|default)\b'
+
+# Pattern 7: statement (inside region 0).
+rule.7.parent=0
+rule.7.group='statement'
+rule.7.match='\b(delete|do|else|export|finally|for|function\*?|class|extends)\b'
+
+# Pattern 8: statement (inside region 0).
+rule.8.parent=0
+rule.8.group='statement'
+rule.8.match='\b(get|if|import|from|in|of|instanceof|let|new|reject|resolve|return)\b'
+
+# Pattern 9: statement (inside region 0).
+rule.9.parent=0
+rule.9.group='statement'
+rule.9.match='\b(set|static|super|switch|this|throw|try|typeof|var|void|while|with|yield)\b'
+
+# Pattern 10: error (inside region 0).
+rule.10.parent=0
+rule.10.group='error'
+rule.10.match='\b(enum|implements|interface|package|private|protected|public)\b'
+
+# Pattern 11: constant (inside region 0).
+rule.11.parent=0
+rule.11.group='constant'
+rule.11.match='\b(globalThis|Infinity|null|undefined|NaN)\b'
+
+# Pattern 12: constant (inside region 0).
+rule.12.parent=0
+rule.12.group='constant'
+rule.12.match='\b(null|undefined|NaN)\b'
+
+# Pattern 13: constant (inside region 0).
+rule.13.parent=0
+rule.13.group='constant'
+rule.13.match='\b(true|false)\b'
+
+# Pattern 14: type (inside region 0).
+rule.14.parent=0
+rule.14.group='type'
+rule.14.match='\b(Array|Boolean|Date|Enumerator|Error|Function|Generator|Map|Math)\b'
+
+# Pattern 15: type (inside region 0).
+rule.15.parent=0
+rule.15.group='type'
+rule.15.match='\b(Number|Object|Promise|Proxy|Reflect|RegExp|Set|String|Symbol|WeakMap|WeakSet)\b'
+
+# Pattern 16: type (inside region 0).
+rule.16.parent=0
+rule.16.group='type'
+rule.16.match='\b(BigInt64Array|BigUint64Array|Float32Array|Float64Array|Int16Array)\b'
+
+# Pattern 17: constant (inside region 0).
+rule.17.parent=0
+rule.17.group='constant'
+rule.17.match='\\[0-7][0-7]?[0-7]?|\\x[0-9a-fA-F]+|\\[bfnrt''"\?\\]'
+
+# Pattern 18: comment (inside region 0).
+rule.18.parent=0
+rule.18.group='comment'
+rule.18.match='^#!.*/(env +)?node( |$)'
+
+# Pattern 19: identifier (inside region 0).
+rule.19.parent=0
+rule.19.group='identifier'
+rule.19.match='\b(alert|decodeURI|decodeURIComponent|document|encodeURI|encodeURIComponent|escape|eval|isFinite|isNaN|parseFloat|parseInt|unescape|uneval|window)\b'
+
+# Pattern 20: identifier (inside region 0).
+rule.20.parent=0
+rule.20.group='identifier'
+rule.20.match='\b(Intl|WebAssembly)\b'
+
+# Pattern 21: identifier (inside region 0).
+rule.21.parent=0
+rule.21.group='identifier'
+rule.21.match='\b(Arguments)\b'
+
+# Region 22: constant.string (inside region 0).
+rule.22.parent=0
+rule.22.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.22.start='"'
+rule.22.end='"'
+# Mask escaped text before matching delimiters.
+rule.22.skip='\\.'
+
+# Pattern 23: constant.specialChar (inside region 22).
+rule.23.parent=22
+rule.23.group='constant.specialChar'
+rule.23.match='\\.'
+
+# Region 24: constant.string (inside region 0).
+rule.24.parent=0
+rule.24.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.24.start=''''
+rule.24.end=''''
+# Mask escaped text before matching delimiters.
+rule.24.skip='\\.'
+
+# Pattern 25: constant.specialChar (inside region 24).
+rule.25.parent=24
+rule.25.group='constant.specialChar'
+rule.25.match='\\.'
+
+# Region 26: constant.string (inside region 0).
+rule.26.parent=0
+rule.26.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='`'
+rule.26.end='`'
+
+# Pattern 27: constant.specialChar (inside region 26).
+rule.27.parent=26
+rule.27.group='constant.specialChar'
+rule.27.match='\\.'
+
+# Pattern 28: identifier (inside region 26).
+rule.28.parent=26
+rule.28.group='identifier'
+rule.28.match='\x24\{.*?\}'
+
+# Pattern 29: constant.bool (inside region 0).
+rule.29.parent=0
+rule.29.group='constant.bool'
+rule.29.match='\b(true|false)\b'
+
+# Pattern 30: constant.bool.false (inside region 0).
+rule.30.parent=0
+rule.30.group='constant.bool.false'
+rule.30.match='\b(false)\b'
+
+# Pattern 31: constant.bool.true (inside region 0).
+rule.31.parent=0
+rule.31.group='constant.bool.true'
+rule.31.match='\b(true)\b'
+
+# Region 32: comment (inside region 0).
+rule.32.parent=0
+rule.32.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.32.start='//'
+rule.32.end='$'
+
+# Pattern 33: todo (inside region 32).
+rule.33.parent=32
+rule.33.group='todo'
+rule.33.match='(TODO|XXX|FIXME)'
+
+# Region 34: comment (inside region 0).
+rule.34.parent=0
+rule.34.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.34.start='/\*'
+rule.34.end='\*/'
+# Mask escaped text before matching delimiters.
+rule.34.skip='\\.'
+
+# Pattern 35: constant.specialChar (inside region 34).
+rule.35.parent=34
+rule.35.group='constant.specialChar'
+rule.35.match='\\.'
+
+# Pattern 36: identifier (inside region 34).
+rule.36.parent=34
+rule.36.group='identifier'
+rule.36.match='\s\*\s.*'
+
+# Pattern 37: todo (inside region 34).
+rule.37.parent=34
+rule.37.group='todo'
+rule.37.match='(TODO|XXX|FIXME)'
+
+# Region 38: default (root).
+rule.38.parent=-1
+rule.38.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.38.start='<script lang="ts">'
+rule.38.end='</script>'
+
+# Included language: typescript. Local rules come first.
+
+# Pattern 39: constant.number (inside region 38).
+rule.39.parent=38
+rule.39.group='constant.number'
+rule.39.match='\b[-+]?([1-9][0-9]*|0[0-7]*|0x[0-9a-fA-F]+)([uU][lL]?|[lL][uU]?)?\b'
+
+# Pattern 40: constant.number (inside region 38).
+rule.40.parent=38
+rule.40.group='constant.number'
+rule.40.match='\b[-+]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([EePp][+-]?[0-9]+)?[fFlL]?'
+
+# Pattern 41: constant.number (inside region 38).
+rule.41.parent=38
+rule.41.group='constant.number'
+rule.41.match='\b[-+]?([0-9]+[EePp][+-]?[0-9]+)[fFlL]?'
+
+# Pattern 42: identifier (inside region 38).
+rule.42.parent=38
+rule.42.group='identifier'
+rule.42.match='[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[(]'
+
+# Pattern 43: statement (inside region 38).
+rule.43.parent=38
+rule.43.group='statement'
+rule.43.match='\b(abstract|as|async|await|break|case|catch|class|const|constructor|continue)\b'
+
+# Pattern 44: statement (inside region 38).
+rule.44.parent=38
+rule.44.group='statement'
+rule.44.match='\b(debugger|declare|default|delete|do|else|enum|export|extends|finally|for|from)\b'
+
+# Pattern 45: statement (inside region 38).
+rule.45.parent=38
+rule.45.group='statement'
+rule.45.match='\b(function|get|if|implements|import|in|instanceof|interface|is|let|module|namespace)\b'
+
+# Pattern 46: statement (inside region 38).
+rule.46.parent=38
+rule.46.group='statement'
+rule.46.match='\b(new|of|package|private|protected|public|require|return|set|static|super|switch)\b'
+
+# Pattern 47: statement (inside region 38).
+rule.47.parent=38
+rule.47.group='statement'
+rule.47.match='\b(this|throw|try|type|typeof|var|void|while|with|yield)\b'
+
+# Pattern 48: constant (inside region 38).
+rule.48.parent=38
+rule.48.group='constant'
+rule.48.match='\b(false|true|null|undefined|NaN)\b'
+
+# Pattern 49: type (inside region 38).
+rule.49.parent=38
+rule.49.group='type'
+rule.49.match='\b(Array|Boolean|Date|Enumerator|Error|Function|Math)\b'
+
+# Pattern 50: type (inside region 38).
+rule.50.parent=38
+rule.50.group='type'
+rule.50.match='\b(Number|Object|RegExp|String|Symbol)\b'
+
+# Pattern 51: type (inside region 38).
+rule.51.parent=38
+rule.51.group='type'
+rule.51.match='\b(any|unknown|boolean|never|number|string|symbol)\b'
+
+# Pattern 52: statement (inside region 38).
+rule.52.parent=38
+rule.52.group='statement'
+rule.52.match='[-+/*=<>!~%?:&|]'
+
+# Pattern 53: constant (inside region 38).
+rule.53.parent=38
+rule.53.group='constant'
+rule.53.match='/[^*]([^/]|(\\/))*[^\\]/[gim]*'
+
+# Pattern 54: constant (inside region 38).
+rule.54.parent=38
+rule.54.group='constant'
+rule.54.match='\\[0-7][0-7]?[0-7]?|\\x[0-9a-fA-F]+|\\[bfnrt''"\?\\]'
+
+# Region 55: comment (inside region 38).
+rule.55.parent=38
+rule.55.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.55.start='//'
+rule.55.end='$'
+
+# Region 56: comment (inside region 38).
+rule.56.parent=38
+rule.56.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.56.start='/\*'
+rule.56.end='\*/'
+
+# Pattern 57: todo (inside region 56).
+rule.57.parent=56
+rule.57.group='todo'
+rule.57.match='TODO:?'
+
+# Region 58: constant.string (inside region 38).
+rule.58.parent=38
+rule.58.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.58.start='"'
+rule.58.end='"'
+# Mask escaped text before matching delimiters.
+rule.58.skip='\\.'
+
+# Pattern 59: constant.specialChar (inside region 58).
+rule.59.parent=58
+rule.59.group='constant.specialChar'
+rule.59.match='\\.'
+
+# Region 60: constant.string (inside region 38).
+rule.60.parent=38
+rule.60.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.60.start=''''
+rule.60.end=''''
+# Mask escaped text before matching delimiters.
+rule.60.skip='\\.'
+
+# Pattern 61: constant.specialChar (inside region 60).
+rule.61.parent=60
+rule.61.group='constant.specialChar'
+rule.61.match='\\.'
+
+# Region 62: constant.string (inside region 38).
+rule.62.parent=38
+rule.62.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.62.start='`'
+rule.62.end='`'
+
+# Pattern 63: constant.specialChar (inside region 62).
+rule.63.parent=62
+rule.63.group='constant.specialChar'
+rule.63.match='\\.'
+
+# Pattern 64: identifier (inside region 62).
+rule.64.parent=62
+rule.64.group='identifier'
+rule.64.match='\x24\{.*?\}'
+
+# Region 65: default (root).
+rule.65.parent=-1
+rule.65.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.65.start='<style.*?>'
+rule.65.end='</style.*?>'
+
+# Included language: css. Local rules come first.
+
+# Pattern 66: statement (inside region 65).
+rule.66.parent=65
+rule.66.group='statement'
+rule.66.match='(?i).'
+
+# Pattern 67: type (inside region 65).
+rule.67.parent=65
+rule.67.group='type'
+rule.67.match='(align-content|align-items|alignment-baseline|align-self|all|animation|animation-delay|animation-direction|animation-duration|animation-fill-mode|animation-iteration-count|animation-name|animation-play-state|animation-timing-function|appearance|azimuth|backdrop-filter|backface-visibility|background|background-attachment|background-blend-mode|background-clip|background-color|background-image|background-origin|background-position|background-repeat|background-size|baseline-shift|bookmark-label|bookmark-level|bookmark-state|border|border-bottom|border-bottom-color|border-bottom-left-radius|border-bottom-right-radius|border-bottom-style|border-bottom-width|border-boundary|border-collapse|border-color|border-image|border-image-outset|border-image-repeat|border-image-slice|border-image-source|border-image-width|border-left|border-left-color|border-left-style|border-left-width|border-radius|border-right|border-right-color|border-right-style|border-right-width|border-spacing|border-style|border-top|border-top-color|border-top-left-radius|border-top-right-radius|border-top-style|border-top-width|border-width|bottom|box-decoration-break|box-shadow|box-sizing|box-snap|box-suppress|break-after|break-before|break-inside|caption-side|caret|caret-animation|caret-color|caret-shape|chains|clear|clip|clip-path|clip-rule|color|color-interpolation-filters|column-count|column-fill|column-gap|column-rule|column-rule-color|column-rule-style|column-rule-width|columns|column-span|column-width|content|continue|counter-increment|counter-reset|counter-set|cue|cue-after|cue-before|cursor|direction|display|dominant-baseline|elevation|empty-cells|filter|flex|flex-basis|flex-direction|flex-flow|flex-grow|flex-shrink|flex-wrap|float|float-defer|float-offset|float-reference|flood-color|flood-opacity|flow|flow-from|flow-into|font|font-family|font-feature-settings|font-kerning|font-language-override|font-size|font-size-adjust|font-stretch|font-style|font-synthesis|font-variant|font-variant-alternates|font-variant-caps|font-variant-east-asian|font-variant-ligatures|font-variant-numeric|font-variant-position|font-weight|footnote-display|footnote-policy|gap|glyph-orientation-vertical|grid|grid-area|grid-auto-columns|grid-auto-flow|grid-auto-rows|grid-column|grid-column-end|grid-column-gap|grid-column-start|grid-gap|grid-row|grid-row-end|grid-row-gap|grid-row-start|grid-template|grid-template-areas|grid-template-columns|grid-template-rows|hanging-punctuation|height|hyphenate-character|hyphenate-limit-chars|hyphenate-limit-last|hyphenate-limit-lines|hyphenate-limit-zone|hyphens|image-orientation|image-rendering|image-resolution|initial-letter|initial-letter-align|initial-letter-wrap|isolation|justify-content|justify-items|justify-self|left|letter-spacing|lighting-color|line-break|line-grid|line-height|line-snap|list-style|list-style-image|list-style-position|list-style-type|margin|margin-bottom|margin-left|margin-right|margin-top|marker|marker-end|marker-knockout-left|marker-knockout-right|marker-mid|marker-pattern|marker-segment|marker-side|marker-start|marquee-direction|marquee-loop|marquee-speed|marquee-style|mask|mask-border|mask-border-mode|mask-border-outset|mask-border-repeat|mask-border-slice|mask-border-source|mask-border-width|mask-clip|mask-composite|mask-image|mask-mode|mask-origin|mask-position|mask-repeat|mask-size|mask-type|max-height|max-lines|max-width|min-height|min-width|mix-blend-mode|motion|motion-offset|motion-path|motion-rotation|nav-down|nav-left|nav-right|nav-up|object-fit|object-position|offset-after|offset-before|offset-end|offset-start|opacity|order|orphans|outline|outline-color|outline-offset|outline-style|outline-width|overflow|overflow-style|overflow-wrap|overflow-x|overflow-y|padding|padding-bottom|padding-left|padding-right|padding-top|page|page-break-after|page-break-before|page-break-inside|pause|pause-after|pause-before|perspective|perspective-origin|pitch|pitch-range|play-during|pointer-events|polar-anchor|polar-angle|polar-distance|polar-origin|position|presentation-level|quotes|region-fragment|resize|rest|rest-after|rest-before|richness|right|rotation|rotation-point|ruby-align|ruby-merge|ruby-position|running|scrollbar-color|scroll-behavior|scroll-snap-align|scroll-snap-margin|scroll-snap-margin-block|scroll-snap-margin-block-end|scroll-snap-margin-block-start|scroll-snap-margin-bottom|scroll-snap-margin-inline|scroll-snap-margin-inline-end|scroll-snap-margin-inline-start|scroll-snap-margin-left|scroll-snap-margin-right|scroll-snap-margin-top|scroll-snap-padding|scroll-snap-padding-block|scroll-snap-padding-block-end|scroll-snap-padding-block-start|scroll-snap-padding-bottom|scroll-snap-padding-inline|scroll-snap-padding-inline-end|scroll-snap-padding-inline-start|scroll-snap-padding-left|scroll-snap-padding-right|scroll-snap-padding-top|scroll-snap-type|shape-image-threshold|shape-inside|shape-margin|shape-outside|size|speak|speak-as|speak-header|speak-numeral|speak-punctuation|speech-rate|stress|string-set|stroke|stroke-alignment|stroke-dashadjust|stroke-dasharray|stroke-dashcorner|stroke-dashoffset|stroke-linecap|stroke-linejoin|stroke-miterlimit|stroke-opacity|stroke-width|table-layout|tab-size|text-align|text-align-all|text-align-last|text-combine-upright|text-decoration|text-decoration-color|text-decoration-line|text-decoration-skip|text-decoration-style|text-emphasis|text-emphasis-color|text-emphasis-position|text-emphasis-style|text-indent|text-justify|text-orientation|text-overflow|text-shadow|text-space-collapse|text-space-trim|text-spacing|text-transform|text-underline-offset|text-underline-position|text-wrap|top|transform|transform-box|transform-origin|transform-style|transition|transition-delay|transition-duration|transition-property|transition-timing-function|unicode-bidi|user-select|vertical-align|visibility|voice-balance|voice-duration|voice-family|voice-pitch|voice-range|voice-rate|voice-stress|voice-volume|volume|white-space|widows|width|will-change|word-break|word-spacing|word-wrap|wrap-after|wrap-before|wrap-flow|wrap-inside|wrap-through|writing-mode|z-index):'
+
+# Pattern 68: special (inside region 65).
+rule.68.parent=65
+rule.68.group='special'
+rule.68.match='!important'
+
+# Pattern 69: identifier (inside region 65).
+rule.69.parent=65
+rule.69.group='identifier'
+rule.69.match=':active|:focus|:hover|:link|:visited|:link|:after|:before|$'
+
+# Pattern 70: special (inside region 65).
+rule.70.parent=65
+rule.70.group='special'
+rule.70.match='(\{|\}|\(|\)|\;|:|\]|~|<|>|,)'
+
+# Pattern 71: statement (inside region 65).
+rule.71.parent=65
+rule.71.group='statement'
+rule.71.match='@import|@mixin|@extend'
+
+# Region 72: constant.string (inside region 65).
+rule.72.parent=65
+rule.72.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.72.start='"'
+rule.72.end='"'
+# Mask escaped text before matching delimiters.
+rule.72.skip='\\.'
+
+# Pattern 73: constant.specialChar (inside region 72).
+rule.73.parent=72
+rule.73.group='constant.specialChar'
+rule.73.match='\\.'
+
+# Region 74: constant.string (inside region 65).
+rule.74.parent=65
+rule.74.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.74.start=''''
+rule.74.end=''''
+# Mask escaped text before matching delimiters.
+rule.74.skip='\\.'
+
+# Pattern 75: constant.specialChar (inside region 74).
+rule.75.parent=74
+rule.75.group='constant.specialChar'
+rule.75.match='\\.'
+
+# Pattern 76: special (inside region 65).
+rule.76.parent=65
+rule.76.group='special'
+rule.76.match='"|'''
+
+# Region 77: comment (inside region 65).
+rule.77.parent=65
+rule.77.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.77.start='\/\*'
+rule.77.end='\*\/'
+
+# Pattern 78: todo (inside region 77).
+rule.78.parent=77
+rule.78.group='todo'
+rule.78.match='(TODO|XXX|FIXME):?'
+
+# Region 79: default (root).
+rule.79.parent=-1
+rule.79.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.79.start='^'
+rule.79.end='$'
+
+# Included language: html5. Local rules come first.
+
+# Pattern 80: error (inside region 79).
+rule.80.parent=79
+rule.80.group='error'
+rule.80.match='<[^!].*?>'
+
+# Pattern 81: symbol.tag (inside region 79).
+rule.81.parent=79
+rule.81.group='symbol.tag'
+rule.81.match='(?i)<[/]?(a|a(bbr|ddress|rea|rticle|side|udio)|b|b(ase|d(i|o)|lockquote|r|utton)|ca(nvas|ption)|center|cite|co(de|l|lgroup)|d(ata|atalist|d|el|etails|fn|ialog|l|t)|em|embed|fieldset|fig(caption|ure)|form|iframe|h[1-6]|hr|i|img|in(put|s)|kbd|keygen|label|legend|li|link|ma(in|p|rk)|menu|menuitem|met(a|er)|nav|noscript|o(bject|l|pt(group|ion)|utput)|p|param|picture|pre|progress|q|r(p|t|uby)|s|samp|se(ction|lect)|small|source|span|strong|su(b|p|mmary)|textarea|time|track|u|ul|var|video|wbr)( .*)*?>'
+
+# Pattern 82: symbol.tag.extended (inside region 79).
+rule.82.parent=79
+rule.82.group='symbol.tag.extended'
+rule.82.match='(?i)<[/]?(body|div|html|head(er)?|footer|title|table|t(body|d|h(ead)?|r|foot))( .*)*?>'
+
+# Pattern 83: preproc (inside region 79).
+rule.83.parent=79
+rule.83.group='preproc'
+rule.83.match='(?i)<[/]?(script|style)( .*)*?>'
+
+# Pattern 84: special (inside region 79).
+rule.84.parent=79
+rule.84.group='special'
+rule.84.match='&[^;[[:space:]]]*;'
+
+# Pattern 85: symbol (inside region 79).
+rule.85.parent=79
+rule.85.group='symbol'
+rule.85.match='[:=]'
+
+# Pattern 86: identifier (inside region 79).
+rule.86.parent=79
+rule.86.group='identifier'
+rule.86.match='(alt|bgcolor|height|href|id|label|longdesc|name|on(click|focus|load|mouseover)|size|span|src|style|target|type|value|width)='
+
+# Pattern 87: constant.string (inside region 79).
+rule.87.parent=79
+rule.87.group='constant.string'
+rule.87.match='"[^"]*"'
+
+# Pattern 88: constant.number (inside region 79).
+rule.88.parent=79
+rule.88.group='constant.number'
+rule.88.match='(?i)#[0-9a-fA-F]{6,6}'
+
+# Region 89: default (inside region 79).
+rule.89.parent=79
+rule.89.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.89.start='>'
+rule.89.end='<'
+
+# Pattern 90: symbol.tag (inside region 79).
+rule.90.parent=79
+rule.90.group='symbol.tag'
+rule.90.match='<|>'
+
+# Pattern 91: constant.string.url (inside region 79).
+rule.91.parent=79
+rule.91.group='constant.string.url'
+rule.91.match='(ftp(s)?|http(s)?|git|chrome)://[^ 	]+'
+
+# Pattern 92: comment (inside region 79).
+rule.92.parent=79
+rule.92.group='comment'
+rule.92.match='<!--.+?-->'
+
+# Pattern 93: preproc (inside region 79).
+rule.93.parent=79
+rule.93.group='preproc'
+rule.93.match='<!DOCTYPE.+?>'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=94

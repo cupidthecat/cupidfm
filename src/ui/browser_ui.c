@@ -143,7 +143,7 @@ static const cupidimage_image *get_preview_image(const char *path, int columns, 
     return image_preview_get(path, width, height, generation, error, error_size);
 }
 
-static const int image_palette_reserved_start = 32;
+static const int image_palette_reserved_start = 48;
 
 static bool supports_truecolor(void) {
     if (!isatty(fileno(stdout)))
@@ -378,8 +378,8 @@ static void ensure_image_palette(void) {
         return;
 
     int base = image_palette_reserved_start;
-    if (base <= COLOR_SYNTAX_ESCAPE) {
-        base = COLOR_SYNTAX_ESCAPE + 1;
+    if (base <= COLOR_SYNTAX_LAST) {
+        base = COLOR_SYNTAX_LAST + 1;
     }
     if (base + desired > max_pairs) {
         while (desired > 0 && base + desired > max_pairs) {

@@ -1,0 +1,66 @@
+# Syntax: lilypond
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='lilypond'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ly$|\.ily$|\.lly$'
+
+# Pattern 0: constant.number (root).
+rule.0.parent=-1
+rule.0.group='constant.number'
+rule.0.match='\d+'
+
+# Pattern 1: identifier (root).
+rule.1.parent=-1
+rule.1.group='identifier'
+rule.1.match='\b(staff|spacing|signature|routine|notes|handler|corrected|beams|arpeggios|Volta_engraver|Voice|Vertical_align_engraver|Vaticana_ligature_engraver|VaticanaVoice|VaticanaStaff|Tweak_engraver|Tuplet_engraver|Trill_spanner_engraver|Timing_translator|Time_signature_performer|Time_signature_engraver|Tie_performer|Tie_engraver|Text_spanner_engraver|Text_engraver|Tempo_performer|Tab_tie_follow_engraver|Tab_staff_symbol_engraver|Tab_note_heads_engraver|TabVoice|TabStaff|System_start_delimiter_engraver|Stem_engraver|Stanza_number_engraver|Stanza_number_align_engraver|Staff_symbol_engraver|Staff_performer|Staff_collecting_engraver|StaffGroup|Staff|Spanner_break_forbid_engraver|Span_bar_stub_engraver|Span_bar_engraver|Span_arpeggio_engraver|Spacing_engraver|Slur_performer|Slur_engraver|Slash_repeat_engraver|Separating_line_group_engraver|Script_row_engraver|Script_engraver|Script_column_engraver|Score|Rhythmic_column_engraver|RhythmicStaff|Rest_engraver|Rest_collision_engraver|Repeat_tie_engraver|Repeat_acknowledge_engraver|Pure_from_neighbor_engraver|Pitched_trill_engraver|Pitch_squash_engraver|Piano_pedal_performer|Piano_pedal_engraver|Piano_pedal_align_engraver|PianoStaff|Phrasing_slur_engraver|PetrucciVoice|PetrucciStaff|Percent_repeat_engraver|Part_combine_engraver|Parenthesis_engraver|Paper_column_engraver|Output_property_engraver|Ottava_spanner_engraver|OneStaff|NullVoice|Note_spacing_engraver|Note_performer|Note_name_engraver|Note_heads_engraver|Note_head_line_engraver|NoteName\|NoteHead|New_fingering_engraver|Multi_measure_rest_engraver|Midi_control_function_performer|Metronome_mark_engraver|Mensural_ligature_engraver|MensuralVoice|MensuralStaff|Mark_engraver|Lyrics|Lyric_performer|Lyric_engraver|Ligature_bracket_engraver|Ledger_line_engraver|Laissez_vibrer_engraver|Kievan_ligature_engraver|KievanVoice|KievanStaff|Key_performer|Key_engraver|Keep_alive_together_engraver|Instrument_switch_engraver|Instrument_name_engraver|Hyphen_engraver|Grob_pq_engraver|GregorianTranscriptionVoice|GregorianTranscriptionStaff|GrandStaff|Grace_spacing_engraver|Grace_engraver|Grace_beam_engraver|Grace_auto_beam_engraver|Global|Glissando_engraver|Fretboard_engraver|FretBoards|Forbid_line_break_engraver|Footnote_engraver|Font_size_engraver|Fingering_engraver|Fingering_column_engraver|Figured_bass_position_engraver|Figured_bass_engraver|FiguredBass|Extender_engraver|Episema_engraver|Dynamics|Dynamic_performer|Dynamic_engraver|Dynamic_align_engraver|Drum_notes_engraver|Drum_note_performer|DrumVoice|DrumStaff|Double_percent_repeat_engraver|Dots_engraver|Dot_column_engraver|Devnull|Default_bar_line_engraver|Custos_engraver|Cue_clef_engraver|CueVoice|Control_track_performer|Concurrent_hairpin_engraver|Collision_engraver|Cluster_spanner_engraver|Clef_engraver|Chord_tremolo_engraver|Chord_name_engraver|ChordNames|ChoirStaff|Breathing_sign_engraver|Break_align_engraver|Bend_engraver|Beam_performer|Beam_engraver|Beam_collision_engraver|Bar_number_engraver|Bar_engraver|Axis_group_engraver|Auto_beam_engraver|Arpeggio_engraver|Accidental_engraver|Score)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='[-_^]?\\[-A-Za-z_]+'
+
+# Pattern 3: preproc (root).
+rule.3.parent=-1
+rule.3.group='preproc'
+rule.3.match='\b(((gisis|gis|geses|ges|g|fisis|fis|feses|fes|f|eisis|eis|eeses|ees|e|disis|dis|deses|des|d|cisis|cis|ceses|ces|c|bisis|bis|beses|bes|b|aisis|ais|aeses|aes|a)[,'']*[?!]?)|s|r|R|q)(128|64|32|16|8|4|2|1|\\breve|\\longa|\\maxima)?([^\\\w]|_|\b)'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='[(){}<>]|\[|\]'
+
+# Region 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.5.start='"'
+rule.5.end='"'
+# Mask escaped text before matching delimiters.
+rule.5.skip='\\.'
+
+# Pattern 6: constant.specialChar (inside region 5).
+rule.6.parent=5
+rule.6.group='constant.specialChar'
+rule.6.match='\\.'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='%\{'
+rule.7.end='%\}'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='%'
+rule.8.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

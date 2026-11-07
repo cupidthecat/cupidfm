@@ -1,0 +1,31 @@
+# Syntax: godoc
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='godoc'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.godoc$'
+detect.header='package.*import'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='^[^ ].*'
+
+# Region 1: comment (root).
+rule.1.parent=-1
+rule.1.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.1.start='//'
+rule.1.end='$'
+
+# Pattern 2: todo (inside region 1).
+rule.2.parent=1
+rule.2.group='todo'
+rule.2.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=3

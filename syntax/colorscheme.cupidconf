@@ -1,0 +1,114 @@
+# Syntax: colorscheme
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='colorscheme'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.theme$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(syntax|color(-link)?)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(start=|end=)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='\b(default|number|statement|underlined|error|todo|statusline|indent-char|cursor\-line|color\-column|ignore|divider|tabbar)\b'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='\b(special(Char)?)\b'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='\b((current\-)?line\-number)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='\b(gutter\-(info|error|warning){1})\b'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='\b(comment(\.bright)?)\b'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='\b(symbol(\.(brackets|operator|tag))?)\b'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='\b(identifier(\.(class|macro|var))?)\b'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='\b(constant(\.(bool(\.(true|false){1})?|number|specialChar|string(\.url)?){1})?)\b'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='\b(preproc(\.shebang)?)\b'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='\b(type(\.keyword)?)\b'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='\b(|h|A|0x)+[0-9]+(|h|A)+\b'
+
+# Pattern 13: constant.number (root).
+rule.13.parent=-1
+rule.13.group='constant.number'
+rule.13.match='\b0x[0-9 a-f A-F]+\b'
+
+# Region 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='#'
+rule.14.end='$'
+
+# Pattern 15: todo (inside region 14).
+rule.15.parent=14
+rule.15.group='todo'
+rule.15.match='(FIXME|TODO|NOTE):?'
+
+# Region 16: constant.string (root).
+rule.16.parent=-1
+rule.16.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='"'
+rule.16.end='"'
+# Mask escaped text before matching delimiters.
+rule.16.skip='\\.'
+
+# Pattern 17: constant.specialChar (inside region 16).
+rule.17.parent=16
+rule.17.group='constant.specialChar'
+rule.17.match='\\.'
+
+# Pattern 18: constant.number (root).
+rule.18.parent=-1
+rule.18.group='constant.number'
+rule.18.match='#[0-9 A-F a-f]+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=19

@@ -1,5 +1,9 @@
 # CupidFM reference and roadmap
 
+For bundled regex definitions, foreground colors, installation, and tested examples, see the
+[syntax guide](syntax-guide.md).
+
+
 CupidFM is a terminal file manager written in C with an ncurses interface. It provides directory navigation, previews, editing, and file information. 
 
 ![preview](../img/preview2.png)

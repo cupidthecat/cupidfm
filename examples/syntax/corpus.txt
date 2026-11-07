@@ -1,0 +1,74 @@
+#include <stdio.h>
+
+/* multiline
+ * comment: TODO */
+int main(void) {
+    const char *message = "an escaped \"quote\"";
+    printf("%s\n", message);
+    return 42;
+}
+
+<!doctype html>
+<html lang="en">
+<!-- a comment -->
+<style>body { color: red; }</style>
+<script>
+const answer = 42;
+console.log("Hello");
+</script>
+<p title="quoted">Hello &amp; goodbye</p>
+</html>
+
+// TODO: handle errors
+const message = "escaped \"quote\"";
+function greet(name) {
+  return `Hello, ${name}!`;
+}
+/* multiline
+   comment */
+console.log(greet("world"));
+
+# Heading
+
+**bold** and *italic*, [link](https://example.com), and inline `code`.
+
+> A quotation
+
+- first item
+- second item
+
+```c
+int main(void) {
+    /* a multiline
+       comment */
+    return 42;
+}
+```
+
+<!-- a comment -->
+
+#!/usr/bin/env python3
+"""A multiline
+documentation string."""
+def greet(name: str) -> str:
+    # TODO: translate
+    return f"Hello, {name}!"
+print(greet("世界"))
+
+#!/usr/bin/env bash
+# TODO: check the return value
+name="world"
+printf 'Hello, %s\n' "$name"
+if [ -f "$HOME/.profile" ]; then
+    echo "found"
+fi
+
+# A configuration example
+name: "world"
+enabled: true
+items:
+  - one
+  - two
+message: |
+  first line
+  second line

@@ -1,0 +1,172 @@
+# Syntax: odin
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='odin'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.odin$'
+
+# Pattern 0: special (root).
+rule.0.parent=-1
+rule.0.group='special'
+rule.0.match='\b(asm|auto_cast|break|case|cast|context|continue|do|dynamic|fallthrough|return|transmute|using|where)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(else|for|if|switch|in|not_in|or_else|or_return|when)\b'
+
+# Pattern 2: preproc (root).
+rule.2.parent=-1
+rule.2.group='preproc'
+rule.2.match='\b(assert|package|foreign|import|proc|defer|make|new|free|delete|copy|len|cap|append|raw_data)\b'
+
+# Pattern 3: preproc (root).
+rule.3.parent=-1
+rule.3.group='preproc'
+rule.3.match='\b((size|align|offset|type|type_info|typeid)_of|offset_of_by_string)\b'
+
+# Pattern 4: preproc (root).
+rule.4.parent=-1
+rule.4.group='preproc'
+rule.4.match='\b(swizzle|complex|quaternion|real|imag|jmag|kmag|conj|expand_to_tuple|min|max|abs|clamp|soa_zip|soa_unzip|transpose|outer_product|hadamard_product|matrix_flatten)\b'
+
+# Pattern 5: symbol.operator (root).
+rule.5.parent=-1
+rule.5.group='symbol.operator'
+rule.5.match='[-+/*=<>!~%&|^@]|:\s*=|:\s*:|\?'
+
+# Pattern 6: symbol (root).
+rule.6.parent=-1
+rule.6.group='symbol'
+rule.6.match='(,|\.)'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='\b(b(8|16|32|64)|(i|u)(8|(16|32|64|128)(le|be)?)|f(16|32|64)(le|be)?|complex(32|64|128)|quaternion(64|128|256))\b'
+
+# Pattern 8: type (root).
+rule.8.parent=-1
+rule.8.group='type'
+rule.8.match='\b(any|bool|byte|rune|u?int|uintptr|rawptr|c?string|map|matrix|typeid)\b'
+
+# Pattern 9: type.keyword (root).
+rule.9.parent=-1
+rule.9.group='type.keyword'
+rule.9.match='\b(distinct|struct|enum|union|bit_set)\b'
+
+# Pattern 10: constant.bool (root).
+rule.10.parent=-1
+rule.10.group='constant.bool'
+rule.10.match='\b(true|false|nil)\b'
+
+# Pattern 11: symbol.brackets (root).
+rule.11.parent=-1
+rule.11.group='symbol.brackets'
+rule.11.match='(\{|\})'
+
+# Pattern 12: symbol.brackets (root).
+rule.12.parent=-1
+rule.12.group='symbol.brackets'
+rule.12.match='(\(|\))'
+
+# Pattern 13: symbol.brackets (root).
+rule.13.parent=-1
+rule.13.group='symbol.brackets'
+rule.13.match='(\[|\])'
+
+# Pattern 14: constant.number (root).
+rule.14.parent=-1
+rule.14.group='constant.number'
+rule.14.match='\b(0b[01]*|0o[0-7]*|0x[0-9a-fA-F]*|[0-9_]+|0d[0-9]*|0z[0-9abAB]*)\b|''.'''
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='"'
+rule.15.end='"'
+# Mask escaped text before matching delimiters.
+rule.15.skip='\\.'
+
+# Pattern 16: constant.specialChar (inside region 15).
+rule.16.parent=15
+rule.16.group='constant.specialChar'
+rule.16.match='%.'
+
+# Pattern 17: constant.specialChar (inside region 15).
+rule.17.parent=15
+rule.17.group='constant.specialChar'
+rule.17.match='\\[abfnrtv''\"\\]'
+
+# Pattern 18: constant.specialChar (inside region 15).
+rule.18.parent=15
+rule.18.group='constant.specialChar'
+rule.18.match='\\([0-7]{1,3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})'
+
+# Region 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.19.start=''''
+rule.19.end=''''
+# Mask escaped text before matching delimiters.
+rule.19.skip='\\.'
+
+# Pattern 20: error (inside region 19).
+rule.20.parent=19
+rule.20.group='error'
+rule.20.match='..+'
+
+# Pattern 21: constant.specialChar (inside region 19).
+rule.21.parent=19
+rule.21.group='constant.specialChar'
+rule.21.match='%.'
+
+# Pattern 22: constant.specialChar (inside region 19).
+rule.22.parent=19
+rule.22.group='constant.specialChar'
+rule.22.match='\\[abfnrtv''\"\\]'
+
+# Pattern 23: constant.specialChar (inside region 19).
+rule.23.parent=19
+rule.23.group='constant.specialChar'
+rule.23.match='\\([0-7]{1,3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})'
+
+# Region 24: constant.string (root).
+rule.24.parent=-1
+rule.24.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.24.start='`'
+rule.24.end='`'
+
+# Region 25: comment (root).
+rule.25.parent=-1
+rule.25.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='//'
+rule.25.end='$'
+
+# Pattern 26: todo (inside region 25).
+rule.26.parent=25
+rule.26.group='todo'
+rule.26.match='TODO:?|NOTE(\(.*\))?:?'
+
+# Region 27: comment (root).
+rule.27.parent=-1
+rule.27.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='/\*'
+rule.27.end='\*/'
+
+# Pattern 28: todo (inside region 27).
+rule.28.parent=27
+rule.28.group='todo'
+rule.28.match='TODO:?|NOTE(\(.*\))?:?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=29

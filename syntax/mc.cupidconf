@@ -1,0 +1,44 @@
+# Syntax: mc
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='mc'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.mc$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='^(divert|VERSIONID|OSTYPE|DOMAIN|FEATURE|define)'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='^(DAEMON_OPTIONS|MAILER)'
+
+# Region 2: comment (root).
+rule.2.parent=-1
+rule.2.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='#'
+rule.2.end='$'
+
+# Region 3: comment (root).
+rule.3.parent=-1
+rule.3.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.3.start='dnl'
+rule.3.end='$'
+
+# Region 4: constant.string (root).
+rule.4.parent=-1
+rule.4.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='`'
+rule.4.end=''''
+
+# Total flattened rules; update this when adding or removing rules.
+rules=5

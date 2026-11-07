@@ -1,0 +1,75 @@
+# Syntax: scala
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='scala'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.sc(ala)?$|\.sbt$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(boolean|byte|char|double|float|int|long|new|short|this|transient|void)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(match|val|var|break|case|catch|continue|default|do|else|finally|for|if|return|switch|throw|try|while)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(def|object|case|trait|lazy|implicit|abstract|class|extends|with|final|implements|override|import|instanceof|interface|native|package|private|protected|public|static|strictfp|super|synchronized|throws|volatile|sealed)\b'
+
+# Region 3: constant.string (root).
+rule.3.parent=-1
+rule.3.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.3.start='"""'
+rule.3.end='"""'
+
+# Region 4: constant.string (root).
+rule.4.parent=-1
+rule.4.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='"'
+rule.4.end='"'
+# Mask escaped text before matching delimiters.
+rule.4.skip='\\.'
+
+# Pattern 5: constant.specialChar (inside region 4).
+rule.5.parent=4
+rule.5.group='constant.specialChar'
+rule.5.match='\\.'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='\b(true|false|null)\b'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='//'
+rule.7.end='$'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='/\*'
+rule.8.end='\*/'
+
+# Region 9: comment (root).
+rule.9.parent=-1
+rule.9.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='/\*\*'
+rule.9.end='\*/'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=10

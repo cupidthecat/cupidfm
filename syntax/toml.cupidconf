@@ -1,0 +1,152 @@
+# Syntax: toml
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='toml'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.toml'
+
+# Pattern 0: symbol (root).
+rule.0.parent=-1
+rule.0.group='symbol'
+rule.0.match='[=,\.]'
+
+# Pattern 1: symbol.brackets (root).
+rule.1.parent=-1
+rule.1.group='symbol.brackets'
+rule.1.match='[{\[\]}]'
+
+# Region 2: constant.string (root).
+rule.2.parent=-1
+rule.2.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='"""'
+rule.2.end='\"{3,5}'
+# Mask escaped text before matching delimiters.
+rule.2.skip='\\.'
+
+# Pattern 3: constant.specialChar (inside region 2).
+rule.3.parent=2
+rule.3.group='constant.specialChar'
+rule.3.match='\\u[[:xdigit:]]{4}'
+
+# Pattern 4: constant.specialChar (inside region 2).
+rule.4.parent=2
+rule.4.group='constant.specialChar'
+rule.4.match='\\U[[:xdigit:]]{8}'
+
+# Pattern 5: constant.specialChar (inside region 2).
+rule.5.parent=2
+rule.5.group='constant.specialChar'
+rule.5.match='\\[btnfr"\\]'
+
+# Region 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start='"'
+rule.6.end='"'
+# Mask escaped text before matching delimiters.
+rule.6.skip='\\.'
+
+# Pattern 7: constant.specialChar (inside region 6).
+rule.7.parent=6
+rule.7.group='constant.specialChar'
+rule.7.match='\\u[[:xdigit:]]{4}'
+
+# Pattern 8: constant.specialChar (inside region 6).
+rule.8.parent=6
+rule.8.group='constant.specialChar'
+rule.8.match='\\U[[:xdigit:]]{8}'
+
+# Pattern 9: constant.specialChar (inside region 6).
+rule.9.parent=6
+rule.9.group='constant.specialChar'
+rule.9.match='\\[btnfr"\\]'
+
+# Region 10: constant.string (root).
+rule.10.parent=-1
+rule.10.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.10.start=''''''''
+rule.10.end='''{3,5}'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start=''''
+rule.11.end=''''
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='[+-]?(\d+_)*\d+\b'
+
+# Pattern 13: constant.number (root).
+rule.13.parent=-1
+rule.13.group='constant.number'
+rule.13.match='(0x([[:xdigit:]]+_)*[[:xdigit:]]+|0o([0-7]_)*[0-7]+|0b([01]+_)*[01]+)'
+
+# Pattern 14: constant.number (root).
+rule.14.parent=-1
+rule.14.group='constant.number'
+rule.14.match='[+-]?(\d+_)*\d+\.(\d+_)*\d+'
+
+# Pattern 15: constant.number (root).
+rule.15.parent=-1
+rule.15.group='constant.number'
+rule.15.match='[+-]?(\d+_)*\d+(\.(\d+_)*\d+)?[Ee][+-]?(\d+_)*\d+'
+
+# Pattern 16: constant.number (root).
+rule.16.parent=-1
+rule.16.group='constant.number'
+rule.16.match='(\+|-)(inf|nan)'
+
+# Pattern 17: identifier (root).
+rule.17.parent=-1
+rule.17.group='identifier'
+rule.17.match='\b[A-Za-z_][A-Za-z0-9_-]*\b'
+
+# Pattern 18: constant.bool.true (root).
+rule.18.parent=-1
+rule.18.group='constant.bool.true'
+rule.18.match='\btrue\b'
+
+# Pattern 19: constant.bool.false (root).
+rule.19.parent=-1
+rule.19.group='constant.bool.false'
+rule.19.match='\bfalse\b'
+
+# Pattern 20: constant.number (root).
+rule.20.parent=-1
+rule.20.group='constant.number'
+rule.20.match='\b(inf|nan)\b'
+
+# Pattern 21: constant (root).
+rule.21.parent=-1
+rule.21.group='constant'
+rule.21.match='\d+-\d{2}-\d{2}([T ]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?)?'
+
+# Pattern 22: constant (root).
+rule.22.parent=-1
+rule.22.group='constant'
+rule.22.match='\d{2}:\d{2}:\d{2}(\.\d+)?'
+
+# Region 23: comment (root).
+rule.23.parent=-1
+rule.23.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.23.start='#'
+rule.23.end='$'
+
+# Pattern 24: todo (inside region 23).
+rule.24.parent=23
+rule.24.group='todo'
+rule.24.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=25

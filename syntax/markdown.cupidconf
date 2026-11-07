@@ -1,0 +1,90 @@
+# Syntax: markdown
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='markdown'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(livemd|md|mkd|mkdn|markdown)$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='.*[ :]\|[ :].*'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='^>.*'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='(^|[[:space:]])(_[^ ][^_]*_|\*[^ ][^*]*\*)'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='(^|[[:space:]])(__[^ ][^_]*__|\*\*[^ ][^*]*\*\*)'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='(^|[[:space:]])~~[^ ][^~]*~~'
+
+# Pattern 5: special (root).
+rule.5.parent=-1
+rule.5.group='special'
+rule.5.match='^(---+|===+|___+|\*\*\*+)\s*$'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='^#{1,6}.*'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='^[[:space:]]*[\*+-] |^[[:space:]]*[0-9]+\. '
+
+# Pattern 8: preproc (root).
+rule.8.parent=-1
+rule.8.group='preproc'
+rule.8.match='(\(([CcRr]|[Tt][Mm])\)|\.{3}|(^|[[:space:]])\-\-($|[[:space:]]))'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='\[[^]]+\]'
+
+# Pattern 10: constant (root).
+rule.10.parent=-1
+rule.10.group='constant'
+rule.10.match='\[([^][]|\[[^]]*\])*\]\([^)]+\)'
+
+# Pattern 11: underlined (root).
+rule.11.parent=-1
+rule.11.group='underlined'
+rule.11.match='!\[[^][]*\](\([^)]+\)|\[[^]]+\])'
+
+# Pattern 12: underlined (root).
+rule.12.parent=-1
+rule.12.group='underlined'
+rule.12.match='https?://[^ )>]+'
+
+# Pattern 13: special (root).
+rule.13.parent=-1
+rule.13.group='special'
+rule.13.match='^```$'
+
+# Region 14: special (root).
+rule.14.parent=-1
+rule.14.group='special'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='`'
+rule.14.end='`'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=15

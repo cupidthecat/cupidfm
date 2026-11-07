@@ -77,6 +77,12 @@ jobs:
           make -C tests test_config_keys test_plugins_api CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_config_keys
           ./tests/test_plugins_api
+      - name: Check syntax rules and foreground rendering with sanitizers
+        run: |
+          make -B -C tests test_syntax_rules syntax_snapshot CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          cd tests
+          ./test_syntax_rules
+          python3 test_syntax_examples.py
       - name: Check archive previews with sanitizers
         run: |
           rm tests/test_archive_preview

@@ -1,0 +1,141 @@
+# Syntax: kotlin
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='kotlin'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.kts?$'
+
+# Pattern 0: symbol.operator (root).
+rule.0.parent=-1
+rule.0.group='symbol.operator'
+rule.0.match='([.:;,+*|=!?\\%]|<|>|/|-|&)'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(as|by|class|constructor|companion|const|fun|import|in|infix|interface|inline|is|out|operator|package|return|suspend|super|this|when|val|var)\b'
+
+# Pattern 2: statement.properties (root).
+rule.2.parent=-1
+rule.2.group='statement.properties'
+rule.2.match='\b(get|set)\b'
+
+# Pattern 3: statement.control (root).
+rule.3.parent=-1
+rule.3.group='statement.control'
+rule.3.match='\b(break|continue|else|do|if|try|catch|finally|for|while)\b'
+
+# Pattern 4: statement.class (root).
+rule.4.parent=-1
+rule.4.group='statement.class'
+rule.4.match='\b(abstract|annotation|data|enum|final|open|sealed)\b'
+
+# Pattern 5: statement.member (root).
+rule.5.parent=-1
+rule.5.group='statement.member'
+rule.5.match='\b(override|lateinit|init)\b'
+
+# Pattern 6: statement.access (root).
+rule.6.parent=-1
+rule.6.group='statement.access'
+rule.6.match='\b(internal|private|protected|public)\b'
+
+# Pattern 7: statement.parameter (root).
+rule.7.parent=-1
+rule.7.group='statement.parameter'
+rule.7.match='\b(crossinline|noinline|reified|vararg)\b'
+
+# Pattern 8: type (root).
+rule.8.parent=-1
+rule.8.group='type'
+rule.8.match='\b(dynamic|object|throw|typealias)\b'
+
+# Pattern 9: statement.meta (root).
+rule.9.parent=-1
+rule.9.group='statement.meta'
+rule.9.match='\@(\bfile|delegate|field|get|property|receiver|set|setparam|param|)\b'
+
+# Pattern 10: constant (root).
+rule.10.parent=-1
+rule.10.group='constant'
+rule.10.match='\b(true|false|null)'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='([0-9]+)'
+
+# Pattern 12: type.storage (root).
+rule.12.parent=-1
+rule.12.group='type.storage'
+rule.12.match='\b(Byte|UByte|Char|Double|Float|Int|UInt|Long|ULong|Short|UShort|Boolean|Unit|Nothing)\b'
+
+# Pattern 13: type.collections (root).
+rule.13.parent=-1
+rule.13.group='type.collections'
+rule.13.match='\b(Array)\b'
+
+# Region 14: constant.string (root).
+rule.14.parent=-1
+rule.14.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='\"'
+rule.14.end='\"'
+# Mask escaped text before matching delimiters.
+rule.14.skip='\\.'
+
+# Pattern 15: constant.specialChar (inside region 14).
+rule.15.parent=14
+rule.15.group='constant.specialChar'
+rule.15.match='(\\0|\\\\|\\t|\\n|\\r|\\"|\\'')'
+
+# Pattern 16: constant.unicode (inside region 14).
+rule.16.parent=14
+rule.16.group='constant.unicode'
+rule.16.match='\\u\{[[:xdigit:]]+}'
+
+# Pattern 17: comment.shebang (root).
+rule.17.parent=-1
+rule.17.group='comment.shebang'
+rule.17.match='^(#!).*'
+
+# Pattern 18: comment.line (root).
+rule.18.parent=-1
+rule.18.group='comment.line'
+rule.18.match='//.*'
+
+# Region 19: comment.block (root).
+rule.19.parent=-1
+rule.19.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='/\*'
+rule.19.end='\*/'
+
+# Pattern 20: todo (inside region 19).
+rule.20.parent=19
+rule.20.group='todo'
+rule.20.match='(TODO|XXX|FIXME):?'
+
+# Region 21: comment.block (root).
+rule.21.parent=-1
+rule.21.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='/\*\*'
+rule.21.end='\*/'
+
+# Pattern 22: todo (inside region 21).
+rule.22.parent=21
+rule.22.group='todo'
+rule.22.match='(TODO|XXX|FIXME):?'
+
+# Pattern 23: todo (root).
+rule.23.parent=-1
+rule.23.group='todo'
+rule.23.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=24

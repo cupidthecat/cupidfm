@@ -1,0 +1,68 @@
+# Syntax: lfe
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='lfe'
+
+# Detection: filename first, then header and content signature.
+detect.filename='lfe$|\.lfe$'
+
+# Pattern 0: symbol.brackets (root).
+rule.0.parent=-1
+rule.0.group='symbol.brackets'
+rule.0.match='\(|\)'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='defun|define-syntax|define|defmacro|defmodule|export'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='\ [A-Za-z][A-Za-z0-9_-]+\ '
+
+# Pattern 3: symbol.operator (root).
+rule.3.parent=-1
+rule.3.group='symbol.operator'
+rule.3.match='\(([\-+*/<>]|<=|>=)|'''
+
+# Pattern 4: constant.number (root).
+rule.4.parent=-1
+rule.4.group='constant.number'
+rule.4.match='\b[0-9]+\b'
+
+# Pattern 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+rule.5.match='\"(\\.|[^"])*\"'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='[''|`][A-Za-z][A-Za-z0-9_\-]+'
+
+# Pattern 7: constant.specialChar (root).
+rule.7.parent=-1
+rule.7.group='constant.specialChar'
+rule.7.match='\\.?'
+
+# Pattern 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+rule.8.match='(^|[[:space:]]);.*'
+
+# Pattern 9: indent-char.whitespace (root).
+rule.9.parent=-1
+rule.9.group='indent-char.whitespace'
+rule.9.match='[[:space:]]+$'
+
+# Pattern 10: indent-char (root).
+rule.10.parent=-1
+rule.10.group='indent-char'
+rule.10.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=11

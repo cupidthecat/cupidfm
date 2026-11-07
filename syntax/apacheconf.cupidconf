@@ -1,0 +1,234 @@
+# Syntax: apacheconf
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='apacheconf'
+
+# Detection: filename first, then header and content signature.
+detect.filename='httpd\.conf|mime\.types|vhosts\.d\\*|\.htaccess'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='(AcceptMutex|AcceptPathInfo|AccessFileName|Action|AddAlt|AddAltByEncoding|AddAltByType|AddCharset|AddDefaultCharset|AddDescription|AddEncoding)'
+
+# Pattern 1: identifier (root).
+rule.1.parent=-1
+rule.1.group='identifier'
+rule.1.match='(AddHandler|AddIcon|AddIconByEncoding|AddIconByType|AddInputFilter|AddLanguage|AddModuleInfo|AddOutputFilter|AddOutputFilterByType|AddType|Alias|AliasMatch)'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='(Allow|AllowCONNECT|AllowEncodedSlashes|AllowOverride|Anonymous|Anonymous_Authoritative|Anonymous_LogEmail|Anonymous_MustGiveEmail|Anonymous_NoUserID)'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='(Anonymous_VerifyEmail|AssignUserID|AuthAuthoritative|AuthDBMAuthoritative|AuthDBMGroupFile|AuthDBMType|AuthDBMUserFile|AuthDigestAlgorithm)'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='(AuthDigestDomain|AuthDigestFile|AuthDigestGroupFile|AuthDigestNcCheck|AuthDigestNonceFormat|AuthDigestNonceLifetime|AuthDigestQop|AuthDigestShmemSize)'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='(AuthGroupFile|AuthLDAPAuthoritative|AuthLDAPBindDN|AuthLDAPBindPassword|AuthLDAPCharsetConfig|AuthLDAPCompareDNOnServer|AuthLDAPDereferenceAliases)'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='(AuthLDAPEnabled|AuthLDAPFrontPageHack|AuthLDAPGroupAttribute|AuthLDAPGroupAttributeIsDN|AuthLDAPRemoteUserIsDN|AuthLDAPUrl|AuthName|AuthType|AuthUserFile)'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='(BrowserMatch|BrowserMatchNoCase|BS2000Account|BufferedLogs|CacheDefaultExpire|CacheDirLength|CacheDirLevels|CacheDisable|CacheEnable|CacheExpiryCheck)'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='(CacheFile|CacheForceCompletion|CacheGcClean|CacheGcDaily|CacheGcInterval|CacheGcMemUsage|CacheGcUnused|CacheIgnoreCacheControl|CacheIgnoreHeaders)'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='(CacheIgnoreNoLastMod|CacheLastModifiedFactor|CacheMaxExpire|CacheMaxFileSize|CacheMinFileSize|CacheNegotiatedDocs|CacheRoot|CacheSize|CacheTimeMargin)'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='(CGIMapExtension|CharsetDefault|CharsetOptions|CharsetSourceEnc|CheckSpelling|ChildPerUserID|ContentDigest|CookieDomain|CookieExpires|CookieLog|CookieName)'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='(CookieStyle|CookieTracking|CoreDumpDirectory|CustomLog|Dav|DavDepthInfinity|DavLockDB|DavMinTimeout|DefaultIcon|DefaultLanguage|DefaultType)'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='(DeflateBufferSize|DeflateCompressionLevel|DeflateFilterNote|DeflateMemLevel|DeflateWindowSize|Deny|Directory|DirectoryIndex|DirectoryMatch|DirectorySlash)'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='(DocumentRoot|DumpIOInput|DumpIOOutput|EnableExceptionHook|EnableMMAP|EnableSendfile|ErrorDocument|ErrorLog|Example|ExpiresActive|ExpiresByType)'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='(ExpiresDefault|ExtendedStatus|ExtFilterDefine|ExtFilterOptions|FileETag|Files|FilesMatch|ForceLanguagePriority|ForceType|ForensicLog|Group|Header)'
+
+# Pattern 15: identifier (root).
+rule.15.parent=-1
+rule.15.group='identifier'
+rule.15.match='(HeaderName|HostnameLookups|IdentityCheck|IfDefine|IfModule|IfVersion|ImapBase|ImapDefault|ImapMenu|Include|IndexIgnore|IndexOptions|IndexOrderDefault)'
+
+# Pattern 16: identifier (root).
+rule.16.parent=-1
+rule.16.group='identifier'
+rule.16.match='(ISAPIAppendLogToErrors|ISAPIAppendLogToQuery|ISAPICacheFile|ISAPIFakeAsync|ISAPILogNotSupported|ISAPIReadAheadBuffer|KeepAlive|KeepAliveTimeout)'
+
+# Pattern 17: identifier (root).
+rule.17.parent=-1
+rule.17.group='identifier'
+rule.17.match='(LanguagePriority|LDAPCacheEntries|LDAPCacheTTL|LDAPConnectionTimeout|LDAPOpCacheEntries|LDAPOpCacheTTL|LDAPSharedCacheFile|LDAPSharedCacheSize)'
+
+# Pattern 18: identifier (root).
+rule.18.parent=-1
+rule.18.group='identifier'
+rule.18.match='(LDAPTrustedCA|LDAPTrustedCAType|Limit|LimitExcept|LimitInternalRecursion|LimitRequestBody|LimitRequestFields|LimitRequestFieldSize|LimitRequestLine)'
+
+# Pattern 19: identifier (root).
+rule.19.parent=-1
+rule.19.group='identifier'
+rule.19.match='(LimitXMLRequestBody|Listen|ListenBackLog|LoadFile|LoadModule|Location|LocationMatch|LockFile|LogFormat|LogLevel|MaxClients|MaxKeepAliveRequests)'
+
+# Pattern 20: identifier (root).
+rule.20.parent=-1
+rule.20.group='identifier'
+rule.20.match='(MaxMemFree|MaxRequestsPerChild|MaxRequestsPerThread|MaxSpareServers|MaxSpareThreads|MaxThreads|MaxThreadsPerChild|MCacheMaxObjectCount|MCacheMaxObjectSize)'
+
+# Pattern 21: identifier (root).
+rule.21.parent=-1
+rule.21.group='identifier'
+rule.21.match='(MCacheMaxStreamingBuffer|MCacheMinObjectSize|MCacheRemovalAlgorithm|MCacheSize|MetaDir|MetaFiles|MetaSuffix|MimeMagicFile|MinSpareServers|MinSpareThreads)'
+
+# Pattern 22: identifier (root).
+rule.22.parent=-1
+rule.22.group='identifier'
+rule.22.match='(MMapFile|ModMimeUsePathInfo|MultiviewsMatch|NameVirtualHost|NoProxy|NumServers|NWSSLTrustedCerts|NWSSLUpgradeable|Options|Order|PassEnv|PidFile)'
+
+# Pattern 23: identifier (root).
+rule.23.parent=-1
+rule.23.group='identifier'
+rule.23.match='(ProtocolEcho|Proxy|ProxyBadHeader|ProxyBlock|ProxyDomain|ProxyErrorOverride|ProxyIOBufferSize|ProxyMatch|ProxyMaxForwards|ProxyPass|ProxyPassReverse)'
+
+# Pattern 24: identifier (root).
+rule.24.parent=-1
+rule.24.group='identifier'
+rule.24.match='(ProxyPreserveHost|ProxyReceiveBufferSize|ProxyRemote|ProxyRemoteMatch|ProxyRequests|ProxyTimeout|ProxyVia|ReadmeName|Redirect|RedirectMatch)'
+
+# Pattern 25: identifier (root).
+rule.25.parent=-1
+rule.25.group='identifier'
+rule.25.match='(RedirectPermanent|RedirectTemp|RemoveCharset|RemoveEncoding|RemoveHandler|RemoveInputFilter|RemoveLanguage|RemoveOutputFilter|RemoveType|RequestHeader)'
+
+# Pattern 26: identifier (root).
+rule.26.parent=-1
+rule.26.group='identifier'
+rule.26.match='(Require|RewriteBase|RewriteCond|RewriteEngine|RewriteLock|RewriteLog|RewriteLogLevel|RewriteMap|RewriteOptions|RewriteRule|RLimitCPU|RLimitMEM|RLimitNPROC)'
+
+# Pattern 27: identifier (root).
+rule.27.parent=-1
+rule.27.group='identifier'
+rule.27.match='(Satisfy|ScoreBoardFile|Script|ScriptAlias|ScriptAliasMatch|ScriptInterpreterSource|ScriptLog|ScriptLogBuffer|ScriptLogLength|ScriptSock|SecureListen)'
+
+# Pattern 28: identifier (root).
+rule.28.parent=-1
+rule.28.group='identifier'
+rule.28.match='(SendBufferSize|ServerAdmin|ServerAlias|ServerLimit|ServerName|ServerPath|ServerRoot|ServerSignature|ServerTokens|SetEnv|SetEnvIf|SetEnvIfNoCase|SetHandler)'
+
+# Pattern 29: identifier (root).
+rule.29.parent=-1
+rule.29.group='identifier'
+rule.29.match='(SetInputFilter|SetOutputFilter|SSIEndTag|SSIErrorMsg|SSIStartTag|SSITimeFormat|SSIUndefinedEcho|SSLCACertificateFile|SSLCACertificatePath)'
+
+# Pattern 30: identifier (root).
+rule.30.parent=-1
+rule.30.group='identifier'
+rule.30.match='(SSLCARevocationFile|SSLCARevocationPath|SSLCertificateChainFile|SSLCertificateFile|SSLCertificateKeyFile|SSLCipherSuite|SSLEngine|SSLMutex|SSLOptions)'
+
+# Pattern 31: identifier (root).
+rule.31.parent=-1
+rule.31.group='identifier'
+rule.31.match='(SSLPassPhraseDialog|SSLProtocol|SSLProxyCACertificateFile|SSLProxyCACertificatePath|SSLProxyCARevocationFile|SSLProxyCARevocationPath|SSLProxyCipherSuite)'
+
+# Pattern 32: identifier (root).
+rule.32.parent=-1
+rule.32.group='identifier'
+rule.32.match='(SSLProxyEngine|SSLProxyMachineCertificateFile|SSLProxyMachineCertificatePath|SSLProxyProtocol|SSLProxyVerify|SSLProxyVerifyDepth|SSLRandomSeed|SSLRequire)'
+
+# Pattern 33: identifier (root).
+rule.33.parent=-1
+rule.33.group='identifier'
+rule.33.match='(SSLRequireSSL|SSLSessionCache|SSLSessionCacheTimeout|SSLUserName|SSLVerifyClient|SSLVerifyDepth|StartServers|StartThreads|SuexecUserGroup|ThreadLimit)'
+
+# Pattern 34: identifier (root).
+rule.34.parent=-1
+rule.34.group='identifier'
+rule.34.match='(ThreadsPerChild|ThreadStackSize|TimeOut|TraceEnable|TransferLog|TypesConfig|UnsetEnv|UseCanonicalName|User|UserDir|VirtualDocumentRoot)'
+
+# Pattern 35: identifier (root).
+rule.35.parent=-1
+rule.35.group='identifier'
+rule.35.match='(VirtualDocumentRootIP|VirtualHost|VirtualScriptAlias|VirtualScriptAliasIP|Win32DisableAcceptEx|XBitHack)'
+
+# Pattern 36: symbol.tag (root).
+rule.36.parent=-1
+rule.36.group='symbol.tag'
+rule.36.match='<[^>]+>'
+
+# Pattern 37: identifier (root).
+rule.37.parent=-1
+rule.37.group='identifier'
+rule.37.match='</?[A-Za-z]+'
+
+# Pattern 38: identifier (root).
+rule.38.parent=-1
+rule.38.group='identifier'
+rule.38.match='(<|</|>)'
+
+# Region 39: constant.string (root).
+rule.39.parent=-1
+rule.39.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.39.start='"'
+rule.39.end='"'
+# Mask escaped text before matching delimiters.
+rule.39.skip='\\.'
+
+# Pattern 40: constant.specialChar (inside region 39).
+rule.40.parent=39
+rule.40.group='constant.specialChar'
+rule.40.match='\\.'
+
+# Region 41: comment (root).
+rule.41.parent=-1
+rule.41.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.41.start='#'
+rule.41.end='$'
+
+# Pattern 42: todo (inside region 41).
+rule.42.parent=41
+rule.42.group='todo'
+rule.42.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=43

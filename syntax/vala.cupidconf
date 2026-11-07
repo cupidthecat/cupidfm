@@ -1,0 +1,95 @@
+# Syntax: vala
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='vala'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.vala$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(float|double|bool|u?char|u?int(8|16|32|64)?|u?short|u?long|void|s?size_t|unichar)\b'
+
+# Pattern 1: identifier.class (root).
+rule.1.parent=-1
+rule.1.group='identifier.class'
+rule.1.match='[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[()]'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(for|if|while|do|else|case|default|switch|try|throw|catch)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(inline|typedef|struct|enum|union|extern|static|const)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(operator|new|delete|return|null)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(class|override|private|public|signal|this|weak)\b'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='\b(goto|break|continue)\b'
+
+# Pattern 7: constant.bool (root).
+rule.7.parent=-1
+rule.7.group='constant.bool'
+rule.7.match='\b(true|false)\b'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b([0-9]+)\b'
+
+# Pattern 9: symbol.operator (root).
+rule.9.parent=-1
+rule.9.group='symbol.operator'
+rule.9.match='[\-+/*=<>?:!~%&|]|->'
+
+# Pattern 10: constant.string (root).
+rule.10.parent=-1
+rule.10.group='constant.string'
+rule.10.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 11: comment (root).
+rule.11.parent=-1
+rule.11.group='comment'
+rule.11.match='(^|[[:space:]])//.*'
+
+# Region 12: comment (root).
+rule.12.parent=-1
+rule.12.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.12.start='/\*'
+rule.12.end='\*/'
+
+# Pattern 13: todo (root).
+rule.13.parent=-1
+rule.13.group='todo'
+rule.13.match='TODO:?'
+
+# Pattern 14: indent-char.whitespace (root).
+rule.14.parent=-1
+rule.14.group='indent-char.whitespace'
+rule.14.match='[[:space:]]+$'
+
+# Pattern 15: indent-char (root).
+rule.15.parent=-1
+rule.15.group='indent-char'
+rule.15.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=16

@@ -1,0 +1,257 @@
+# Syntax: swift
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='swift'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.swift$'
+detect.header='^#!.*bin/(env +)?swift( |$)'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(_)\b'
+
+# Pattern 1: symbol.operator (root).
+rule.1.parent=-1
+rule.1.group='symbol.operator'
+rule.1.match='([.:;,+*|=!?\\%]|<|>|/|-|&)'
+
+# Pattern 2: statement.declaration (root).
+rule.2.parent=-1
+rule.2.group='statement.declaration'
+rule.2.match='\b(associatedtype|class|deinit|enum|extension|fileprivate|func|import|init)\b'
+
+# Pattern 3: statement.declaration (root).
+rule.3.parent=-1
+rule.3.group='statement.declaration'
+rule.3.match='\b(inout|internal|let|open|operator|private|protocol|public|static|struct|subscript|typealias|var)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(break|case|continue|default|defer|do|else|fallthrough|for|guard)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(if|inif|repeat|return|switch|where|while)\b'
+
+# Pattern 6: statement.reserved (root).
+rule.6.parent=-1
+rule.6.group='statement.reserved'
+rule.6.match='\b(associativity|convenience|dynamic|didSet|final|get|infix|indirect|lazy|left|mutating)\b'
+
+# Pattern 7: statement.reserved (root).
+rule.7.parent=-1
+rule.7.group='statement.reserved'
+rule.7.match='\b(none|nonmutating|override|postfix|precedence|prefix|Protocol|required)\b'
+
+# Pattern 8: statement.reserved (root).
+rule.8.parent=-1
+rule.8.group='statement.reserved'
+rule.8.match='\b(right|set|Type|unowned|weak|willSet)\b'
+
+# Pattern 9: type (root).
+rule.9.parent=-1
+rule.9.group='type'
+rule.9.match='\b(as|Any|catch|is|rethrows|super|self|throw|throws|try)\b'
+
+# Pattern 10: statement.built_in (root).
+rule.10.parent=-1
+rule.10.group='statement.built_in'
+rule.10.match='\b(abs|advance|alignof|alignofValue|anyGenerator|assert|assertionFailure|bridgeFromObjectiveC)\b'
+
+# Pattern 11: statement.built_in (root).
+rule.11.parent=-1
+rule.11.group='statement.built_in'
+rule.11.match='\b(bridgeFromObjectiveCUnconditional|bridgeToObjectiveC|bridgeToObjectiveCUnconditional|contains)\b'
+
+# Pattern 12: statement.built_in (root).
+rule.12.parent=-1
+rule.12.group='statement.built_in'
+rule.12.match='\b(count|countElements|countLeadingZeros|debugPrint|debugPrintln|distance|dropFirst|dropLast|dump|encodeBitsAsWords)\b'
+
+# Pattern 13: statement.built_in (root).
+rule.13.parent=-1
+rule.13.group='statement.built_in'
+rule.13.match='\b(enumerate|equal|fatalError|filter|find|getBridgedObjectiveCType|getVaList|indices|insertionSort)\b'
+
+# Pattern 14: statement.built_in (root).
+rule.14.parent=-1
+rule.14.group='statement.built_in'
+rule.14.match='\b(isBridgedToObjectiveC|isBridgedVerbatimToObjectiveC|isUniquelyReferenced|isUniquelyReferencedNonObjC)\b'
+
+# Pattern 15: statement.built_in (root).
+rule.15.parent=-1
+rule.15.group='statement.built_in'
+rule.15.match='\b(join|lexicographicalCompare|map|max|maxElement|min|minElement|numericCast|overlaps|partition|posix)\b'
+
+# Pattern 16: statement.built_in (root).
+rule.16.parent=-1
+rule.16.group='statement.built_in'
+rule.16.match='\b(precondition|preconditionFailure|print|println|quickSort|readLine|reduce|reflect)\b'
+
+# Pattern 17: statement.built_in (root).
+rule.17.parent=-1
+rule.17.group='statement.built_in'
+rule.17.match='\b(reinterpretCast!reverse|roundUpToAlignment|sizeof|sizeofValue|sort|split|startsWith|stride)\b'
+
+# Pattern 18: statement.built_in (root).
+rule.18.parent=-1
+rule.18.group='statement.built_in'
+rule.18.match='\b(strideof|strideofValue|swap|toString|transcode|underestimateCount|unsafeAddressOf|unsafeBitCast)\b'
+
+# Pattern 19: statement.built_in (root).
+rule.19.parent=-1
+rule.19.group='statement.built_in'
+rule.19.match='\b(unsafeDowncast|unsafeUnwrap|unsafeReflect|withExtendedLifetime|withObjectAtPlusZero|withUnsafePointer)\b'
+
+# Pattern 20: statement.built_in (root).
+rule.20.parent=-1
+rule.20.group='statement.built_in'
+rule.20.match='\b(withUnsafePointerToObject|withUnsafeMutablePointer|withUnsafeMutablePointers|withUnsafePointer)\b'
+
+# Pattern 21: statement.built_in (root).
+rule.21.parent=-1
+rule.21.group='statement.built_in'
+rule.21.match='\b(withUnsafePointers|withVaList|zip)\b'
+
+# Pattern 22: statement.meta (root).
+rule.22.parent=-1
+rule.22.group='statement.meta'
+rule.22.match='\@\b(autoclosure|available|convention|exported|IBAction|IBDesignable|IBOutlet|IBInspectable|infix)\b'
+
+# Pattern 23: statement.meta (root).
+rule.23.parent=-1
+rule.23.group='statement.meta'
+rule.23.match='\@\b(lazy|noreturn|noescape|nonobjc|NSApplicationMain|NSCopying|NSManaged|objc|prefix|postfix)\b'
+
+# Pattern 24: statement.meta (root).
+rule.24.parent=-1
+rule.24.group='statement.meta'
+rule.24.match='\@\b(required|testable|warn_unused_result|UIApplicationMain)\b'
+
+# Pattern 25: preproc (root).
+rule.25.parent=-1
+rule.25.group='preproc'
+rule.25.match='^[[:space:]]*#[[:space:]]*(define|else|elseif|endif|if|selector)\b'
+
+# Pattern 26: preproc.DebugIdentifier (root).
+rule.26.parent=-1
+rule.26.group='preproc.DebugIdentifier'
+rule.26.match='\b(__COLUMN__|__FILE__|__FUNCTION__|__LINE__)\b'
+
+# Pattern 27: preproc.DebugIdentifier (root).
+rule.27.parent=-1
+rule.27.group='preproc.DebugIdentifier'
+rule.27.match='^[[:space:]]*#[[:space:]]*(column|file|function|line)\b'
+
+# Pattern 28: constant (root).
+rule.28.parent=-1
+rule.28.group='constant'
+rule.28.match='\b(true|false|nil)'
+
+# Pattern 29: constant.number (root).
+rule.29.parent=-1
+rule.29.group='constant.number'
+rule.29.match='([0-9]+)'
+
+# Pattern 30: type.storage (root).
+rule.30.parent=-1
+rule.30.group='type.storage'
+rule.30.match='\b((U)?Int(8|16|32|64))\b'
+
+# Pattern 31: type.storage (root).
+rule.31.parent=-1
+rule.31.group='type.storage'
+rule.31.match='\b(Int|UInt|String|Bit|Bool|Character|Double|Optional|Float|Range)\b'
+
+# Pattern 32: type.storage (root).
+rule.32.parent=-1
+rule.32.group='type.storage'
+rule.32.match='\b(AnyObject)\b'
+
+# Pattern 33: type.collections (root).
+rule.33.parent=-1
+rule.33.group='type.collections'
+rule.33.match='\b(Array|Dictionary|Set)\b'
+
+# Pattern 34: type.ctypes (root).
+rule.34.parent=-1
+rule.34.group='type.ctypes'
+rule.34.match='\b(CBool|CChar|CUnsignedChar|CShort|CUnsignedShort|CInt|CUnsignedInt|CLong|CUnsignedLong|CLongLong|CUnsignedLongLong|CWideChar|CChar16|CChar32|CFloat|CDouble)\b'
+
+# Region 35: constant.string (root).
+rule.35.parent=-1
+rule.35.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.35.start='\"'
+rule.35.end='\"'
+# Mask escaped text before matching delimiters.
+rule.35.skip='\\.'
+
+# Pattern 36: constant.specialChar (inside region 35).
+rule.36.parent=35
+rule.36.group='constant.specialChar'
+rule.36.match='(\\0|\\\\|\\t|\\n|\\r|\\"|\\'')'
+
+# Pattern 37: constant.interpolation (inside region 35).
+rule.37.parent=35
+rule.37.group='constant.interpolation'
+rule.37.match='\\\([[:graph:]]*\)'
+
+# Pattern 38: constant.unicode (inside region 35).
+rule.38.parent=35
+rule.38.group='constant.unicode'
+rule.38.match='\\u\{[[:xdigit:]]+}'
+
+# Pattern 39: comment.shebang (root).
+rule.39.parent=-1
+rule.39.group='comment.shebang'
+rule.39.match='^(#!).*'
+
+# Pattern 40: comment.doc (root).
+rule.40.parent=-1
+rule.40.group='comment.doc'
+rule.40.match='(///).*'
+
+# Pattern 41: comment.line (root).
+rule.41.parent=-1
+rule.41.group='comment.line'
+rule.41.match='//.*'
+
+# Region 42: comment.block (root).
+rule.42.parent=-1
+rule.42.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.42.start='/\*'
+rule.42.end='\*/'
+
+# Pattern 43: todo (inside region 42).
+rule.43.parent=42
+rule.43.group='todo'
+rule.43.match='(TODO|XXX|FIXME):?'
+
+# Region 44: comment.block (root).
+rule.44.parent=-1
+rule.44.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.44.start='/\*\*'
+rule.44.end='\*/'
+
+# Pattern 45: todo (inside region 44).
+rule.45.parent=44
+rule.45.group='todo'
+rule.45.match='(TODO|XXX|FIXME):?'
+
+# Pattern 46: todo (root).
+rule.46.parent=-1
+rule.46.group='todo'
+rule.46.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=47

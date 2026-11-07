@@ -1,0 +1,70 @@
+# Syntax: pov
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='pov'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(pov|POV|povray|POVRAY)$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='^[[:space:]]*#[[:space:]]*(declare)'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(sphere|cylinder|translate|matrix|rotate|scale)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(orthographic|location|up|right|direction|clipped_by)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(fog_type|fog_offset|fog_alt|rgb|distance|transform)\b'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='^\b(texture)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='\b(light_source|background)\b'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='\b(fog|object|camera)\b'
+
+# Pattern 7: symbol.operator (root).
+rule.7.parent=-1
+rule.7.group='symbol.operator'
+rule.7.match='(\{|\}|\(|\)|\;|\]|\[|`|\\|\$|<|>|!|=|&|\|)'
+
+# Pattern 8: special (root).
+rule.8.parent=-1
+rule.8.group='special'
+rule.8.match='\b(union|group|subgroup)\b'
+
+# Pattern 9: comment (root).
+rule.9.parent=-1
+rule.9.group='comment'
+rule.9.match='//.*'
+
+# Region 10: comment (root).
+rule.10.parent=-1
+rule.10.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.10.start='/\*'
+rule.10.end='\*/'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=11

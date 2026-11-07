@@ -88,6 +88,12 @@ int main(void) {
     assert(screen);
     set_term(screen);
     start_color();
+    use_default_colors();
+    init_pair(44, COLOR_CYAN, -1);
+    ensure_image_palette();
+    short foreground, background;
+    assert(pair_content(44, &foreground, &background) != ERR);
+    assert(foreground == COLOR_CYAN && background == -1);
     assert(resizeterm(60, 140) != ERR);
     WINDOW *window = newwin(30, 100, 0, 0);
     assert(window);

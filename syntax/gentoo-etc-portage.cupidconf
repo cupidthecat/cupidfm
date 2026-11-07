@@ -1,0 +1,55 @@
+# Syntax: etc-portage
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='etc-portage'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(keywords|mask|unmask|use)(/.+)?$'
+
+# Pattern 0: constant.bool.false (root).
+rule.0.parent=-1
+rule.0.group='constant.bool.false'
+rule.0.match='[[:space:]]+\+?[a-zA-Z0-9_-]+'
+
+# Pattern 1: constant.bool.true (root).
+rule.1.parent=-1
+rule.1.group='constant.bool.true'
+rule.1.match='[[:space:]]+-[a-zA-Z0-9_-]+'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='-[[:digit:]].*([[:space:]]|$)'
+
+# Pattern 3: identifier.class (root).
+rule.3.parent=-1
+rule.3.group='identifier.class'
+rule.3.match='[~-]?\b(alpha|amd64|arm|hppa|ia64|mips|ppc|ppc64|s390|sh|sparc|x86|x86-fbsd)\b'
+
+# Pattern 4: identifier.class (root).
+rule.4.parent=-1
+rule.4.group='identifier.class'
+rule.4.match='[[:space:]][~-]?\*'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='^[[:space:]]*.*/'
+
+# Pattern 6: symbol (root).
+rule.6.parent=-1
+rule.6.group='symbol'
+rule.6.match='^[[:space:]]*(=|~|<|<=|=<|>|>=|=>)'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='#'
+rule.7.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=8

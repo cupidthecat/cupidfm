@@ -1,0 +1,74 @@
+# Syntax: forth
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='forth'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(forth|4th|fs|fs8|ft|fth|frt)$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Za-z_0-9-]*\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(?i:(if|else|then|do|loop|case|endcase|of|endof|begin|while|repeat|until|again|unloop|leave|exit|done|next|\?do|\+do|\-do|\+loop|\-loop|\?leave))\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(^:|;$)'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(?i:(variable|constant|cells))\b'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='\B[?.]\B'
+
+# Pattern 5: constant.number (root).
+rule.5.parent=-1
+rule.5.group='constant.number'
+rule.5.match='\b[0-9]+\b'
+
+# Region 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start='\b([Ss.]" )'
+rule.6.end='"'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='\('
+rule.7.end='\)'
+
+# Pattern 8: todo (inside region 7).
+rule.8.parent=7
+rule.8.group='todo'
+rule.8.match='(TODO|NOTE|XXX|FIXME):?'
+
+# Region 9: comment (root).
+rule.9.parent=-1
+rule.9.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='\\'
+rule.9.end='$'
+
+# Pattern 10: todo (inside region 9).
+rule.10.parent=9
+rule.10.group='todo'
+rule.10.match='(TODO|NOTE|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=11

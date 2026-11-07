@@ -1,0 +1,193 @@
+# Syntax: fortran
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='fortran'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.([Ff]|[Ff]90|[Ff]95|[Ff][Oo][Rr])$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='(?i)\b(action|advance|all|allocatable|allocated|any|apostrophe)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='(?i)\b(append|asis|assign|assignment|associated|bind|character|common)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='(?i)\b(complex|data|default|delim|dimension|double precision)\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='(?i)\b(elemental|enum|enumerator|epsilon|external|file|fmt|form|format|huge)\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='(?i)\b(implicit|include|index|inquire|integer|intent|interface)\b'
+
+# Pattern 5: type (root).
+rule.5.parent=-1
+rule.5.group='type'
+rule.5.match='(?i)\b(intrinsic|iostat|kind|logical|module|none|null|only)\\b'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='(?i)\b(operator|optional|pack|parameter|pointer|position|private)\b'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='(?i)\b(program|public|real|recl|recursive|selected_int_kind)\b'
+
+# Pattern 8: type (root).
+rule.8.parent=-1
+rule.8.group='type'
+rule.8.match='(?i)\b(selected_real_kind|subroutine|status|module|function|logical)\b'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='(?i)\b(abs|achar|adjustl|adjustr|allocate|bit_size|call|char)\b'
+
+# Pattern 10: constant (root).
+rule.10.parent=-1
+rule.10.group='constant'
+rule.10.match='(?i)\b(close|contains|count|cpu_time|cshift|date_and_time)\b'
+
+# Pattern 11: constant (root).
+rule.11.parent=-1
+rule.11.group='constant'
+rule.11.match='(?i)\b(deallocate|digits|dot_product|eor|eoshift|iachar)\b'
+
+# Pattern 12: constant (root).
+rule.12.parent=-1
+rule.12.group='constant'
+rule.12.match='(?i)\b(iand|ibclr|ibits|ibset|ichar|ieor|iolength|ior|ishft|ishftc)\b'
+
+# Pattern 13: constant (root).
+rule.13.parent=-1
+rule.13.group='constant'
+rule.13.match='(?i)\b(lbound|len|len_trim|matmul|maxexponent|maxloc|maxval|merge)\b'
+
+# Pattern 14: constant (root).
+rule.14.parent=-1
+rule.14.group='constant'
+rule.14.match='(?i)\b(minexponent|minloc|minval|mvbits|namelist|nearest|nullify)\b'
+
+# Pattern 15: constant (root).
+rule.15.parent=-1
+rule.15.group='constant'
+rule.15.match='(?i)\b(open|pad|present|print|product|pure|quote|radix)\b'
+
+# Pattern 16: constant (root).
+rule.16.parent=-1
+rule.16.group='constant'
+rule.16.match='(?i)\b(random_number|random_seed|range|read|readwrite|replace)\b'
+
+# Pattern 17: constant (root).
+rule.17.parent=-1
+rule.17.group='constant'
+rule.17.match='(?i)\b(reshape|rewind|save|scan|sequence|shape|sign|size|spacing)\b'
+
+# Pattern 18: constant (root).
+rule.18.parent=-1
+rule.18.group='constant'
+rule.18.match='(?i)\b(spread|sum|system_clock|target|transfer|transpose|trim)\b'
+
+# Pattern 19: constant (root).
+rule.19.parent=-1
+rule.19.group='constant'
+rule.19.match='(?i)\b(ubound|unpack|verify|write|tiny|type|use|yes|true|false|not)\b'
+
+# Pattern 20: constant.number (root).
+rule.20.parent=-1
+rule.20.group='constant.number'
+rule.20.match='\b([0-9]+)\b'
+
+# Pattern 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+rule.21.match='(?i)\b(.and.|case|do|else|else?if|else?where|end|end?do|end?if)\b'
+
+# Pattern 22: statement (root).
+rule.22.parent=-1
+rule.22.group='statement'
+rule.22.match='(?i)\b(end?select|.eqv.|forall|if|lge|lgt|lle|llt|.neqv.|.not.)\b'
+
+# Pattern 23: statement (root).
+rule.23.parent=-1
+rule.23.group='statement'
+rule.23.match='(?i)\b(or|and|repeat|select|case|then|where|while|import)\b'
+
+# Pattern 24: special (root).
+rule.24.parent=-1
+rule.24.group='special'
+rule.24.match='(?i)\b(continue|cycle|exit|go?to|result|return)\b'
+
+# Pattern 25: symbol.operator (root).
+rule.25.parent=-1
+rule.25.group='symbol.operator'
+rule.25.match='[.:;,+*|=!\%]|/|-|>|<|&'
+
+# Pattern 26: symbol.bracket (root).
+rule.26.parent=-1
+rule.26.group='symbol.bracket'
+rule.26.match='[(){}]|\[|\]'
+
+# Pattern 27: preproc (root).
+rule.27.parent=-1
+rule.27.group='preproc'
+rule.27.match='^[[:space:]]*#[[:space:]]*(define|include|(un|ifn?)def|endif|el(if|se)|if|warning|error)'
+
+# Region 28: constant.string (root).
+rule.28.parent=-1
+rule.28.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.28.start='"'
+rule.28.end='"'
+# Mask escaped text before matching delimiters.
+rule.28.skip='\\.'
+
+# Pattern 29: constant.specialChar (inside region 28).
+rule.29.parent=28
+rule.29.group='constant.specialChar'
+rule.29.match='\\.'
+
+# Region 30: constant.string (root).
+rule.30.parent=-1
+rule.30.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.30.start=''''
+rule.30.end=''''
+# Mask escaped text before matching delimiters.
+rule.30.skip='\\.'
+
+# Pattern 31: constant.specialChar (inside region 30).
+rule.31.parent=30
+rule.31.group='constant.specialChar'
+rule.31.match='\\.'
+
+# Region 32: comment (root).
+rule.32.parent=-1
+rule.32.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.32.start='!'
+rule.32.end='$'
+
+# Pattern 33: todo (inside region 32).
+rule.33.parent=32
+rule.33.group='todo'
+rule.33.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=34

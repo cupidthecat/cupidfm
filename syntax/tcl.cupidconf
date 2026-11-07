@@ -1,0 +1,69 @@
+# Syntax: tcl
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='tcl'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.tcl$'
+detect.header='^#!.*/(env +)?tclsh( |$)'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(after|append|array|auto_execok|auto_import|auto_load|auto_load_index|auto_qualify|binary|break|case|catch|cd|clock|close|concat|continue|else|elseif|encoding|eof|error|eval|exec|exit|expr|fblocked|fconfigure|fcopy|file|fileevent|flush|for|foreach|format|gets|glob|global|history|if|incr|info|interp|join|lappend|lindex|linsert|list|llength|load|lrange|lreplace|lsearch|lset|lsort|namespace|open|package|pid|puts|pwd|read|regexp|regsub|rename|return|scan|seek|set|socket|source|split|string|subst|switch|tclLog|tell|time|trace|unknown|unset|update|uplevel|upvar|variable|vwait|while)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(array anymore|array donesearch|array exists|array get|array names|array nextelement|array set|array size|array startsearch|array statistics|array unset)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(string bytelength|string compare|string equal|string first|string index|string is|string last|string length|string map|string match|string range|string repeat|string replace|string to|string tolower|string totitle|string toupper|string trim|string trimleft|string trimright|string will|string wordend|string wordstart)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(alarm|auto_load_pkg|bsearch|catclose|catgets|catopen|ccollate|cconcat|cequal|chgrp|chmod|chown|chroot|cindex|clength|cmdtrace|commandloop|crange|csubstr|ctoken|ctype|dup|echo|execl|fcntl|flock|fork|fstat|ftruncate|funlock|host_info|id|infox|keyldel|keylget|keylkeys|keylset|kill|lassign|lcontain|lempty|lgets|link|lmatch|loadlibindex|loop|lvarcat|lvarpop|lvarpush|max|min|nice|pipe|profile|random|readdir|replicate|scancontext|scanfile|scanmatch|select|server_accept|server_create|signal|sleep|sync|system|tclx_findinit|tclx_fork|tclx_load_tndxs|tclx_sleep|tclx_system|tclx_wait|times|translit|try_eval|umask|wait)\b'
+
+# Pattern 4: identifier.class (root).
+rule.4.parent=-1
+rule.4.group='identifier.class'
+rule.4.match='proc[[:space:]]|(\{|\})'
+
+# Pattern 5: symbol.operator (root).
+rule.5.parent=-1
+rule.5.group='symbol.operator'
+rule.5.match='(\(|\)|\;|`|\\|\$|<|>|!|=|&|\|)'
+
+# Pattern 6: constant.number (root).
+rule.6.parent=-1
+rule.6.group='constant.number'
+rule.6.match='\b[0-9]+(\.[0-9]+)?\b'
+
+# Pattern 7: constant.string (root).
+rule.7.parent=-1
+rule.7.group='constant.string'
+rule.7.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 8: identifier.var (root).
+rule.8.parent=-1
+rule.8.group='identifier.var'
+rule.8.match='\$\{?[0-9A-Z_!@#$*?-]+\}?'
+
+# Pattern 9: comment (root).
+rule.9.parent=-1
+rule.9.group='comment'
+rule.9.match='(^|;)[[:space:]]*#.*'
+
+# Pattern 10: indent-char.whitespace (root).
+rule.10.parent=-1
+rule.10.group='indent-char.whitespace'
+rule.10.match='[[:space:]]+$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=11

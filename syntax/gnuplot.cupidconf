@@ -1,0 +1,40 @@
+# Syntax: gnuplot
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='gnuplot'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(gnu|gpi|plt|gp)$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(set|unset|plot|splot|replot|if|else|do|for|while|fit)\b'
+
+# Pattern 1: symbol.operator (root).
+rule.1.parent=-1
+rule.1.group='symbol.operator'
+rule.1.match='[-+/*=<>?:!~%&|^$]'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='\b([0-9]+|0x[0-9a-fA-F]*)\b'
+
+# Region 3: comment (root).
+rule.3.parent=-1
+rule.3.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.3.start='#'
+rule.3.end='$'
+
+# Pattern 4: todo (inside region 3).
+rule.4.parent=3
+rule.4.group='todo'
+rule.4.match='TODO:?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=5

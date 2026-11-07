@@ -7,25 +7,24 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "cupidconf.h"
 #include "globals.h"
 
-#define MAX_SYNTAX_DEFS 50
+#define MAX_SYNTAX_DEFS 512
 #define MAX_LINE_LENGTH 1024
 
 static SyntaxDef g_syntax_defs[MAX_SYNTAX_DEFS];
 static size_t g_syntax_count = 0;
 static bool g_syntax_initialized = false;
-
-// Store original color values to restore on exit
-static bool g_colors_changed = false;
-static short g_original_colors[8][3]; // Store RGB for colors 8-15
 
 // Forward declarations
 static bool parse_color_rgb(const char *value, int rgb[3]);
@@ -109,6 +108,7 @@ static void syntax_def_free(SyntaxDef *def) {
     if (!def)
         return;
 
+    syntax_rules_free(def->rules);
     free(def->language);
 
     for (size_t i = 0; i < def->keyword_count; i++) {
@@ -164,6 +164,25 @@ static void syntax_def_free(SyntaxDef *def) {
 static bool load_syntax_file(const char *filepath) {
     if (g_syntax_count >= MAX_SYNTAX_DEFS)
         return false;
+
+    cupidconf_t *config = cupidconf_load(filepath);
+    const char *format = config ? cupidconf_get(config, "format") : NULL;
+    bool modern = format && !strcmp(format, "2");
+    cupidconf_free(config);
+    if (modern) {
+        SyntaxRules *rules = syntax_rules_load(filepath);
+        if (!rules)
+            return false;
+        const char *name = syntax_rules_name(rules);
+        for (size_t i = 0; i < g_syntax_count; i++)
+            if (!strcmp(g_syntax_defs[i].language, name)) {
+                syntax_rules_free(rules);
+                return true;
+            }
+        SyntaxDef *def = &g_syntax_defs[g_syntax_count++];
+        *def = (SyntaxDef){.rules = rules, .language = g_strdup(name), .loaded = true};
+        return true;
+    }
 
     FILE *fp = fopen(filepath, "r");
     if (!fp)
@@ -258,46 +277,51 @@ static bool load_syntax_file(const char *filepath) {
     return true;
 }
 
-// Initialize syntax highlighting system
+static void load_directory(const char *path) {
+    struct dirent **entries;
+    int count = scandir(path, &entries, NULL, alphasort);
+    if (count < 0)
+        return;
+    for (int i = 0; i < count; i++) {
+        if (ends_with(entries[i]->d_name, ".cupidconf")) {
+            char file[MAX_PATH_LENGTH + 256];
+            snprintf(file, sizeof(file), "%s/%s", path, entries[i]->d_name);
+            load_syntax_file(file);
+        }
+        free(entries[i]);
+    }
+    free(entries);
+}
+
 void syntax_init(void) {
     if (g_syntax_initialized)
         return;
-
-    char syntax_dir[MAX_PATH_LENGTH];
-    snprintf(syntax_dir, sizeof(syntax_dir), "%s/.cupidfm/syntax", get_home_dir());
-
-    DIR *dir = opendir(syntax_dir);
-    if (!dir) {
-        g_syntax_initialized = true;
-        return; // No syntax directory, that's okay
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/.cupidfm/syntax", get_home_dir());
+    load_directory(path);
+    const char *extra = getenv("CUPIDFM_SYNTAX_DIR");
+    if (extra && *extra)
+        load_directory(extra);
+#ifdef __linux__
+    char executable[MAX_PATH_LENGTH];
+    ssize_t length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
+    if (length > 0) {
+        executable[length] = '\0';
+        char *slash = strrchr(executable, '/');
+        if (slash) {
+            *slash = '\0';
+            snprintf(path, sizeof(path), "%s/syntax", executable);
+            load_directory(path);
+        }
     }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (!ends_with(entry->d_name, ".cupidconf"))
-            continue;
-
-        // Use larger buffer to avoid truncation warning (dir path + "/" + filename)
-        char filepath[MAX_PATH_LENGTH + 256];
-        snprintf(filepath, sizeof(filepath), "%s/%s", syntax_dir, entry->d_name);
-        load_syntax_file(filepath);
-    }
-
-    closedir(dir);
+#endif
+    load_directory("/usr/local/share/cupidfm/syntax");
+    load_directory("/usr/share/cupidfm/syntax");
     g_syntax_initialized = true;
 }
 
 // Clean up syntax highlighting resources
 void syntax_cleanup(void) {
-    // Restore original terminal colors if we changed them
-    if (g_colors_changed && can_change_color()) {
-        for (int i = 0; i < 8; i++) {
-            init_color(COLOR_MONOKAI_ORANGE + i, g_original_colors[i][0], g_original_colors[i][1],
-                       g_original_colors[i][2]);
-        }
-        g_colors_changed = false;
-    }
-
     for (size_t i = 0; i < g_syntax_count; i++) {
         syntax_def_free(&g_syntax_defs[i]);
     }
@@ -312,6 +336,9 @@ SyntaxDef *syntax_get_for_file(const char *filename) {
 
     for (size_t i = 0; i < g_syntax_count; i++) {
         SyntaxDef *def = &g_syntax_defs[i];
+        if (def->rules && strcmp(def->language, "unknown") &&
+            syntax_rules_detect(def->rules, "filename", filename))
+            return def;
         for (size_t j = 0; j < def->extension_count; j++) {
             if (ends_with(filename, def->extensions[j])) {
                 return def;
@@ -319,6 +346,30 @@ SyntaxDef *syntax_get_for_file(const char *filename) {
         }
     }
 
+    int fd = open(filename, O_RDONLY | O_NONBLOCK);
+    struct stat info;
+    char content[65537];
+    ssize_t length = fd >= 0 && !fstat(fd, &info) && S_ISREG(info.st_mode)
+                         ? read(fd, content, sizeof(content) - 1)
+                         : -1;
+    if (fd >= 0)
+        close(fd);
+    if (length > 0) {
+        content[length] = '\0';
+        char *newline = strchr(content, '\n');
+        char first[65537];
+        size_t size = newline ? (size_t)(newline - content) : (size_t)length;
+        memcpy(first, content, size);
+        first[size] = '\0';
+        for (size_t i = 0; i < g_syntax_count; i++)
+            if (g_syntax_defs[i].rules &&
+                syntax_rules_detect(g_syntax_defs[i].rules, "header", first))
+                return &g_syntax_defs[i];
+        for (size_t i = 0; i < g_syntax_count; i++)
+            if (g_syntax_defs[i].rules &&
+                syntax_rules_detect(g_syntax_defs[i].rules, "signature", content))
+                return &g_syntax_defs[i];
+    }
     return NULL;
 }
 
@@ -345,71 +396,90 @@ static bool parse_color_rgb(const char *value, int rgb[3]) {
     return false;
 }
 
-// Helper: convert RGB (0-255) to ncurses color value (0-1000)
-static short rgb_to_ncurses(int rgb_value) {
-    return (short)((rgb_value * 1000) / 255);
+static void rule_palette(void);
+
+void syntax_init_colors(void) {
+    if (has_colors()) {
+        use_default_colors();
+        rule_palette();
+    }
 }
 
-// Initialize ncurses color pairs for syntax highlighting
-void syntax_init_colors(void) {
-    if (!has_colors())
-        return;
-
-    // Check if we can define custom colors
-    if (can_change_color()) {
-        // Save original color values so we can restore them on exit
-        for (int i = 0; i < 8; i++) {
-            color_content(COLOR_MONOKAI_ORANGE + i, &g_original_colors[i][0],
-                          &g_original_colors[i][1], &g_original_colors[i][2]);
+static int nearest_color(int r, int g, int b) {
+#ifdef NCURSES_EXT_COLORS
+    if (COLORS >= 16777216)
+        return (r << 16) | (g << 8) | b;
+#endif
+    if (COLORS < 256) {
+        const int ansi[][3] = {{0, 0, 0},       {128, 0, 0},   {0, 128, 0},   {128, 128, 0},
+                               {0, 0, 128},     {128, 0, 128}, {0, 128, 128}, {192, 192, 192},
+                               {128, 128, 128}, {255, 0, 0},   {0, 255, 0},   {255, 255, 0},
+                               {0, 0, 255},     {255, 0, 255}, {0, 255, 255}, {255, 255, 255}};
+        int best = 0, distance = 1000000;
+        for (int i = 0; i < COLORS && i < 16; i++) {
+            int d = (ansi[i][0] - r) * (ansi[i][0] - r) + (ansi[i][1] - g) * (ansi[i][1] - g) +
+                    (ansi[i][2] - b) * (ansi[i][2] - b);
+            if (d < distance) {
+                best = i;
+                distance = d;
+            }
         }
-        g_colors_changed = true;
+        return best;
+    }
+    int best = 16, distance = 1000000;
+    for (int i = 16; i < 256; i++) {
+        int n = i - 16, rr, gg, bb;
+        if (i >= 232)
+            rr = gg = bb = 8 + (i - 232) * 10;
+        else {
+            const int cube[] = {0, 95, 135, 175, 215, 255};
+            rr = cube[n / 36];
+            gg = cube[n / 6 % 6];
+            bb = cube[n % 6];
+        }
+        int d = (rr - r) * (rr - r) + (gg - g) * (gg - g) + (bb - b) * (bb - b);
+        if (d < distance) {
+            distance = d;
+            best = i;
+        }
+    }
+    return best;
+}
 
-        // Define Monokai colors
-        // Orange: (232, 125, 62) for keywords
-        init_color(COLOR_MONOKAI_ORANGE, rgb_to_ncurses(232), rgb_to_ncurses(125),
-                   rgb_to_ncurses(62));
-        // Green: (180, 210, 115) for types
-        init_color(COLOR_MONOKAI_GREEN, rgb_to_ncurses(180), rgb_to_ncurses(210),
-                   rgb_to_ncurses(115));
-        // Yellow: (229, 181, 103) for strings
-        init_color(COLOR_MONOKAI_YELLOW, rgb_to_ncurses(229), rgb_to_ncurses(181),
-                   rgb_to_ncurses(103));
-        // Purple: (158, 134, 200) for numbers/constants
-        init_color(COLOR_MONOKAI_PURPLE, rgb_to_ncurses(158), rgb_to_ncurses(134),
-                   rgb_to_ncurses(200));
-        // Pink: (176, 82, 121) for preprocessor
-        init_color(COLOR_MONOKAI_PINK, rgb_to_ncurses(176), rgb_to_ncurses(82),
-                   rgb_to_ncurses(121));
-        // Blue: (108, 153, 187) for functions
-        init_color(COLOR_MONOKAI_BLUE, rgb_to_ncurses(108), rgb_to_ncurses(153),
-                   rgb_to_ncurses(187));
-        // Gray: (121, 121, 121) for comments
-        init_color(COLOR_MONOKAI_GRAY, rgb_to_ncurses(121), rgb_to_ncurses(121),
-                   rgb_to_ncurses(121));
+static void rule_palette(void) {
+    const struct {
+        int pair, r, g, b;
+    } palette[] = {
+        {10, 249, 38, 114},  {11, 102, 217, 239}, {12, 230, 219, 116}, {13, 117, 113, 94},
+        {14, 174, 129, 255}, {15, 249, 38, 114},  {16, 203, 75, 22},   {17, 102, 217, 239},
+        {18, 211, 54, 130},  {19, 174, 129, 255}, {20, 189, 230, 173}, {21, 166, 226, 46},
+        {22, 203, 75, 22},   {23, 211, 54, 130},  {24, 174, 129, 255}, {25, 211, 54, 130},
+        {26, 80, 80, 80},    {43, 248, 248, 242}, {44, 248, 248, 242}, {45, 255, 175, 0}};
 
-        // Initialize color pairs with Monokai theme
-        init_pair(COLOR_SYNTAX_KEYWORD, COLOR_MONOKAI_ORANGE, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_TYPE, COLOR_MONOKAI_GREEN, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_STRING, COLOR_MONOKAI_YELLOW, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_COMMENT, COLOR_MONOKAI_GRAY, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_NUMBER, COLOR_MONOKAI_PURPLE, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_OPERATOR, COLOR_MONOKAI_ORANGE, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_PREPROCESSOR, COLOR_MONOKAI_PINK, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_FUNCTION, COLOR_MONOKAI_BLUE, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_LABEL, COLOR_MONOKAI_PINK, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_ESCAPE, COLOR_MONOKAI_PURPLE, COLOR_BLACK);
-    } else {
-        // Fallback to basic 8 colors if custom colors not supported
-        init_pair(COLOR_SYNTAX_KEYWORD, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_TYPE, COLOR_GREEN, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_STRING, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_COMMENT, COLOR_BLUE, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_NUMBER, COLOR_MAGENTA, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_OPERATOR, COLOR_RED, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_PREPROCESSOR, COLOR_MAGENTA, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_FUNCTION, COLOR_CYAN, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_LABEL, COLOR_MAGENTA, COLOR_BLACK);
-        init_pair(COLOR_SYNTAX_ESCAPE, COLOR_MAGENTA, COLOR_BLACK);
+    short background = -1;
+    for (size_t i = 0; i < sizeof(palette) / sizeof(*palette); i++) {
+        if (palette[i].pair >= COLOR_PAIRS)
+            continue;
+        int foreground = nearest_color(palette[i].r, palette[i].g, palette[i].b);
+#ifdef NCURSES_EXT_COLORS
+        init_extended_pair(palette[i].pair, foreground, background);
+#else
+        init_pair(palette[i].pair, (short)foreground, background);
+#endif
+    }
+    const int named[][3] = {{0, 0, 0},       {128, 0, 0},   {0, 128, 0},   {128, 128, 0},
+                            {0, 0, 128},     {128, 0, 128}, {0, 128, 128}, {192, 192, 192},
+                            {128, 128, 128}, {255, 0, 0},   {0, 255, 0},   {255, 255, 0},
+                            {0, 0, 255},     {255, 0, 255}, {0, 255, 255}, {255, 255, 255}};
+    for (int i = 0; i < 16; i++) {
+        if (27 + i >= COLOR_PAIRS)
+            continue;
+        int foreground = nearest_color(named[i][0], named[i][1], named[i][2]);
+#ifdef NCURSES_EXT_COLORS
+        init_extended_pair(27 + i, foreground, background);
+#else
+        init_pair(27 + i, (short)foreground, background);
+#endif
     }
 }
 
@@ -466,6 +536,8 @@ static bool is_followed_by_paren(const char *line, int pos, int len) {
 int syntax_scan_line_state(const char *line, const SyntaxDef *syntax, int state) {
     if (!line || !syntax)
         return 0;
+    if (syntax->rules)
+        return syntax_rules_line(syntax->rules, line, state, NULL);
     size_t opening = syntax->block_comment_start ? strlen(syntax->block_comment_start) : 0;
     size_t closing = syntax->block_comment_end ? strlen(syntax->block_comment_end) : 0;
     size_t comment = syntax->line_comment ? strlen(syntax->line_comment) : 0;
@@ -599,6 +671,43 @@ void syntax_highlight_line(WINDOW *win, const char *line, SyntaxDef *syntax, int
     // No syntax highlighting available - just print the line normally
     if (!syntax) {
         mvwprintw(win, y, x, "%.*s", max_width, line);
+        return;
+    }
+
+    if (syntax->rules) {
+        size_t length = strlen(line);
+        unsigned char *colors = g_malloc(length + 1);
+        int next = syntax_rules_line(syntax->rules, line, in_block_comment ? *in_block_comment : 0,
+                                     colors);
+        int column = 0;
+        for (size_t i = 0; i < length && column < max_width;) {
+            gunichar ch = g_utf8_get_char_validated(line + i, length - i);
+            size_t bytes = ch == (gunichar)-1 || ch == (gunichar)-2
+                               ? 1
+                               : (size_t)(g_utf8_next_char(line + i) - (line + i));
+            int width = ch == '\t'                  ? 8 - column % 8
+                        : g_unichar_iszerowidth(ch) ? 0
+                        : g_unichar_iswide(ch)      ? 2
+                                                    : 1;
+            if (column + width > max_width || ch == '\n' || ch == '\r')
+                break;
+            wattrset(win,
+                     COLOR_PAIR(colors[i]) |
+                         ((colors[i] == 22 || colors[i] == 23 || colors[i] == 43) ? A_BOLD : 0));
+            if (ch == '\t')
+                for (int j = 0; j < width; j++)
+                    mvwaddch(win, y, x + column + j, ' ');
+            else if (ch == (gunichar)-1 || ch == (gunichar)-2 || g_unichar_iscntrl(ch))
+                mvwaddch(win, y, x + column, '?');
+            else
+                mvwaddnstr(win, y, x + column, line + i, (int)bytes);
+            column += width;
+            i += bytes;
+        }
+        wattrset(win, A_NORMAL);
+        g_free(colors);
+        if (in_block_comment)
+            *in_block_comment = next;
         return;
     }
 

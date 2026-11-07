@@ -1,0 +1,40 @@
+# Syntax: gemini
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='gemini'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(gmi|gemini)$'
+
+# Pattern 0: constant (root).
+rule.0.parent=-1
+rule.0.group='constant'
+rule.0.match='^=>[[:space:]].*'
+
+# Region 1: special (root).
+rule.1.parent=-1
+rule.1.group='special'
+# Start/end delimiters carry state between physical lines.
+rule.1.start='^```'
+rule.1.end='^```'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='^#{1,3}.*'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='^\*[[:space:]]'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='^>.*'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=5

@@ -1,0 +1,217 @@
+# Syntax: gleam
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='gleam'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.gleam$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[a-z][a-z0-9_]*\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(as|assert|auto|case|const|delegate|derive|echo|else|fn|if|implement|import|let|macro|opaque|panic|pub|test|todo|type|use)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b[A-Z][a-zA-Z0-9_]*\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(Int|Float|String|Bool|List|Option|Result|BitArray)\b'
+
+# Pattern 4: constant (root).
+rule.4.parent=-1
+rule.4.group='constant'
+rule.4.match='\b(True|False|Nil)\b'
+
+# Pattern 5: preproc (root).
+rule.5.parent=-1
+rule.5.group='preproc'
+rule.5.match='@[a-z][a-z_]*'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='(\|>|->|<-)'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='(\.\.|<>)'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='(==|!=|<=\.|>=\.|<\.|>\.|<=|>=)'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='(&&|\|\|)'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='(\+\.|-\.|\*\.|/\.|\+|-|\*|/|%)'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='(=|<|>|!|<<|>>)'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='\b0b[01](_?[01])*\b'
+
+# Pattern 13: constant.number (root).
+rule.13.parent=-1
+rule.13.group='constant.number'
+rule.13.match='\b0o[0-7](_?[0-7])*\b'
+
+# Pattern 14: constant.number (root).
+rule.14.parent=-1
+rule.14.group='constant.number'
+rule.14.match='\b0x[0-9a-fA-F](_?[0-9a-fA-F])*\b'
+
+# Pattern 15: constant.number (root).
+rule.15.parent=-1
+rule.15.group='constant.number'
+rule.15.match='\b[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?([eE][+-]?[0-9](_?[0-9])*)?\b'
+
+# Region 16: default (root).
+rule.16.parent=-1
+rule.16.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='#\('
+rule.16.end='\)'
+# Delimiters use this group instead of the region body.
+rule.16.limit-group='special'
+
+# Pattern 17: identifier (inside region 16).
+rule.17.parent=16
+rule.17.group='identifier'
+rule.17.match='\b[a-z][a-z0-9_]*\b'
+
+# Pattern 18: statement (inside region 16).
+rule.18.parent=16
+rule.18.group='statement'
+rule.18.match='\b(as|assert|auto|case|const|delegate|derive|echo|else|fn|if|implement|import|let|macro|opaque|panic|pub|test|todo|type|use)\b'
+
+# Pattern 19: type (inside region 16).
+rule.19.parent=16
+rule.19.group='type'
+rule.19.match='\b[A-Z][a-zA-Z0-9_]*\b'
+
+# Pattern 20: type (inside region 16).
+rule.20.parent=16
+rule.20.group='type'
+rule.20.match='\b(Int|Float|String|Bool|List|Option|Result|BitArray)\b'
+
+# Pattern 21: constant (inside region 16).
+rule.21.parent=16
+rule.21.group='constant'
+rule.21.match='\b(True|False|Nil)\b'
+
+# Pattern 22: statement (inside region 16).
+rule.22.parent=16
+rule.22.group='statement'
+rule.22.match='(\|>|->|<-)'
+
+# Pattern 23: statement (inside region 16).
+rule.23.parent=16
+rule.23.group='statement'
+rule.23.match='(\.\.|<>)'
+
+# Pattern 24: statement (inside region 16).
+rule.24.parent=16
+rule.24.group='statement'
+rule.24.match='(==|!=|<=\.|>=\.|<\.|>\.|<=|>=)'
+
+# Pattern 25: statement (inside region 16).
+rule.25.parent=16
+rule.25.group='statement'
+rule.25.match='(&&|\|\|)'
+
+# Pattern 26: statement (inside region 16).
+rule.26.parent=16
+rule.26.group='statement'
+rule.26.match='(\+\.|-\.|\*\.|/\.|\+|-|\*|/|%)'
+
+# Pattern 27: statement (inside region 16).
+rule.27.parent=16
+rule.27.group='statement'
+rule.27.match='(=|<|>|!|<<|>>)'
+
+# Pattern 28: constant.number (inside region 16).
+rule.28.parent=16
+rule.28.group='constant.number'
+rule.28.match='\b0b[01](_?[01])*\b'
+
+# Pattern 29: constant.number (inside region 16).
+rule.29.parent=16
+rule.29.group='constant.number'
+rule.29.match='\b0o[0-7](_?[0-7])*\b'
+
+# Pattern 30: constant.number (inside region 16).
+rule.30.parent=16
+rule.30.group='constant.number'
+rule.30.match='\b0x[0-9a-fA-F](_?[0-9a-fA-F])*\b'
+
+# Pattern 31: constant.number (inside region 16).
+rule.31.parent=16
+rule.31.group='constant.number'
+rule.31.match='\b[0-9](_?[0-9])*(\.[0-9](_?[0-9])*)?([eE][+-]?[0-9](_?[0-9])*)?\b'
+
+# Region 32: constant.string (inside region 16).
+rule.32.parent=16
+rule.32.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.32.start='"'
+rule.32.end='"'
+# Mask escaped text before matching delimiters.
+rule.32.skip='\\.'
+
+# Pattern 33: constant.specialChar (inside region 32).
+rule.33.parent=32
+rule.33.group='constant.specialChar'
+rule.33.match='\\.'
+
+# Region 34: constant.string (root).
+rule.34.parent=-1
+rule.34.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.34.start='"'
+rule.34.end='"'
+# Mask escaped text before matching delimiters.
+rule.34.skip='\\.'
+
+# Pattern 35: constant.specialChar (inside region 34).
+rule.35.parent=34
+rule.35.group='constant.specialChar'
+rule.35.match='\\.'
+
+# Region 36: comment (root).
+rule.36.parent=-1
+rule.36.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.36.start='//'
+rule.36.end='$'
+
+# Pattern 37: todo (inside region 36).
+rule.37.parent=36
+rule.37.group='todo'
+rule.37.match='(TODO|FIXME|XXX):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=38

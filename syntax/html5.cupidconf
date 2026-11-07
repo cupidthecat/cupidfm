@@ -1,0 +1,86 @@
+# Syntax: html5
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='html5'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.htm[l]?5$'
+detect.header='<!DOCTYPE html5>'
+
+# Pattern 0: error (root).
+rule.0.parent=-1
+rule.0.group='error'
+rule.0.match='<[^!].*?>'
+
+# Pattern 1: symbol.tag (root).
+rule.1.parent=-1
+rule.1.group='symbol.tag'
+rule.1.match='(?i)<[/]?(a|a(bbr|ddress|rea|rticle|side|udio)|b|b(ase|d(i|o)|lockquote|r|utton)|ca(nvas|ption)|center|cite|co(de|l|lgroup)|d(ata|atalist|d|el|etails|fn|ialog|l|t)|em|embed|fieldset|fig(caption|ure)|form|iframe|h[1-6]|hr|i|img|in(put|s)|kbd|keygen|label|legend|li|link|ma(in|p|rk)|menu|menuitem|met(a|er)|nav|noscript|o(bject|l|pt(group|ion)|utput)|p|param|picture|pre|progress|q|r(p|t|uby)|s|samp|se(ction|lect)|small|source|span|strong|su(b|p|mmary)|textarea|time|track|u|ul|var|video|wbr)( .*)*?>'
+
+# Pattern 2: symbol.tag.extended (root).
+rule.2.parent=-1
+rule.2.group='symbol.tag.extended'
+rule.2.match='(?i)<[/]?(body|div|html|head(er)?|footer|title|table|t(body|d|h(ead)?|r|foot))( .*)*?>'
+
+# Pattern 3: preproc (root).
+rule.3.parent=-1
+rule.3.group='preproc'
+rule.3.match='(?i)<[/]?(script|style)( .*)*?>'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='&[^;[[:space:]]]*;'
+
+# Pattern 5: symbol (root).
+rule.5.parent=-1
+rule.5.group='symbol'
+rule.5.match='[:=]'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='(alt|bgcolor|height|href|id|label|longdesc|name|on(click|focus|load|mouseover)|size|span|src|style|target|type|value|width)='
+
+# Pattern 7: constant.string (root).
+rule.7.parent=-1
+rule.7.group='constant.string'
+rule.7.match='"[^"]*"'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='(?i)#[0-9a-fA-F]{6,6}'
+
+# Region 9: default (root).
+rule.9.parent=-1
+rule.9.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='>'
+rule.9.end='<'
+
+# Pattern 10: symbol.tag (root).
+rule.10.parent=-1
+rule.10.group='symbol.tag'
+rule.10.match='<|>'
+
+# Pattern 11: constant.string.url (root).
+rule.11.parent=-1
+rule.11.group='constant.string.url'
+rule.11.match='(ftp(s)?|http(s)?|git|chrome)://[^ 	]+'
+
+# Pattern 12: comment (root).
+rule.12.parent=-1
+rule.12.group='comment'
+rule.12.match='<!--.+?-->'
+
+# Pattern 13: preproc (root).
+rule.13.parent=-1
+rule.13.group='preproc'
+rule.13.match='<!DOCTYPE.+?>'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=14

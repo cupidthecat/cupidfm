@@ -1,0 +1,93 @@
+# Syntax: puppet
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='puppet'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.pp$'
+
+# Pattern 0: default (root).
+rule.0.parent=-1
+rule.0.group='default'
+rule.0.match='^[[:space:]]([a-z][a-z0-9_]+)'
+
+# Pattern 1: identifier.var (root).
+rule.1.parent=-1
+rule.1.group='identifier.var'
+rule.1.match='\$[a-z:][a-z0-9_:]+'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b(augeas|computer|cron|exec|file|filebucket|group|host|interface|k5login|macauthorization|mailalias|maillist|mcx|mount|nagios_command|nagios_contact|nagios_contactgroup|nagios_host|nagios_hostdependency|nagios_hostescalation|nagios_hostextinfo|nagios_hostgroup|nagios_service|nagios_servicedependency|nagios_serviceescalation|nagios_serviceextinfo|nagios_servicegroup|nagios_timeperiod|notify|package|resources|router|schedule|scheduled_task|selboolean|selmodule|service|ssh_authorized_key|sshkey|stage|tidy|user|vlan|yumrepo|zfs|zone|zpool|anchor)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(class|define|if|else|undef|inherits)\b'
+
+# Pattern 4: symbol (root).
+rule.4.parent=-1
+rule.4.group='symbol'
+rule.4.match='(=|-|~|>)'
+
+# Pattern 5: identifier.var (root).
+rule.5.parent=-1
+rule.5.group='identifier.var'
+rule.5.match='(\$|@|@@)?\b[A-Z]+[0-9A-Z_a-z]*'
+
+# Pattern 6: symbol (root).
+rule.6.parent=-1
+rule.6.group='symbol'
+rule.6.match='([      ]|^):[0-9A-Z_]+\b'
+
+# Pattern 7: constant (root).
+rule.7.parent=-1
+rule.7.group='constant'
+rule.7.match='/([^/]|(\\/))*/[iomx]*|%r\{([^}]|(\\}))*\}[iomx]*'
+
+# Pattern 8: constant.string (root).
+rule.8.parent=-1
+rule.8.group='constant.string'
+rule.8.match='`[^`]*`|%x\{[^}]*\}'
+
+# Pattern 9: constant.string (root).
+rule.9.parent=-1
+rule.9.group='constant.string'
+rule.9.match='"([^"]|(\\"))*"|%[QW]?\{[^}]*\}|%[QW]?\([^)]*\)|%[QW]?<[^>]*>|%[QW]?\[[^]]*\]|%[QW]?\$[^$]*\$|%[QW]?\^[^^]*\^|%[QW]?![^!]*!'
+
+# Pattern 10: special (root).
+rule.10.parent=-1
+rule.10.group='special'
+rule.10.match='\$\{[^}]*\}'
+
+# Pattern 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+rule.11.match='''([^'']|(\\''))*''|%[qw]\{[^}]*\}|%[qw]\([^)]*\)|%[qw]<[^>]*>|%[qw]\[[^]]*\]|%[qw]\$[^$]*\$|%[qw]\^[^^]*\^|%[qw]![^!]*!'
+
+# Pattern 12: comment (root).
+rule.12.parent=-1
+rule.12.group='comment'
+rule.12.match='#[^{].*$|#$'
+
+# Pattern 13: comment.bright (root).
+rule.13.parent=-1
+rule.13.group='comment.bright'
+rule.13.match='##[^{].*$|##$'
+
+# Pattern 14: todo (root).
+rule.14.parent=-1
+rule.14.group='todo'
+rule.14.match='(XXX|TODO|FIXME|\?\?\?)'
+
+# Pattern 15: indent-char.whitespace (root).
+rule.15.parent=-1
+rule.15.group='indent-char.whitespace'
+rule.15.match='[[:space:]]+$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=16

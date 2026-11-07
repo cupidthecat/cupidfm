@@ -1,0 +1,125 @@
+# Syntax: solidity
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='solidity'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.sol$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='\b(contract|library|pragma)\b'
+
+# Pattern 1: constant.number (root).
+rule.1.parent=-1
+rule.1.group='constant.number'
+rule.1.match='\b[-]?([0-9]+|0x[0-9a-fA-F]+)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='[a-zA-Z][_a-zA-Z0-9]*[[:space:]]*'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(assembly|break|continue|do|for|function|if|else|new|return|returns|while)\b'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='\b(\.send|throw)\b'
+
+# Pattern 5: type.keyword (root).
+rule.5.parent=-1
+rule.5.group='type.keyword'
+rule.5.match='\b(anonymous|constant|indexed|payable|public|private|external|internal)\b'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='\b(block(\.(blockhash|coinbase|difficulty|gaslimit|number|timestamp))?|msg(\.(data|gas|sender|value))?|now|tx(\.(gasprice|origin))?)\b'
+
+# Pattern 7: constant (root).
+rule.7.parent=-1
+rule.7.group='constant'
+rule.7.match='\b(keccak256|sha3|sha256|ripemd160|ecrecover|addmod|mulmod|this|super|selfdestruct|\.balance)\b'
+
+# Pattern 8: constant (root).
+rule.8.parent=-1
+rule.8.group='constant'
+rule.8.match='\b(true|false)\b'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='\b(wei|szabo|finney|ether|seconds|minutes|hours|days|weeks|years)\b'
+
+# Pattern 10: type (root).
+rule.10.parent=-1
+rule.10.group='type'
+rule.10.match='\b(address|bool|mapping|string|var|int(\d*)|uint(\d*)|byte(\d*)|fixed(\d*)|ufixed(\d*))\b'
+
+# Pattern 11: error (root).
+rule.11.parent=-1
+rule.11.group='error'
+rule.11.match='\b(abstract|after|case|catch|default|final|in|inline|interface|let|match|null|of|pure|relocatable|static|switch|try|type|typeof|view)\b'
+
+# Pattern 12: operator (root).
+rule.12.parent=-1
+rule.12.group='operator'
+rule.12.match='[-+/*=<>!~%?:&|]'
+
+# Region 13: comment (root).
+rule.13.parent=-1
+rule.13.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='//'
+rule.13.end='$'
+
+# Region 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='/\*'
+rule.14.end='\*/'
+
+# Pattern 15: todo (root).
+rule.15.parent=-1
+rule.15.group='todo'
+rule.15.match='TODO:?'
+
+# Region 16: constant.string (root).
+rule.16.parent=-1
+rule.16.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='"'
+rule.16.end='"'
+# Mask escaped text before matching delimiters.
+rule.16.skip='\\.'
+
+# Pattern 17: constant.specialChar (inside region 16).
+rule.17.parent=16
+rule.17.group='constant.specialChar'
+rule.17.match='\\.'
+
+# Region 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.18.start=''''
+rule.18.end=''''
+# Mask escaped text before matching delimiters.
+rule.18.skip='\\.'
+
+# Pattern 19: constant.specialChar (inside region 18).
+rule.19.parent=18
+rule.19.group='constant.specialChar'
+rule.19.match='\\.'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=20

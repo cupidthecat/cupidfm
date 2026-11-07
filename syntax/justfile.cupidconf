@@ -1,0 +1,246 @@
+# Syntax: justfile
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='justfile'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(\.?[Jj]ustfile|\.just)$'
+detect.header='^#!.*/(env +)?[bg]?just --justfile'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='^[a-zA-Z_][a-zA-Z0-9_-]*'
+
+# Pattern 1: symbol.brackets (root).
+rule.1.parent=-1
+rule.1.group='symbol.brackets'
+rule.1.match='[\{\}]'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='^alias\s+[a-zA-Z_][a-zA-Z0-9_-]*\s*:=\s*[a-zA-Z_][a-zA-Z0-9_-]*$'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='^(alias|export)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(arch|os|os_family|invocation_directory|justfile|justfile_directory|just_executable|uuid)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(env|env_var|env_var_or_default)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(quote|replace|replace_regex|trim_end_matches|trim_end_match|trim_end|trim_start_matches|trim_start_match|trim_start|trim|capitalize|uppercamelcase|lowercamelcase|lowercase|shoutykebabcase|shoutysnakecase|snakecase|titlecase|uppercase|kebabcase)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(absolute_path|extension|file_name|file_stem|parent_directory|without_extension|clean|join|path_exists)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(error|sha256|sha256_file|semver_matches)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(if|else)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\{\{|\}\}'
+
+# Pattern 11: symbol.operator (root).
+rule.11.parent=-1
+rule.11.group='symbol.operator'
+rule.11.match='\s[/+]|==|!=\s'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='^\S.*?:(\s|$)'
+
+# Pattern 13: symbol.operator (root).
+rule.13.parent=-1
+rule.13.group='symbol.operator'
+rule.13.match='^\s*[@-]*'
+
+# Pattern 14: default (root).
+rule.14.parent=-1
+rule.14.group='default'
+rule.14.match='\s.*:( |$)'
+
+# Pattern 15: special (root).
+rule.15.parent=-1
+rule.15.group='special'
+rule.15.match='\s+[*+]\$?[a-zA-Z_][a-zA-Z0-9_-]*'
+
+# Pattern 16: special (root).
+rule.16.parent=-1
+rule.16.group='special'
+rule.16.match='\$[A-Za-z0-9_]+'
+
+# Pattern 17: symbol.operator (root).
+rule.17.parent=-1
+rule.17.group='symbol.operator'
+rule.17.match=':=?'
+
+# Region 18: symbol.brackets (root).
+rule.18.parent=-1
+rule.18.group='symbol.brackets'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='^\['
+rule.18.end='\]'
+
+# Pattern 19: symbol.tag (inside region 18).
+rule.19.parent=18
+rule.19.group='symbol.tag'
+rule.19.match='\b(no-cd|no-exit-message|linux|macos|unix|windows|private)\b'
+
+# Pattern 20: statement (inside region 18).
+rule.20.parent=18
+rule.20.group='statement'
+rule.20.match=','
+
+# Region 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='^set\b'
+rule.21.end='$'
+
+# Pattern 22: default (inside region 21).
+rule.22.parent=21
+rule.22.group='default'
+rule.22.match='.*'
+
+# Pattern 23: identifier (inside region 21).
+rule.23.parent=21
+rule.23.group='identifier'
+rule.23.match='\b(allow-duplicate-recipes|dotenv-filename|dotenv-load|dotenv-path|export|fallback|ignore-comments|positional-arguments|shell|tempdir|windows-powershell|windows-shell)\b'
+
+# Pattern 24: statement (inside region 21).
+rule.24.parent=21
+rule.24.group='statement'
+rule.24.match=':='
+
+# Pattern 25: bracket (inside region 21).
+rule.25.parent=21
+rule.25.group='bracket'
+rule.25.match='\[|\]'
+
+# Pattern 26: statement (inside region 21).
+rule.26.parent=21
+rule.26.group='statement'
+rule.26.match=','
+
+# Pattern 27: constant.bool (inside region 21).
+rule.27.parent=21
+rule.27.group='constant.bool'
+rule.27.match='\b(true|false)\b'
+
+# Pattern 28: constant.string (inside region 21).
+rule.28.parent=21
+rule.28.group='constant.string'
+rule.28.match='""".*"""'
+
+# Pattern 29: constant.string (inside region 21).
+rule.29.parent=21
+rule.29.group='constant.string'
+rule.29.match='''''''.*'''''''
+
+# Pattern 30: constant.string (inside region 21).
+rule.30.parent=21
+rule.30.group='constant.string'
+rule.30.match='".*?"'
+
+# Pattern 31: constant.string (inside region 21).
+rule.31.parent=21
+rule.31.group='constant.string'
+rule.31.match='''.*?'''
+
+# Region 32: constant.string (root).
+rule.32.parent=-1
+rule.32.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.32.start='"""'
+rule.32.end='"""'
+
+# Region 33: constant.string (root).
+rule.33.parent=-1
+rule.33.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.33.start=''''''''
+rule.33.end=''''''''
+
+# Region 34: constant.string (root).
+rule.34.parent=-1
+rule.34.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.34.start='"'
+rule.34.end='"'
+# Mask escaped text before matching delimiters.
+rule.34.skip='\\.'
+
+# Pattern 35: constant.specialChar (inside region 34).
+rule.35.parent=34
+rule.35.group='constant.specialChar'
+rule.35.match='\\.'
+
+# Region 36: constant.string (root).
+rule.36.parent=-1
+rule.36.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.36.start=''''
+rule.36.end=''''
+# Mask escaped text before matching delimiters.
+rule.36.skip='\\.'
+
+# Pattern 37: constant.specialChar (inside region 36).
+rule.37.parent=36
+rule.37.group='constant.specialChar'
+rule.37.match='\\.'
+
+# Region 38: constant.string (root).
+rule.38.parent=-1
+rule.38.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.38.start='`'
+rule.38.end='`'
+# Mask escaped text before matching delimiters.
+rule.38.skip='\\.'
+
+# Pattern 39: symbol.operator (inside region 38).
+rule.39.parent=38
+rule.39.group='symbol.operator'
+rule.39.match='\|'
+
+# Region 40: comment (root).
+rule.40.parent=-1
+rule.40.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.40.start='#'
+rule.40.end='$'
+
+# Pattern 41: todo (inside region 40).
+rule.41.parent=40
+rule.41.group='todo'
+rule.41.match='(TODO|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=42

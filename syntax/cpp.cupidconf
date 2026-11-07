@@ -1,0 +1,266 @@
+# Syntax: c++
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='c++'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(\.c(c|pp|xx)$|\.h(h|pp|xx)?$|\.ii?$|\.(def)$)'
+detect.signature='\b(namespace|class|public|protected|private|template|constexpr|noexcept|nullptr|throw)\b'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z_][0-9A-Z_]*\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(auto|float|double|bool|char|int|short|long|enum|void|struct|union|typedef|(un)?signed|inline)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b(((s?size)|((u_?)?int(8|16|32|64|ptr))|char(8|16|32))_t|wchar_t)\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b[a-z_][0-9a-z_]+(_t|_T)\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\b(final|override)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(volatile|const(expr|eval|init)?|mutable|register|thread_local|static|extern|decltype|explicit|virtual)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(class|namespace|template|typename|this|friend|using|public|protected|private|noexcept)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(concept|requires)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(import|export|module)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(for|if|while|do|else|case|default|switch)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(try|throw|catch|operator|new|delete|static_assert)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(goto|continue|break|return)\b'
+
+# Pattern 12: preproc (root).
+rule.12.parent=-1
+rule.12.group='preproc'
+rule.12.match='^[[:space:]]*#[[:space:]]*(define|pragma|include|(un|ifn?)def|endif|el(if|se)|if|warning|error)|_Pragma'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(asm|fortran)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='(__attribute__[[:space:]]*\(\([^)]*\)\)|__(aligned|asm|builtin|hidden|inline|packed|restrict|section|typeof|weak)__)'
+
+# Pattern 15: symbol.operator (root).
+rule.15.parent=-1
+rule.15.group='symbol.operator'
+rule.15.match='[-+*/%=<>.:;,~&|^!?]|\b(sizeof|alignof|typeid|(and|or|xor|not)(_eq)?|bitor|compl|bitand|(const|dynamic|reinterpret|static)_cast)\b'
+
+# Pattern 16: symbol.brackets (root).
+rule.16.parent=-1
+rule.16.group='symbol.brackets'
+rule.16.match='[(){}]|\[|\]'
+
+# Pattern 17: constant.number (root).
+rule.17.parent=-1
+rule.17.group='constant.number'
+rule.17.match='(\b([0-9]|0[0-7]|0[Xx][0-9A-Fa-f]|0[Bb][01])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 18: constant.number (root).
+rule.18.parent=-1
+rule.18.group='constant.number'
+rule.18.match='(\b([1-9][0-9'']*[0-9])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 19: constant.number (root).
+rule.19.parent=-1
+rule.19.group='constant.number'
+rule.19.match='(\b(0[0-7][0-7'']*[0-7])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 20: constant.number (root).
+rule.20.parent=-1
+rule.20.group='constant.number'
+rule.20.match='(\b(0[Xx][0-9A-Fa-f][0-9A-Fa-f'']*[0-9A-Fa-f])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 21: constant.number (root).
+rule.21.parent=-1
+rule.21.group='constant.number'
+rule.21.match='(\b(0[Bb][01][01'']*[01])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 22: constant.number (root).
+rule.22.parent=-1
+rule.22.group='constant.number'
+rule.22.match='(([0-9]?[.]?\b[0-9]+)([Ee][+-]?[0-9]+)?[FfLl]?\b)'
+
+# Pattern 23: constant.number (root).
+rule.23.parent=-1
+rule.23.group='constant.number'
+rule.23.match='(\b([0-9]+[.][0-9]?)([Ee][+-]?[0-9]+)?[FfLl]?)'
+
+# Pattern 24: constant.number (root).
+rule.24.parent=-1
+rule.24.group='constant.number'
+rule.24.match='(([0-9]?[.]?\b[0-9]+)([Ee][+-]?[0-9][0-9'']*[0-9])?[FfLl]?\b)'
+
+# Pattern 25: constant.number (root).
+rule.25.parent=-1
+rule.25.group='constant.number'
+rule.25.match='(\b([0-9]+[.][0-9]?)([Ee][+-]?[0-9][0-9'']*[0-9])?[FfLl]?)'
+
+# Pattern 26: constant.number (root).
+rule.26.parent=-1
+rule.26.group='constant.number'
+rule.26.match='(([0-9][0-9'']*[0-9])?[.]?\b([0-9][0-9'']*[0-9])+([Ee][+-]?[0-9]+)?[FfLl]?\b)'
+
+# Pattern 27: constant.number (root).
+rule.27.parent=-1
+rule.27.group='constant.number'
+rule.27.match='(\b([0-9][0-9'']*[0-9])+[.]([0-9][0-9'']*[0-9])?([Ee][+-]?[0-9]+)?[FfLl]?)'
+
+# Pattern 28: constant.number (root).
+rule.28.parent=-1
+rule.28.group='constant.number'
+rule.28.match='(([0-9][0-9'']*[0-9])?[.]?\b([0-9][0-9'']*[0-9])+([Ee][+-]?[0-9][0-9'']*[0-9])?[FfLl]?\b)'
+
+# Pattern 29: constant.number (root).
+rule.29.parent=-1
+rule.29.group='constant.number'
+rule.29.match='(\b([0-9][0-9'']*[0-9])+[.]([0-9][0-9'']*[0-9])?([Ee][+-]?[0-9][0-9'']*[0-9])?[FfLl]?)'
+
+# Pattern 30: constant.number (root).
+rule.30.parent=-1
+rule.30.group='constant.number'
+rule.30.match='(\b0[Xx]([0-9a-zA-Z]?[.]?[0-9a-zA-Z]+)([Pp][+-]?[0-9]+)?[FfLl]?\b)'
+
+# Pattern 31: constant.number (root).
+rule.31.parent=-1
+rule.31.group='constant.number'
+rule.31.match='(\b0[Xx]([0-9a-zA-Z]+[.][0-9a-zA-Z]?)([Pp][+-]?[0-9]+)?[FfLl]?)'
+
+# Pattern 32: constant.number (root).
+rule.32.parent=-1
+rule.32.group='constant.number'
+rule.32.match='(\b0[Xx]([0-9a-zA-Z]?[.]?[0-9a-zA-Z]+)([Pp][+-]?[0-9][0-9'']*[0-9])?[FfLl]?\b)'
+
+# Pattern 33: constant.number (root).
+rule.33.parent=-1
+rule.33.group='constant.number'
+rule.33.match='(\b0[Xx]([0-9a-zA-Z]+[.][0-9a-zA-Z]?)([Pp][+-]?[0-9][0-9'']*[0-9])?[FfLl]?)'
+
+# Pattern 34: constant.number (root).
+rule.34.parent=-1
+rule.34.group='constant.number'
+rule.34.match='(\b0[Xx]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])?[.]?([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])+([Pp][+-]?[0-9]+)?[FfLl]?\b)'
+
+# Pattern 35: constant.number (root).
+rule.35.parent=-1
+rule.35.group='constant.number'
+rule.35.match='(\b0[Xx]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])+[.]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])?([Pp][+-]?[0-9]+)?[FfLl]?)'
+
+# Pattern 36: constant.number (root).
+rule.36.parent=-1
+rule.36.group='constant.number'
+rule.36.match='(\b0[Xx]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])?[.]?([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])+([Pp][+-]?[0-9][0-9'']*[0-9])?[FfLl]?\b)'
+
+# Pattern 37: constant.number (root).
+rule.37.parent=-1
+rule.37.group='constant.number'
+rule.37.match='(\b0[Xx]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])+[.]([0-9a-zA-Z][0-9a-zA-Z'']*[0-9a-zA-Z])?([Pp][+-]?[0-9][0-9'']*[0-9])?[FfLl]?)'
+
+# Pattern 38: constant.bool (root).
+rule.38.parent=-1
+rule.38.group='constant.bool'
+rule.38.match='(\b(true|false|NULL|nullptr|TRUE|FALSE)\b)'
+
+# Region 39: constant.string (root).
+rule.39.parent=-1
+rule.39.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.39.start='"'
+rule.39.end='"'
+# Mask escaped text before matching delimiters.
+rule.39.skip='\\.'
+
+# Pattern 40: constant.specialChar (inside region 39).
+rule.40.parent=39
+rule.40.group='constant.specialChar'
+rule.40.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 41: constant.string (root).
+rule.41.parent=-1
+rule.41.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.41.start=''''
+rule.41.end=''''
+# Mask escaped text before matching delimiters.
+rule.41.skip='(\\.)|\b([1-9][0-9'']+[0-9]|0[0-7'']+[0-7]|0[Xx][0-9A-Fa-f][0-9A-Fa-f'']+[0-9A-Fa-f]|0[Bb][01][01'']*[01])([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b'
+
+# Pattern 42: error (inside region 41).
+rule.42.parent=41
+rule.42.group='error'
+rule.42.match='[[:graph:]]{2,}'''
+
+# Pattern 43: constant.specialChar (inside region 41).
+rule.43.parent=41
+rule.43.group='constant.specialChar'
+rule.43.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 44: comment (root).
+rule.44.parent=-1
+rule.44.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.44.start='//'
+rule.44.end='$'
+
+# Pattern 45: todo (inside region 44).
+rule.45.parent=44
+rule.45.group='todo'
+rule.45.match='(TODO|XXX|FIXME):?'
+
+# Region 46: comment (root).
+rule.46.parent=-1
+rule.46.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.46.start='/\*'
+rule.46.end='\*/'
+
+# Pattern 47: todo (inside region 46).
+rule.47.parent=46
+rule.47.group='todo'
+rule.47.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=48

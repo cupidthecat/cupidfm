@@ -1,0 +1,43 @@
+# Syntax: pc
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='pc'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.pc$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='^(Name|Description|URL|Version|Conflicts|Cflags):'
+
+# Pattern 1: preproc (root).
+rule.1.parent=-1
+rule.1.group='preproc'
+rule.1.match='^(Requires|Libs)(\.private)?:'
+
+# Pattern 2: symbol.operator (root).
+rule.2.parent=-1
+rule.2.group='symbol.operator'
+rule.2.match='='
+
+# Pattern 3: identifier.var (root).
+rule.3.parent=-1
+rule.3.group='identifier.var'
+rule.3.match='\$\{[A-Za-z_][A-Za-z0-9_]*\}'
+
+# Pattern 4: indent-char.whitespace (root).
+rule.4.parent=-1
+rule.4.group='indent-char.whitespace'
+rule.4.match='[[:space:]]+$'
+
+# Pattern 5: indent-char (root).
+rule.5.parent=-1
+rule.5.group='indent-char'
+rule.5.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=6

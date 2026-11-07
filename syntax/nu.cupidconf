@@ -1,0 +1,448 @@
+# Syntax: nu
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='nu'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.nu$'
+
+# Pattern 0: symbol (root).
+rule.0.parent=-1
+rule.0.group='symbol'
+rule.0.match='[-+/*=<>!~%?:&|]'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(agg-groups|agg|alias|all-false|all-true|all?|ansi gradient)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(ansi strip|ansi|any?|append|append|arg-max)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(arg-min|arg-sort|arg-true|arg-unique|as-date)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(as-datetime|as|benchmark|build-string|cache|cal|cd)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(char|clear|col|collect|columns|compact|complete)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(concatenate|config|config env|config nu|contains)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(count|count-null|cp|cumulative|date format|date humanize)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(date list-timezone|date now|date to-record|date to-table)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(date to-timezone|date|db and|db as|db col|db collect)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(db describe|db fn|db from|db group-by|db join|db limit)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(db open|db or|db order-by|db over|db query|db schema)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(db select|db testing|db where|db|debug|decode)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(def-env|default|def|describe|describe|detect columns)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(df-not|do|drop|drop|drop column|drop nth|drop-duplicates)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='\b(drop-nulls|dtypes|du|each while|each|echo|empty?)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='\b(enter|env|error make|every|exec|exit|explode)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='\b(export alias|export def|export def-env|export env)\b'
+
+# Pattern 18: statement (root).
+rule.18.parent=-1
+rule.18.group='statement'
+rule.18.match='\b(export extern|export|expr-not|extern|fetch|fill-na)\b'
+
+# Pattern 19: statement (root).
+rule.19.parent=-1
+rule.19.group='statement'
+rule.19.match='\b(fill-null|filter-with|find|first|flatten)\b'
+
+# Pattern 20: statement (root).
+rule.20.parent=-1
+rule.20.group='statement'
+rule.20.match='\b(fmt|format filesize|format|for|from csv|from eml)\b'
+
+# Pattern 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+rule.21.match='\b(from ics|from ini|from json|from nuon|from ods|from ssv)\b'
+
+# Pattern 22: statement (root).
+rule.22.parent=-1
+rule.22.group='statement'
+rule.22.match='\b(from toml|from tsv|from url|from vcf|from xlsx|from xml)\b'
+
+# Pattern 23: statement (root).
+rule.23.parent=-1
+rule.23.group='statement'
+rule.23.match='\b(from yaml|from yml|from|get-day|get-hour|get-minute)\b'
+
+# Pattern 24: statement (root).
+rule.24.parent=-1
+rule.24.group='statement'
+rule.24.match='\b(get-month|get-nanosecond|get-ordinal|get-second|get-week)\b'
+
+# Pattern 25: statement (root).
+rule.25.parent=-1
+rule.25.group='statement'
+rule.25.match='\b(get-weekday|get-year|get|glob|grid|group-by)\b'
+
+# Pattern 26: statement (root).
+rule.26.parent=-1
+rule.26.group='statement'
+rule.26.match='\b(group|gstat|g|hash base64|hash md5|hash sha256|hash)\b'
+
+# Pattern 27: statement (root).
+rule.27.parent=-1
+rule.27.group='statement'
+rule.27.match='\b(headers|help|hide|histogram|history|if|ignore)\b'
+
+# Pattern 28: statement (root).
+rule.28.parent=-1
+rule.28.group='statement'
+rule.28.match='\b(inc|input|insert|into binary|into bool|into datetime|into decimal)\b'
+
+# Pattern 29: statement (root).
+rule.29.parent=-1
+rule.29.group='statement'
+rule.29.match='\b(into duration|into filesize|into int|into string|into)\b'
+
+# Pattern 30: statement (root).
+rule.30.parent=-1
+rule.30.group='statement'
+rule.30.match='\b(is-admin|is-duplicated|is-in|is-not-null)\b'
+
+# Pattern 31: statement (root).
+rule.31.parent=-1
+rule.31.group='statement'
+rule.31.match='\b(is-null|is-unique|join|keep|keep until)\b'
+
+# Pattern 32: statement (root).
+rule.32.parent=-1
+rule.32.group='statement'
+rule.32.match='\b(keep while|keybindings default|keybindings listen|keybindings list)\b'
+
+# Pattern 33: statement (root).
+rule.33.parent=-1
+rule.33.group='statement'
+rule.33.match='\b(keybindings|kill|last|length|let-env|let)\b'
+
+# Pattern 34: statement (root).
+rule.34.parent=-1
+rule.34.group='statement'
+rule.34.match='\b(lines|list|lit|load-env|ls|ls-df|match|math abs)\b'
+
+# Pattern 35: statement (root).
+rule.35.parent=-1
+rule.35.group='statement'
+rule.35.match='\b(math avg|math ceil|math eval|math floor|math max)\b'
+
+# Pattern 36: statement (root).
+rule.36.parent=-1
+rule.36.group='statement'
+rule.36.match='\b(math median|math min|math mode|math product|math round)\b'
+
+# Pattern 37: statement (root).
+rule.37.parent=-1
+rule.37.group='statement'
+rule.37.match='\b(math sqrt|math stddev|math sum|math variance|math|max)\b'
+
+# Pattern 38: statement (root).
+rule.38.parent=-1
+rule.38.group='statement'
+rule.38.match='\b(mean|median|melt|merge|metadata)\b'
+
+# Pattern 39: statement (root).
+rule.39.parent=-1
+rule.39.group='statement'
+rule.39.match='\b(min|mkdir|module|move|mv|n|n-unique|n-unique)\b'
+
+# Pattern 40: statement (root).
+rule.40.parent=-1
+rule.40.group='statement'
+rule.40.match='\b(nth|nu-highlight|open|open-df|otherwise|overlay)\b'
+
+# Pattern 41: statement (root).
+rule.41.parent=-1
+rule.41.group='statement'
+rule.41.match='\b(overlay add|overlay list|overlay new|overlay remove|p)\b'
+
+# Pattern 42: statement (root).
+rule.42.parent=-1
+rule.42.group='statement'
+rule.42.match='\b(par-each|parse|path basename|path dirname|path exists)\b'
+
+# Pattern 43: statement (root).
+rule.43.parent=-1
+rule.43.group='statement'
+rule.43.match='\b(path expand|path join|path parse|path relative-to|path split)\b'
+
+# Pattern 44: statement (root).
+rule.44.parent=-1
+rule.44.group='statement'
+rule.44.match='\b(path type|path|pivot|post|prepend|print|ps|quantile)\b'
+
+# Pattern 45: statement (root).
+rule.45.parent=-1
+rule.45.group='statement'
+rule.45.match='\b(quantile|query json|query web|query xml|query|random bool)\b'
+
+# Pattern 46: statement (root).
+rule.46.parent=-1
+rule.46.group='statement'
+rule.46.match='\b(random chars|random decimal|random dice|random integer)\b'
+
+# Pattern 47: statement (root).
+rule.47.parent=-1
+rule.47.group='statement'
+rule.47.match='\b(random uuid|random|range|reduce|register|reject|rename)\b'
+
+# Pattern 48: statement (root).
+rule.48.parent=-1
+rule.48.group='statement'
+rule.48.match='\b(replace|replace-all|reverse|reverse|rm|roll down)\b'
+
+# Pattern 49: statement (root).
+rule.49.parent=-1
+rule.49.group='statement'
+rule.49.match='\b(roll left|roll right|roll up|rolling|roll|rotate)\b'
+
+# Pattern 50: statement (root).
+rule.50.parent=-1
+rule.50.group='statement'
+rule.50.match='\b(run-external|sample|save|select|select|seq|seq char)\b'
+
+# Pattern 51: statement (root).
+rule.51.parent=-1
+rule.51.group='statement'
+rule.51.match='\b(seq date|set|set-with-idx|shape|shells|shift|shuffle)\b'
+
+# Pattern 52: statement (root).
+rule.52.parent=-1
+rule.52.group='statement'
+rule.52.match='\b(size|skip until|skip while|skip|sleep|slice|sort)\b'
+
+# Pattern 53: statement (root).
+rule.53.parent=-1
+rule.53.group='statement'
+rule.53.match='\b(sort-by|source|split chars|split column|split row)\b'
+
+# Pattern 54: statement (root).
+rule.54.parent=-1
+rule.54.group='statement'
+rule.54.match='\b(split-by|split|std|std|str camel-case|str capitalize)\b'
+
+# Pattern 55: statement (root).
+rule.55.parent=-1
+rule.55.group='statement'
+rule.55.match='\b(str collect|str contains|str downcase|str ends-with|str find-replace)\b'
+
+# Pattern 56: statement (root).
+rule.56.parent=-1
+rule.56.group='statement'
+rule.56.match='\b(str index-of|str kebab-case|str length|str lpad|str pascal-case)\b'
+
+# Pattern 57: statement (root).
+rule.57.parent=-1
+rule.57.group='statement'
+rule.57.match='\b(str replace|str reverse|str rpad|str screaming-snake-case)\b'
+
+# Pattern 58: statement (root).
+rule.58.parent=-1
+rule.58.group='statement'
+rule.58.match='\b(str snake-case|str starts-with|str substring|str title-case)\b'
+
+# Pattern 59: statement (root).
+rule.59.parent=-1
+rule.59.group='statement'
+rule.59.match='\b(str to-datetime|str to-decimal|str to-int|str trim|str upcase)\b'
+
+# Pattern 60: statement (root).
+rule.60.parent=-1
+rule.60.group='statement'
+rule.60.match='\b(str-lengths|str-slice|strftime|str|sum|sys|table)\b'
+
+# Pattern 61: statement (root).
+rule.61.parent=-1
+rule.61.group='statement'
+rule.61.match='\b(take until|take while|take|term size|to csv)\b'
+
+# Pattern 62: statement (root).
+rule.62.parent=-1
+rule.62.group='statement'
+rule.62.match='\b(to html|to json|to md|to nuon|to text|to toml|to tsv)\b'
+
+# Pattern 63: statement (root).
+rule.63.parent=-1
+rule.63.group='statement'
+rule.63.match='\b(to url|to xml|to yaml|to-csv|to-df|to-dummies|to-lazy)\b'
+
+# Pattern 64: statement (root).
+rule.64.parent=-1
+rule.64.group='statement'
+rule.64.match='\b(to-lowercase|to-nu|to-parquet|to-uppercase|touch|to)\b'
+
+# Pattern 65: statement (root).
+rule.65.parent=-1
+rule.65.group='statement'
+rule.65.match='\b(transpose|tutor|unalias|uniq|unique|update|update cells)\b'
+
+# Pattern 66: statement (root).
+rule.66.parent=-1
+rule.66.group='statement'
+rule.66.match='\b(upsert|url host|url path|url query|url scheme|url)\b'
+
+# Pattern 67: statement (root).
+rule.67.parent=-1
+rule.67.group='statement'
+rule.67.match='\b(use|value-counts|var|version|view-source|watch)\b'
+
+# Pattern 68: statement (root).
+rule.68.parent=-1
+rule.68.group='statement'
+rule.68.match='\b(when|where|which|window|with-column|with-env|wrap)\b'
+
+# Pattern 69: constant (root).
+rule.69.parent=-1
+rule.69.group='constant'
+rule.69.match='\b(false|true)\b'
+
+# Pattern 70: constant.number (root).
+rule.70.parent=-1
+rule.70.group='constant.number'
+rule.70.match='\b[-+]?([1-9][0-9])*\b'
+
+# Pattern 71: constant.number (root).
+rule.71.parent=-1
+rule.71.group='constant.number'
+rule.71.match='\b[-+]?(0(x|b|o)\[[0-9a-fA-F ]+\])'
+
+# Pattern 72: constant.number (root).
+rule.72.parent=-1
+rule.72.group='constant.number'
+rule.72.match='\b[-+]?([0-9]+[BbMmGgTtPp][i]?[Bb]?)?\b'
+
+# Pattern 73: constant.number (root).
+rule.73.parent=-1
+rule.73.group='constant.number'
+rule.73.match='\b[-+]?([0-9]+[num]?[s])?\b'
+
+# Pattern 74: constant.number (root).
+rule.74.parent=-1
+rule.74.group='constant.number'
+rule.74.match='\b[-+]?([0-9]+(sec|min|hr|day|wk))?\b'
+
+# Pattern 75: constant.number (root).
+rule.75.parent=-1
+rule.75.group='constant.number'
+rule.75.match='\b([0-9]+[-][0-9]+[-][0-9]+([T][0-9]+[:][0-9]+[:][0-9]+)?([\+][0-9]+[:][0-9]+)?)\b'
+
+# Pattern 76: constant.number (root).
+rule.76.parent=-1
+rule.76.group='constant.number'
+rule.76.match='([0-9]+(\.\.)[0-9]+)?'
+
+# Pattern 77: constant.number (root).
+rule.77.parent=-1
+rule.77.group='constant.number'
+rule.77.match='((\.\.)[0-9]+)?'
+
+# Pattern 78: constant.number (root).
+rule.78.parent=-1
+rule.78.group='constant.number'
+rule.78.match='([0-9]+(\.\.))?'
+
+# Region 79: comment (root).
+rule.79.parent=-1
+rule.79.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.79.start='#'
+rule.79.end='$'
+
+# Pattern 80: todo (inside region 79).
+rule.80.parent=79
+rule.80.group='todo'
+rule.80.match='(FIXME|TODO|NOTE):?'
+
+# Region 81: constant.string (root).
+rule.81.parent=-1
+rule.81.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.81.start='"'
+rule.81.end='"'
+# Mask escaped text before matching delimiters.
+rule.81.skip='\\.'
+
+# Pattern 82: constant.specialChar (inside region 81).
+rule.82.parent=81
+rule.82.group='constant.specialChar'
+rule.82.match='\\.'
+
+# Region 83: constant.string (root).
+rule.83.parent=-1
+rule.83.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.83.start=''''
+rule.83.end=''''
+# Mask escaped text before matching delimiters.
+rule.83.skip='\\.'
+
+# Pattern 84: constant.specialChar (inside region 83).
+rule.84.parent=83
+rule.84.group='constant.specialChar'
+rule.84.match='\\.'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=85

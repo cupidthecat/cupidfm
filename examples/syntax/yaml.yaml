@@ -1,0 +1,9 @@
+# A configuration example
+name: "world"
+enabled: true
+items:
+  - one
+  - two
+message: |
+  first line
+  second line

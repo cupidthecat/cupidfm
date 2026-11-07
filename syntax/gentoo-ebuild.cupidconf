@@ -1,0 +1,133 @@
+# Syntax: ebuild
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='ebuild'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.e(build|class)$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='^src_(unpack|compile|install|test)|^pkg_(config|nofetch|setup|(pre|post)(inst|rm))'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(case|do|done|elif|else|esac|exit|fi|for|function|if|in|local|read|return|select|shift|then|time|until|while|continue|break)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(\{|\}|\(|\)|\;|\]|\[|`|\\|\$|<|>|!|=|&|\|)'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='-(e|d|f|r|g|u|w|x|L)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='-(eq|ne|gt|lt|ge|le|s|n|z)\b'
+
+# Pattern 5: preproc (root).
+rule.5.parent=-1
+rule.5.group='preproc'
+rule.5.match='\$\{?[a-zA-Z_0-9]+\}?'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='\b(ARCH|HOMEPAGE|DESCRIPTION|IUSE|SRC_URI|LICENSE|SLOT|KEYWORDS|FILESDIR|WORKDIR|(P|R)?DEPEND|PROVIDE|DISTDIR|RESTRICT|USERLAND)\b'
+
+# Pattern 7: special (root).
+rule.7.parent=-1
+rule.7.group='special'
+rule.7.match='\b(S|D|T|PV|PF|P|PN|A)\b|\bC(XX)?FLAGS\b|\bLDFLAGS\b|\bC(HOST|TARGET|BUILD)\b'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='\buse(_(with|enable))?\b [!a-zA-Z0-9_+ -]*|inherit.*'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\be(begin|end|conf|install|make|warn|infon?|error|log|patch|new(group|user))\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\bdie\b|\buse(_(with|enable))?\b|\binherit\b|\bhas\b|\b(has|best)_version\b|\bunpack\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(do|new)(ins|s?bin|doc|lib(\.so|\.a)|man|info|exe|initd|confd|envd|pam|menu|icon)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\bdo(python|sed|dir|hard|sym|html|jar|mo)\b|\bkeepdir\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='prepall(docs|info|man|strip)|prep(info|lib|lib\.(so|a)|man|strip)'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(doc|ins|exe)into\b|\bf(owners|perms)\b|\b(exe|ins|dir)opts\b'
+
+# Pattern 15: type (root).
+rule.15.parent=-1
+rule.15.group='type'
+rule.15.match='\bmake\b|\b(cat|cd|chmod|chown|cp|echo|env|export|grep|let|ln|mkdir|mv|rm|sed|set|tar|touch|unset)\b'
+
+# Region 16: constant.string (root).
+rule.16.parent=-1
+rule.16.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='"'
+rule.16.end='"'
+# Mask escaped text before matching delimiters.
+rule.16.skip='\\.'
+
+# Pattern 17: constant.specialChar (inside region 16).
+rule.17.parent=16
+rule.17.group='constant.specialChar'
+rule.17.match='\\.'
+
+# Region 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.18.start=''''
+rule.18.end=''''
+# Mask escaped text before matching delimiters.
+rule.18.skip='\\.'
+
+# Pattern 19: constant.specialChar (inside region 18).
+rule.19.parent=18
+rule.19.group='constant.specialChar'
+rule.19.match='\\.'
+
+# Region 20: comment (root).
+rule.20.parent=-1
+rule.20.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.20.start='#'
+rule.20.end='$'
+
+# Pattern 21: todo (inside region 20).
+rule.21.parent=20
+rule.21.group='todo'
+rule.21.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=22

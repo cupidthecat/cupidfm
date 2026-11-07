@@ -1,0 +1,148 @@
+# Syntax: asciidoc
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='asciidoc'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(asc|asciidoc|adoc)$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='^====+$'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='^==[[:space:]].*$'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='^----+$'
+
+# Pattern 3: symbol (root).
+rule.3.parent=-1
+rule.3.group='symbol'
+rule.3.match='^===[[:space:]].*$'
+
+# Pattern 4: symbol (root).
+rule.4.parent=-1
+rule.4.group='symbol'
+rule.4.match='^~~~~+$'
+
+# Pattern 5: type (root).
+rule.5.parent=-1
+rule.5.group='type'
+rule.5.match='^====[[:space:]].*$'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='^\^\^\^\^+$'
+
+# Pattern 7: constant (root).
+rule.7.parent=-1
+rule.7.group='constant'
+rule.7.match='^=====[[:space:]].*$'
+
+# Pattern 8: constant (root).
+rule.8.parent=-1
+rule.8.group='constant'
+rule.8.match='^\+\+\+\++$'
+
+# Pattern 9: type.keyword (root).
+rule.9.parent=-1
+rule.9.group='type.keyword'
+rule.9.match=':.*:'
+
+# Pattern 10: identifier.macro (root).
+rule.10.parent=-1
+rule.10.group='identifier.macro'
+rule.10.match='\{[a-z0-9]*\}'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='\\\{[a-z0-9]*\}'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='\+\+\+\{[a-z0-9]*\}\+\+\+'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='^\..*$'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='^\[(source,.+|NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]'
+
+# Pattern 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+rule.15.match='.*[[:space:]]\+$'
+
+# Pattern 16: constant.string (root).
+rule.16.parent=-1
+rule.16.group='constant.string'
+rule.16.match='_[^_]+_'
+
+# Pattern 17: constant.string (root).
+rule.17.parent=-1
+rule.17.group='constant.string'
+rule.17.match='\*[^\*]+\*'
+
+# Pattern 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+rule.18.match='\+[^\+]+\+'
+
+# Pattern 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+rule.19.match='`[^`]+`'
+
+# Pattern 20: constant.string (root).
+rule.20.parent=-1
+rule.20.group='constant.string'
+rule.20.match='\^[^\^]+\^'
+
+# Pattern 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+rule.21.match='~[^~]+~'
+
+# Pattern 22: constant.string (root).
+rule.22.parent=-1
+rule.22.group='constant.string'
+rule.22.match='''[^'']+'''
+
+# Pattern 23: constant (root).
+rule.23.parent=-1
+rule.23.group='constant'
+rule.23.match='`{1,2}[^'']+''{1,2}'
+
+# Pattern 24: symbol (root).
+rule.24.parent=-1
+rule.24.group='symbol'
+rule.24.match='^[[:space:]]*[\*\.-]{1,5}[[:space:]]'
+
+# Pattern 25: bold default (root).
+rule.25.parent=-1
+rule.25.group='bold default'
+rule.25.match='\[\[.*\]\]'
+
+# Pattern 26: bold default (root).
+rule.26.parent=-1
+rule.26.group='bold default'
+rule.26.match='<<.*>>'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=27

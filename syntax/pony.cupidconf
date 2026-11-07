@@ -1,0 +1,132 @@
+# Syntax: pony
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='pony'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.pony$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(type|interface|trait|primitive|class|struct|actor)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(compiler_intrinsic)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(use)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(var|let|embed)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(new|be|fun)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(iso|trn|ref|val|box|tag|consume)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(break|continue|return|error)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(if|then|elseif|else|end|match|where|try|with|as|recover|object|lambda|as|digestof|ifdef)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(while|do|repeat|until|for|in)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='(\?|=>)'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='(\||\&|\,|\^)'
+
+# Pattern 11: symbol.operator (root).
+rule.11.parent=-1
+rule.11.group='symbol.operator'
+rule.11.match='(\-|\+|\*|/|\!|%|<<|>>)'
+
+# Pattern 12: symbol.operator (root).
+rule.12.parent=-1
+rule.12.group='symbol.operator'
+rule.12.match='(==|!=|<=|>=|<|>)'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(is|isnt|not|and|or|xor)\b'
+
+# Pattern 14: type (root).
+rule.14.parent=-1
+rule.14.group='type'
+rule.14.match='\b(_*[A-Z][_a-zA-Z0-9\'']*)\b'
+
+# Pattern 15: constant (root).
+rule.15.parent=-1
+rule.15.group='constant'
+rule.15.match='\b(this)\b'
+
+# Pattern 16: constant.bool (root).
+rule.16.parent=-1
+rule.16.group='constant.bool'
+rule.16.match='\b(true|false)\b'
+
+# Pattern 17: constant.number (root).
+rule.17.parent=-1
+rule.17.group='constant.number'
+rule.17.match='\b((0b[0-1_]*)|(0o[0-7_]*)|(0x[0-9a-fA-F_]*)|([0-9_]+(\.[0-9_]+)?((e|E)(\\+|-)?[0-9_]+)?))\b'
+
+# Pattern 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+rule.18.match='"(\\.|[^"])*"'
+
+# Region 19: comment (root).
+rule.19.parent=-1
+rule.19.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='"""[^"]*'
+rule.19.end='"""'
+
+# Pattern 20: comment (root).
+rule.20.parent=-1
+rule.20.group='comment'
+rule.20.match='(^|[[:space:]])//.*'
+
+# Region 21: comment (root).
+rule.21.parent=-1
+rule.21.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='/\*'
+rule.21.end='\*/'
+
+# Pattern 22: todo (root).
+rule.22.parent=-1
+rule.22.group='todo'
+rule.22.match='TODO:?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=23

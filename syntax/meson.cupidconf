@@ -1,0 +1,136 @@
+# Syntax: meson
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='meson'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(meson\.build|meson_options\.txt|meson\.options)'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(elif|else|if|endif)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(foreach|endforeach)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(continue|break)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(and|not|or|in)\b'
+
+# Pattern 4: symbol.operator (root).
+rule.4.parent=-1
+rule.4.group='symbol.operator'
+rule.4.match='[<>?:+*/-]|[+!<>=]?='
+
+# Pattern 5: symbol.brackets (root).
+rule.5.parent=-1
+rule.5.group='symbol.brackets'
+rule.5.match='[(){}\[\]]'
+
+# Pattern 6: constant.number (root).
+rule.6.parent=-1
+rule.6.group='constant.number'
+rule.6.match='\b(0|[1-9][0-9]*)\b'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='\b(0b[01]+)\b'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b(0o[0-7]+)\b'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='\b(0x[0-9a-fA-F]+)\b'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='\b(add_global_arguments|add_global_link_arguments|add_languages|add_project_arguments|add_project_dependencies)\b'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='\b(add_project_link_arguments|add_test_setup|alias_target|assert|benchmark|both_libraries|build_machine|build_target|configuration_data)\b'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='\b(configure_file|custom_target|debug|declare_dependency|dependency|disabler|environment|error|executable|files)\b'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='\b(find_program|generator|get_option|get_variable|host_machine|import|include_directories|install_data|install_emptydir)\b'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='\b(install_headers|install_man|install_subdir|install_symlink|is_disabler|is_variable|jar|join_paths|library|meson)\b'
+
+# Pattern 15: identifier (root).
+rule.15.parent=-1
+rule.15.group='identifier'
+rule.15.match='\b(message|option|project|range|run_command|run_target|set_variable|shared_library|shared_module|static_library)\b'
+
+# Pattern 16: identifier (root).
+rule.16.parent=-1
+rule.16.group='identifier'
+rule.16.match='\b(structured_sources|subdir|subdir_done|subproject|summary|target_machine|test|unset_variable|vcs_tag|warning)\b'
+
+# Pattern 17: constant.bool (root).
+rule.17.parent=-1
+rule.17.group='constant.bool'
+rule.17.match='\b(true|false)\b'
+
+# Region 18: comment (root).
+rule.18.parent=-1
+rule.18.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='#'
+rule.18.end='$'
+
+# Region 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.19.start=''''''''
+rule.19.end=''''''''
+
+# Region 20: constant.string (root).
+rule.20.parent=-1
+rule.20.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.20.start=''''
+rule.20.end=''''
+# Mask escaped text before matching delimiters.
+rule.20.skip='\\.'
+
+# Pattern 21: constant.specialChar (inside region 20).
+rule.21.parent=20
+rule.21.group='constant.specialChar'
+rule.21.match='\\[abfnrtv\\'']'
+
+# Pattern 22: constant.specialChar (inside region 20).
+rule.22.parent=20
+rule.22.group='constant.specialChar'
+rule.22.match='\\([0-7]{1,3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|N\{[^\}]+\})'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=23

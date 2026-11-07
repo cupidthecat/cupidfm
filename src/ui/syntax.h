@@ -1,6 +1,7 @@
 #ifndef SYNTAX_H
 #define SYNTAX_H
 
+#include "syntax_rules.h"
 #include <ncurses.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -21,6 +22,7 @@
 #define COLOR_SYNTAX_FUNCTION 17
 #define COLOR_SYNTAX_LABEL 18
 #define COLOR_SYNTAX_ESCAPE 19
+#define COLOR_SYNTAX_LAST 45
 
 // Custom color indices for Monokai theme (8-15 are typically available)
 #define COLOR_MONOKAI_ORANGE 8
@@ -34,6 +36,7 @@
 
 // Syntax highlighting rule set for a language
 typedef struct {
+    SyntaxRules *rules;
     char *language;  // Language name (e.g., "c", "python")
     char **keywords; // Array of keyword strings (control flow)
     size_t keyword_count;

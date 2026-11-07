@@ -1,46 +1,165 @@
-# C Language Syntax Highlighting Configuration
-# Comprehensive C/C++ syntax support (C89/C99/C11/C17/C23, C++98/C++11/C++14/C++17/C++20/C++23)
+# Syntax: c
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
 
-# Language name
-language = c
+format=2
+name='c'
 
-# File extensions to apply this syntax to
-extensions = .c, .h, .cpp, .hpp, .cc, .cxx, .hxx, .C, .H, .ii, .def, .inl, .inc, .ipp
+# Detection: filename first, then header and content signature.
+detect.filename='(\.(c|C)$|\.(h|H)$|\.ii?$|\.(def)$)'
 
-# C/C++ keywords - control flow and jump statements
-keywords = for, if, while, do, else, case, default, switch, goto, continue, break, return, try, catch, throw, _Generic, _Static_assert, static_assert, asm, __asm__, fortran, co_await, co_return, co_yield, requires, concept
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z_][0-9A-Z_]+\b'
 
-# Storage class, type qualifiers, and modifiers
-statements = auto, volatile, register, restrict, _Alignas, alignas, _Alignof, alignof, static, const, constexpr, consteval, constinit, extern, _Thread_local, thread_local, sizeof, offsetof, __attribute__, __aligned, __asm, __builtin, __extension__, __hidden, __inline, __packed, __restrict, __section, __typeof, __weak, mutable, virtual, override, final, explicit, friend, inline, noexcept, decltype, template, typename, using, namespace, class, public, private, protected, new, delete, this, operator, static_cast, dynamic_cast, const_cast, reinterpret_cast, typeid, export, module, import
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(_Atomic|_BitInt|float|double|_Decimal32|_Decimal64|_Decimal128|_Complex|complex|_Imaginary|imaginary|_Bool|bool|char|int|short|long|enum|void|struct|union|typedef|typeof|typeof_unqual|(un)?signed|inline|_Noreturn)\b'
 
-# C types - primitive and standard types
-types = _Atomic, _BitInt, float, double, _Decimal32, _Decimal64, _Decimal128, _Complex, complex, _Imaginary, imaginary, _Bool, bool, char, int, short, long, enum, void, struct, union, typedef, typeof, typeof_unqual, signed, unsigned, inline, _Noreturn, noreturn, size_t, ssize_t, ptrdiff_t, intptr_t, uintptr_t, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t, char8_t, char16_t, char32_t, wchar_t, u_int8_t, u_int16_t, u_int32_t, u_int64_t, _Float16, __fp16, _Float32, _Float32x, _Float64, _Float64x, __float80, _Float128, _Float128x, __float128, __ibm128, __int128, __uint128_t, _Fract, _Sat, _Accum, FILE, DIR, va_list, jmp_buf, sig_atomic_t, fpos_t, clock_t, time_t, div_t, ldiv_t, lldiv_t, mbstate_t, wint_t, wctrans_t, wctype_t, off_t, pid_t, uid_t, gid_t, mode_t, dev_t, ino_t, nlink_t
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b((s?size)|((u_?)?int(8|16|32|64|ptr))|char(8|16|32)|wchar)_t\b'
 
-# Boolean and null constants
-constants = true, false, TRUE, FALSE, NULL, nullptr, __null, EXIT_SUCCESS, EXIT_FAILURE, EOF, BUFSIZ, FILENAME_MAX, FOPEN_MAX
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(_Float16|__fp16|_Float32|_Float32x|_Float64|_Float64x|__float80|_Float128|_Float128x|__float128|__ibm128|__int128|_Fract|_Sat|_Accum)\b'
 
-# Preprocessor directives
-preprocessor = define, embed, pragma, include, include_next, undef, ifdef, ifndef, endif, elif, elifdef, elifndef, else, if, line, warning, error, __has_include, __has_embed, __has_c_attribute, __has_cpp_attribute, _Pragma, import
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\b[a-z_][0-9a-z_]+(_t|_T)\b'
 
-# Comment delimiters
-line_comment = //
-block_comment_start = /*
-block_comment_end = */
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(auto|volatile|register|restrict|_Alignas|alignas|_Alignof|alignof|static|const|constexpr|extern|_Thread_local|thread_local)\b'
 
-# String delimiters
-string_delim = "
-char_delim = '
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(for|if|while|do|else|case|default|switch|_Generic|_Static_assert|static_assert)\b'
 
-# Preprocessor character
-preprocessor_char = #
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(goto|continue|break|return)\b'
 
-# Monokai Color Scheme (optional - RGB format: R,G,B or hex: #RRGGBB)
-# If not specified, default Monokai colors will be used
-color_keyword = #e87d3e
-color_type = #b4d273
-color_string = #e5b567
-color_comment = #797979
-color_number = #9e86c8
-color_preprocessor = #b05279
-color_operator = #e87d3e
-color_function = #6c99bb
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(asm|fortran)\b'
+
+# Pattern 9: preproc (root).
+rule.9.parent=-1
+rule.9.group='preproc'
+rule.9.match='^[[:space:]]*#[[:space:]]*(define|embed|pragma|include|(un|ifn?)def|endif|el(if|ifdef|ifndef|se)|if|line|warning|error|__has_include|__has_embed|__has_c_attribute)'
+
+# Pattern 10: preproc (root).
+rule.10.parent=-1
+rule.10.group='preproc'
+rule.10.match='^[[:space:]]*_Pragma\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='__attribute__[[:space:]]*\(\([^)]*\)\)'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='__(aligned|asm|builtin|extension|hidden|inline|packed|restrict|section|typeof|weak)__'
+
+# Pattern 13: symbol.operator (root).
+rule.13.parent=-1
+rule.13.group='symbol.operator'
+rule.13.match='[-+*/%=<>.:;,~&|^!?]|\b(offsetof|sizeof)\b'
+
+# Pattern 14: symbol.brackets (root).
+rule.14.parent=-1
+rule.14.group='symbol.brackets'
+rule.14.match='[(){}]|\[|\]'
+
+# Pattern 15: constant.number (root).
+rule.15.parent=-1
+rule.15.group='constant.number'
+rule.15.match='(\b([1-9][0-9]*|0[0-7]*|0[Xx][0-9A-Fa-f]+|0[Bb][01]+)([Uu][Ll]?[Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 16: constant.number (root).
+rule.16.parent=-1
+rule.16.group='constant.number'
+rule.16.match='(\b(([0-9]*[.][0-9]+|[0-9]+[.][0-9]*)([Ee][+-]?[0-9]+)?|[0-9]+[Ee][+-]?[0-9]+)[FfLl]?\b)'
+
+# Pattern 17: constant.number (root).
+rule.17.parent=-1
+rule.17.group='constant.number'
+rule.17.match='(\b0[Xx]([0-9A-Za-z]*[.][0-9A-Za-z]+|[0-9A-Za-z]+[.][0-9A-Za-z]*)[Pp][+-]?[0-9]+[FfLl]?\b)'
+
+# Pattern 18: constant.bool (root).
+rule.18.parent=-1
+rule.18.group='constant.bool'
+rule.18.match='(\b(true|false|NULL|nullptr|TRUE|FALSE)\b)'
+
+# Region 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='"'
+rule.19.end='"'
+# Mask escaped text before matching delimiters.
+rule.19.skip='\\.'
+
+# Pattern 20: constant.specialChar (inside region 19).
+rule.20.parent=19
+rule.20.group='constant.specialChar'
+rule.20.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start=''''
+rule.21.end=''''
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: error (inside region 21).
+rule.22.parent=21
+rule.22.group='error'
+rule.22.match='[[:graph:]]{2,}'''
+
+# Pattern 23: constant.specialChar (inside region 21).
+rule.23.parent=21
+rule.23.group='constant.specialChar'
+rule.23.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 24: comment (root).
+rule.24.parent=-1
+rule.24.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.24.start='//'
+rule.24.end='$'
+
+# Pattern 25: todo (inside region 24).
+rule.25.parent=24
+rule.25.group='todo'
+rule.25.match='(TODO|XXX|FIXME):?'
+
+# Region 26: comment (root).
+rule.26.parent=-1
+rule.26.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='/\*'
+rule.26.end='\*/'
+
+# Pattern 27: todo (inside region 26).
+rule.27.parent=26
+rule.27.group='todo'
+rule.27.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=28

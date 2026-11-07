@@ -1,0 +1,97 @@
+# Syntax: zsh
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='zsh'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(\.zsh$|\.?(zshenv|zprofile|zshrc|zlogin|zlogout)$)'
+detect.header='^#!.*/(env +)?zsh( |$)'
+
+# Pattern 0: constant.number (root).
+rule.0.parent=-1
+rule.0.group='constant.number'
+rule.0.match='\b[0-9]+\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(always|break|bye|case|continue|disown|do|done|elif|else|esac|exit|fi|for|function|if|in|local|read|return|select|shift|then|time|until|while)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(\{|\}|\(|\)|\;|\]|\[|`|\\|\$|<|>|!|=|&|\|)'
+
+# Pattern 3: special (root).
+rule.3.parent=-1
+rule.3.group='special'
+rule.3.match='-[Ldefgruwx]\b'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='-(eq|ne|gt|lt|ge|le|s|n|z)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b((un)?alias|bindkey|builtin|cd|declare|eval|exec|export|jobs|let|popd|pushd|set|source|typeset|umask|unset)\b'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='\b(add-zsh-hook|autoload|chdir|compinit|dirs|(dis|en)able|echotc|emulate|print|prompt(init)?|(un)?setopt|zle|zmodload|zstyle|whence)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b((g|ig)?awk|find|\w{0,4}grep|kill|killall|\w{0,4}less|make|pkill|sed|tar)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(base64|basename|cat|chcon|chgrp|chmod|chown|chroot|cksum|comm|cp|csplit|cut|date|dd|df|dir|dircolors|dirname|du|echo|env|expand|expr|factor|false|fmt|fold|head|hostid|id|install|join|link|ln|logname|ls|md5sum|mkdir|mkfifo|mknod|mktemp|mv|nice|nl|nohup|nproc|numfmt|od|paste|pathchk|pinky|pr|printenv|printf|ptx|pwd|readlink|realpath|rm|rmdir|runcon|seq|(sha1|sha224|sha256|sha384|sha512)sum|shred|shuf|sleep|sort|split|stat|stdbuf|stty|sum|sync|tac|tail|tee|test|timeout|touch|tr|true|truncate|tsort|tty|uname|unexpand|uniq|unlink|users|vdir|wc|who|whoami|yes)\b'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='^\s+(function\s+)[0-9A-Z_]+\s+\(\)'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='\$\{?[0-9A-Z_!@#$*?-]+\}?'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"'
+rule.11.end='"'
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Pattern 12: constant.specialChar (inside region 11).
+rule.12.parent=11
+rule.12.group='constant.specialChar'
+rule.12.match='\\.'
+
+# Region 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.13.start=''''
+rule.13.end=''''
+
+# Region 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='(^|\s)#'
+rule.14.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=15

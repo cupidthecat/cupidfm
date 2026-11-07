@@ -1,0 +1,132 @@
+# Syntax: gdscript
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='gdscript'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.gd$'
+
+# Pattern 0: constant (root).
+rule.0.parent=-1
+rule.0.group='constant'
+rule.0.match='\b(INF|NAN|PI|TAU)\b'
+
+# Pattern 1: constant.bool (root).
+rule.1.parent=-1
+rule.1.group='constant.bool'
+rule.1.match='\b(null|true|false)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='\b(abs|acos|asin|atan|atan2|ceil|clamp|convert|cos|cosh|db2linear|decimals|deg2rad|ease|exp|float|floor|fmod|fposmod|hash|int|isinf|isnan|lerp|linear2db|load|log|max|min|nearest_po2|pow|preload|print|printerr|printraw|prints|printt|rad2deg|rand_range|rand_seed|randomize|randi|randf|range|round|seed|sin|slerp|sqrt|str|str2var|tan|typeof|var2str|weakref)\b'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='\b(AnimationPlayer|AnimationTreePlayer|Button|Control|Engine|HTTPClient|HTTPRequest|Input|InputEvent|MainLoop|Node|Node2D|OS|SceneTree|Spatial|StreamPeer|PacketPeer|PacketPeerUDP|Timer|Tween)\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\b(AABB|Array|Basis|Color|Dictionary|NodePath|Object|Plane|PoolByteArray|PoolColorArray|PoolIntArray|PoolRealArray|PoolVector2Array|PoolVector3Array|Quat|Rect2|RID|String|Transform|Transform2D|Vector2|Vector3)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='func [a-zA-Z_0-9]+'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(and|as|assert|break|breakpoint|class|const|continue|elif|else|enum|export|extends|for|func|if|in|is|map|master|mastersync|match|not|onready|or|pass|remote|remotesync|return|self|setget|slave|slavesync|signal|sync|tool|var|while|yield)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='[.:;,+*|=!\%@]|<|>|/|-|&'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='[(){}]|\[|\]'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='\b[0-9]+\b'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b([0-9]+|0x[0-9a-fA-F]*)\b|''.'''
+
+# Region 11: comment (root).
+rule.11.parent=-1
+rule.11.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"""'
+rule.11.end='"""'
+
+# Pattern 12: todo (inside region 11).
+rule.12.parent=11
+rule.12.group='todo'
+rule.12.match='(TODO|XXX|FIXME):?'
+
+# Region 13: comment (root).
+rule.13.parent=-1
+rule.13.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.13.start=''''''''
+rule.13.end=''''''''
+
+# Pattern 14: todo (inside region 13).
+rule.14.parent=13
+rule.14.group='todo'
+rule.14.match='(TODO|XXX|FIXME):?'
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='"'
+rule.15.end='"'
+# Mask escaped text before matching delimiters.
+rule.15.skip='\\.'
+
+# Pattern 16: constant.specialChar (inside region 15).
+rule.16.parent=15
+rule.16.group='constant.specialChar'
+rule.16.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u[A-Fa-f0-9]{4}|U[A-Fa-f0-9]{8})'
+
+# Region 17: constant.string (root).
+rule.17.parent=-1
+rule.17.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.17.start=''''
+rule.17.end=''''
+# Mask escaped text before matching delimiters.
+rule.17.skip='\\.'
+
+# Pattern 18: constant.specialChar (inside region 17).
+rule.18.parent=17
+rule.18.group='constant.specialChar'
+rule.18.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u[A-Fa-f0-9]{4}|U[A-Fa-f0-9]{8})'
+
+# Region 19: comment (root).
+rule.19.parent=-1
+rule.19.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='#'
+rule.19.end='$'
+
+# Pattern 20: todo (inside region 19).
+rule.20.parent=19
+rule.20.group='todo'
+rule.20.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=21

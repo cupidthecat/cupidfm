@@ -1,0 +1,114 @@
+# Syntax: ocaml
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='ocaml'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.mli?$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z][0-9a-z_]{2,}\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(let|val|method|in|and|rec|private|virtual|constraint)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b(type|open|class|module|exception|external)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(fun|function|functor|match|try|with)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(as|when|of)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(if|then|else)\b'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='\b(begin|end|object|struct|sig|for|while|do|done|to|downto)\b'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='''[0-9A-Za-z_]+'
+
+# Pattern 8: constant.bool (root).
+rule.8.parent=-1
+rule.8.group='constant.bool'
+rule.8.match='\b(true|false)\b'
+
+# Pattern 9: special (root).
+rule.9.parent=-1
+rule.9.group='special'
+rule.9.match='\b(include|inherit|initializer)\b'
+
+# Pattern 10: special (root).
+rule.10.parent=-1
+rule.10.group='special'
+rule.10.match='\b(new|ref|mutable|lazy|assert|raise)\b'
+
+# Pattern 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+rule.11.match='''(\\[0-7]{3}|\\x[A-Fa-f0-9]{2}|\\u[A-Fa-f0-9]{4}|\\U[A-Fa-f0-9]{8}|\\[abfnrtv''\"\\]|.)'''
+
+# Pattern 12: constant.specialChar (root).
+rule.12.parent=-1
+rule.12.group='constant.specialChar'
+rule.12.match='\\[abfnrtv''\"\\]'
+
+# Pattern 13: constant.specialChar (root).
+rule.13.parent=-1
+rule.13.group='constant.specialChar'
+rule.13.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u[A-Fa-f0-9]{4}|U[A-Fa-f0-9]{8})'
+
+# Region 14: constant.string (root).
+rule.14.parent=-1
+rule.14.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='"'
+rule.14.end='"'
+# Mask escaped text before matching delimiters.
+rule.14.skip='\\.'
+
+# Pattern 15: constant.specialChar (inside region 14).
+rule.15.parent=14
+rule.15.group='constant.specialChar'
+rule.15.match='%.'
+
+# Pattern 16: constant.specialChar (inside region 14).
+rule.16.parent=14
+rule.16.group='constant.specialChar'
+rule.16.match='\\[abfnrtv''\"\\]'
+
+# Pattern 17: constant.specialChar (inside region 14).
+rule.17.parent=14
+rule.17.group='constant.specialChar'
+rule.17.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u[A-Fa-f0-9]{4}|U[A-Fa-f0-9]{8})'
+
+# Region 18: comment (root).
+rule.18.parent=-1
+rule.18.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='\(\*'
+rule.18.end='\*\)'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=19

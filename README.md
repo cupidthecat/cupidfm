@@ -28,7 +28,8 @@ New configurations use Vim browser keys: arrows or j/k move, h/l leave or enter 
 ## Features
 
 - Directory browsing, search, file operations, and an editor.
-- Text previews with syntax highlighting and bounded line indexing.
+- Text previews and editing with 158 bundled syntax definitions and bounded line indexing.
+  See the [syntax guide](docs/syntax-guide.md) for overrides and examples.
 - Image rendering through Kitty graphics, Sixel, or ANSI modes, with viewport-sized uploads and cached previews.
 - TAR, ZIP, compressed-file, and multi-file/solid 7z previews through CupidArchive.
 - Git working-tree status compared with the index through CupidGit.

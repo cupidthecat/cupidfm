@@ -1,0 +1,134 @@
+# Syntax: awk
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='awk'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.awk$'
+detect.header='^#!.*bin/(env +)?awk( |$)'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='\$[A-Za-z0-9_!@#$*?\-]+'
+
+# Pattern 1: preproc (root).
+rule.1.parent=-1
+rule.1.group='preproc'
+rule.1.match='\b(ARGC|ARGIND|ARGV|BINMODE|CONVFMT|ENVIRON|ERRNO|FIELDWIDTHS)\b'
+
+# Pattern 2: preproc (root).
+rule.2.parent=-1
+rule.2.group='preproc'
+rule.2.match='\b(FILENAME|FNR|FS|IGNORECASE|LINT|NF|NR|OFMT|OFS|ORS)\b'
+
+# Pattern 3: preproc (root).
+rule.3.parent=-1
+rule.3.group='preproc'
+rule.3.match='\b(PROCINFO|RS|RT|RSTART|RLENGTH|SUBSEP|TEXTDOMAIN)\b'
+
+# Pattern 4: identifier.class (root).
+rule.4.parent=-1
+rule.4.group='identifier.class'
+rule.4.match='\b(function|extension|BEGIN|END)\b'
+
+# Pattern 5: symbol.operator (root).
+rule.5.parent=-1
+rule.5.group='symbol.operator'
+rule.5.match='[\-+*/%^|!=&<>?;:]|\\|\[|\]'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(for|if|while|do|else|in|delete|exit)\b'
+
+# Pattern 7: special (root).
+rule.7.parent=-1
+rule.7.group='special'
+rule.7.match='\b(break|continue|return)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(close|getline|next|nextfile|print|printf|system|fflush)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(atan2|cos|exp|int|log|rand|sin|sqrt|srand)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(asort|asorti|gensub|gsub|index|length|match)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(split|sprintf|strtonum|sub|substr|tolower|toupper)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(mktime|strftime|systime)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(and|compl|lshift|or|rshift|xor)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(bindtextdomain|dcgettext|dcngettext)\b'
+
+# Pattern 15: special (root).
+rule.15.parent=-1
+rule.15.group='special'
+rule.15.match='/.*[^\\]/'
+
+# Region 16: constant.string (root).
+rule.16.parent=-1
+rule.16.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='"'
+rule.16.end='"'
+# Mask escaped text before matching delimiters.
+rule.16.skip='\\.'
+
+# Pattern 17: constant.specialChar (inside region 16).
+rule.17.parent=16
+rule.17.group='constant.specialChar'
+rule.17.match='\\.'
+
+# Region 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.18.start=''''
+rule.18.end=''''
+# Mask escaped text before matching delimiters.
+rule.18.skip='\\.'
+
+# Pattern 19: constant.specialChar (inside region 18).
+rule.19.parent=18
+rule.19.group='constant.specialChar'
+rule.19.match='\\.'
+
+# Region 20: comment (root).
+rule.20.parent=-1
+rule.20.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.20.start='#'
+rule.20.end='$'
+
+# Pattern 21: todo (inside region 20).
+rule.21.parent=20
+rule.21.group='todo'
+rule.21.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=22

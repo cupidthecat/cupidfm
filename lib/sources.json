@@ -6,8 +6,8 @@
   },
   "cupidconf": {
     "repository": "https://github.com/cupidthecat/cupidconf",
-    "commit": "dfb709e074e1272f26bc92c1cb9b15eccf0ddef5",
-    "tree": "cf7ff77089c027d97fac1378292e5a721e6233d0"
+    "commit": "0ffe407f011a5f984b779600610f56a8059c4576",
+    "tree": "a3f03d7d48c03d05c26304c92c854fc42cebbdb9"
   },
   "cupidgit": {
     "repository": "https://github.com/cupidthecat/cupidgit",

@@ -1,0 +1,79 @@
+# Syntax: clojure
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='clojure'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(clj[sc]?|edn)$'
+
+# Pattern 0: constant.bool (root).
+rule.0.parent=-1
+rule.0.group='constant.bool'
+rule.0.match='\b(true|false)\b'
+
+# Pattern 1: constant.macro (root).
+rule.1.parent=-1
+rule.1.group='constant.macro'
+rule.1.match='\b(nil)\b'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='[\-]?[0-9]+?\b'
+
+# Pattern 3: constant.number (root).
+rule.3.parent=-1
+rule.3.group='constant.number'
+rule.3.match='0x[0-9][A-Fa-f]+?\b'
+
+# Pattern 4: constant.number (root).
+rule.4.parent=-1
+rule.4.group='constant.number'
+rule.4.match='[\-]?(3[0-6]|2[0-9]|1[0-9]|[2-9])r[0-9A-Z]+?\b'
+
+# Pattern 5: error (root).
+rule.5.parent=-1
+rule.5.group='error'
+rule.5.match='[\-]?([4-9][0-9]|3[7-9]|1|0)r[0-9A-Z]+?\b'
+
+# Pattern 6: symbol.operator (root).
+rule.6.parent=-1
+rule.6.group='symbol.operator'
+rule.6.match='[=>+\-*/''?]'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='\b(byte|short|(big)?int(eger)?|long|float|num|bigdec|rationalize)\b'
+
+# Region 8: constant.string (root).
+rule.8.parent=-1
+rule.8.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='"'
+rule.8.end='"'
+# Mask escaped text before matching delimiters.
+rule.8.skip='\\.'
+
+# Pattern 9: constant.specialChar (inside region 8).
+rule.9.parent=8
+rule.9.group='constant.specialChar'
+rule.9.match='(\\u[0-9A-fa-f]{4,4}|\\newline|\\space|\\tab|\\formfeed|\\backspace|\\return|\\.)'
+
+# Region 10: comment (root).
+rule.10.parent=-1
+rule.10.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.10.start=';'
+rule.10.end='$'
+
+# Pattern 11: todo (inside region 10).
+rule.11.parent=10
+rule.11.group='todo'
+rule.11.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=12

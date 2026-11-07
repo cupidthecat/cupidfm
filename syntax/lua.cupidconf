@@ -1,0 +1,253 @@
+# Syntax: lua
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='lua'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.lua$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(do|end|while|break|repeat|until|if|elseif|then|else|for|in|function|local|return|goto)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(not|and|or)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(debug|string|math|table|io|coroutine|os|utf8|bit32)\b\.'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(_ENV|_G|_VERSION|assert|collectgarbage|dofile|error|getfenv|getmetatable|ipairs|load|loadfile|module|next|pairs|pcall|print|rawequal|rawget|rawlen|rawset|require|select|setfenv|setmetatable|tonumber|tostring|type|unpack|xpcall)\s*\('
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='io\.\b(close|flush|input|lines|open|output|popen|read|tmpfile|type|write)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='math\.\b(abs|acos|asin|atan2|atan|ceil|cosh|cos|deg|exp|floor|fmod|frexp|huge|ldexp|log10|log|max|maxinteger|min|mininteger|modf|pi|pow|rad|random|randomseed|sin|sqrt|tan|tointeger|type|ult)\b'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='os\.\b(clock|date|difftime|execute|exit|getenv|remove|rename|setlocale|time|tmpname)\b'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='package\.\b(config|cpath|loaded|loadlib|path|preload|seeall|searchers|searchpath)\b'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='string\.\b(byte|char|dump|find|format|gmatch|gsub|len|lower|match|pack|packsize|rep|reverse|sub|unpack|upper)\b'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='table\.\b(concat|insert|maxn|move|pack|remove|sort|unpack)\b'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='utf8\.\b(char|charpattern|codes|codepoint|len|offset)\b'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='coroutine\.\b(create|isyieldable|resume|running|status|wrap|yield)\b'
+
+# Pattern 12: identifier (root).
+rule.12.parent=-1
+rule.12.group='identifier'
+rule.12.match='debug\.\b(debug|getfenv|gethook|getinfo|getlocal|getmetatable|getregistry|getupvalue|getuservalue|setfenv|sethook|setlocal|setmetatable|setupvalue|setuservalue|traceback|upvalueid|upvaluejoin)\b'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='bit32\.\b(arshift|band|bnot|bor|btest|bxor|extract|replace|lrotate|lshift|rrotate|rshift)\b'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='\:\b(close|flush|lines|read|seek|setvbuf|write|byte|char|dump|find|format|gmatch|gsub|len|lower|match|pack|packsize|rep|reverse|sub|unpack|upper)\b'
+
+# Pattern 15: identifier (root).
+rule.15.parent=-1
+rule.15.group='identifier'
+rule.15.match='\b(self|arg)\b'
+
+# Pattern 16: constant (root).
+rule.16.parent=-1
+rule.16.group='constant'
+rule.16.match='\b(false|nil|true)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='(\b(dofile|require|include)|%q|%!|%Q|%r|%x)\b'
+
+# Pattern 18: symbol.brackets (root).
+rule.18.parent=-1
+rule.18.group='symbol.brackets'
+rule.18.match='[(){}\[\]]'
+
+# Pattern 19: symbol (root).
+rule.19.parent=-1
+rule.19.group='symbol'
+rule.19.match='(\*|//|/|%|\+|-|\^|>|>=|<|<=|~=|=|[\.]{2,3}|#)'
+
+# Pattern 20: constant.number (root).
+rule.20.parent=-1
+rule.20.group='constant.number'
+rule.20.match='\b((0[xX](([0-9A-Fa-f]+\.[0-9A-Fa-f]*)|(\.?[0-9A-Fa-f]+))([pP][-+]?[0-9]+)?)|((([0-9]+\.[0-9]*)|(\.?[0-9]+))([eE][-+]?[0-9]+)?))'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='"'
+rule.21.end='"'
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\([abfnrtvz\''"]|[0-9]{1,3}|x[0-9a-fA-F][0-9a-fA-F]|u\{[0-9a-fA-F]+\})'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start=''''
+rule.23.end=''''
+# Mask escaped text before matching delimiters.
+rule.23.skip='\\.'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\([abfnrtvz\''"]|[0-9]{1,3}|x[0-9a-fA-F][0-9a-fA-F]|u\{[0-9a-fA-F]+\})'
+
+# Region 25: constant.string (root).
+rule.25.parent=-1
+rule.25.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='\[\['
+rule.25.end='\]\]'
+
+# Region 26: constant.string (root).
+rule.26.parent=-1
+rule.26.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='\[=\['
+rule.26.end='\]=\]'
+
+# Region 27: constant.string (root).
+rule.27.parent=-1
+rule.27.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='\[==\['
+rule.27.end='\]==\]'
+
+# Region 28: constant.string (root).
+rule.28.parent=-1
+rule.28.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.28.start='\[===\['
+rule.28.end='\]===\]'
+
+# Region 29: constant.string (root).
+rule.29.parent=-1
+rule.29.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.29.start='\[====+\['
+rule.29.end='\]====+\]'
+
+# Region 30: comment.block (root).
+rule.30.parent=-1
+rule.30.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.30.start='\-\-\[\['
+rule.30.end='\]\]'
+
+# Pattern 31: todo (inside region 30).
+rule.31.parent=30
+rule.31.group='todo'
+rule.31.match='(TODO|NOTE|FIXME):?'
+
+# Region 32: comment.block (root).
+rule.32.parent=-1
+rule.32.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.32.start='\-\-\[=\['
+rule.32.end='\]=\]'
+
+# Pattern 33: todo (inside region 32).
+rule.33.parent=32
+rule.33.group='todo'
+rule.33.match='(TODO|NOTE|FIXME):?'
+
+# Region 34: comment.block (root).
+rule.34.parent=-1
+rule.34.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.34.start='\-\-\[==\['
+rule.34.end='\]==\]'
+
+# Pattern 35: todo (inside region 34).
+rule.35.parent=34
+rule.35.group='todo'
+rule.35.match='(TODO|NOTE|FIXME):?'
+
+# Region 36: comment.block (root).
+rule.36.parent=-1
+rule.36.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.36.start='\-\-\[===\['
+rule.36.end='\]===\]'
+
+# Pattern 37: todo (inside region 36).
+rule.37.parent=36
+rule.37.group='todo'
+rule.37.match='(TODO|NOTE|FIXME):?'
+
+# Region 38: comment.block (root).
+rule.38.parent=-1
+rule.38.group='comment.block'
+# Start/end delimiters carry state between physical lines.
+rule.38.start='\-\-\[====+\['
+rule.38.end='\]====+\]'
+
+# Pattern 39: todo (inside region 38).
+rule.39.parent=38
+rule.39.group='todo'
+rule.39.match='(TODO|NOTE|FIXME):?'
+
+# Region 40: comment (root).
+rule.40.parent=-1
+rule.40.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.40.start='\-\-'
+rule.40.end='$'
+
+# Pattern 41: todo (inside region 40).
+rule.41.parent=40
+rule.41.group='todo'
+rule.41.match='(TODO|NOTE|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=42

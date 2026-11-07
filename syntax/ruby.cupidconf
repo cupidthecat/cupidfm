@@ -1,0 +1,178 @@
+# Syntax: ruby
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='ruby'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(rb|rake|gemspec)$|^(.*[\\/])?(Gemfile|config\.ru|Rakefile|Capfile|Vagrantfile|Guardfile|Appfile|Fastfile|Pluginfile|Podfile|\.?[Bb]rewfile)$'
+detect.header='^#!.*/(env +)?ruby( |$)'
+
+# Region 0: comment.bright (root).
+rule.0.parent=-1
+rule.0.group='comment.bright'
+# Start/end delimiters carry state between physical lines.
+rule.0.start='##'
+rule.0.end='$'
+
+# Pattern 1: todo (inside region 0).
+rule.1.parent=0
+rule.1.group='todo'
+rule.1.match='(XXX|TODO|FIXME|BUG|\?\?\?)'
+
+# Region 2: comment (root).
+rule.2.parent=-1
+rule.2.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='#'
+rule.2.end='$'
+
+# Pattern 3: todo (inside region 2).
+rule.3.parent=2
+rule.3.group='todo'
+rule.3.match='(XXX|TODO|FIXME|BUG|\?\?\?)'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(BEGIN|END|alias|and|begin|break|case|class|def|defined\?|do|else|elsif|end|ensure|for|if|in|module|next|nil|not|or|private|protected|public|redo|rescue|retry|return|self|super|then|undef|unless|until|when|while|yield)\b'
+
+# Pattern 5: constant (root).
+rule.5.parent=-1
+rule.5.group='constant'
+rule.5.match='(\$|@|@@)?\b[A-Z]+[0-9A-Z_a-z]*'
+
+# Pattern 6: constant.number (root).
+rule.6.parent=-1
+rule.6.group='constant.number'
+rule.6.match='(?i)\b0x[0-9a-fA-F][0-9a-f_]*\b'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='(?i)\b0b[01][01_]*\b'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='(?i)\b[0-9][0-9_]*([''.''][0-9_]+)?(e[\-]?[0-9_]+)?\b'
+
+# Region 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='[$]([!@&`''+~=/\\,;.<>*$?:"_]|-[A-Za-z0-9_]|[0-9]+)'
+rule.9.end='\B|\b'
+
+# Pattern 10: constant (root).
+rule.10.parent=-1
+rule.10.group='constant'
+rule.10.match='(i?)([ 	]|^):[0-9A-Z_]+\b'
+
+# Pattern 11: constant (root).
+rule.11.parent=-1
+rule.11.group='constant'
+rule.11.match='\b(__FILE__|__LINE__)\b'
+
+# Pattern 12: constant (root).
+rule.12.parent=-1
+rule.12.group='constant'
+rule.12.match='/([^/]|(\\/))*/[iomx]*|%r\{([^}]|(\\}))*\}[iomx]*'
+
+# Region 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.13.start=''''
+rule.13.end=''''
+# Mask escaped text before matching delimiters.
+rule.13.skip='\\.'
+
+# Region 14: constant.string (root).
+rule.14.parent=-1
+rule.14.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='"'
+rule.14.end='"'
+# Mask escaped text before matching delimiters.
+rule.14.skip='\\.'
+
+# Region 15: symbol.brackets (inside region 14).
+rule.15.parent=14
+rule.15.group='symbol.brackets'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='#\{'
+rule.15.end='\}'
+
+# Pattern 16: default (inside region 15).
+rule.16.parent=15
+rule.16.group='default'
+rule.16.match='.*'
+
+# Region 17: constant.string.exec (root).
+rule.17.parent=-1
+rule.17.group='constant.string.exec'
+# Start/end delimiters carry state between physical lines.
+rule.17.start='`'
+rule.17.end='`'
+# Mask escaped text before matching delimiters.
+rule.17.skip='\\.'
+
+# Region 18: symbol.brackets (inside region 17).
+rule.18.parent=17
+rule.18.group='symbol.brackets'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='#\{'
+rule.18.end='\}'
+
+# Pattern 19: default (inside region 18).
+rule.19.parent=18
+rule.19.group='default'
+rule.19.match='.*'
+
+# Pattern 20: constant.string (root).
+rule.20.parent=-1
+rule.20.group='constant.string'
+rule.20.match='%[QW]?\{[^}]*\}|%[QW]?\([^)]*\)|%[QW]?<[^>]*>|%[QW]?\[[^]]*\]|%[QW]?\$[^$]*\$|%[QW]?\^[^^]*\^|%[QW]?![^!]*!'
+
+# Pattern 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+rule.21.match='%[qw]\{[^}]*\}|%[qw]\([^)]*\)|%[qw]<[^>]*>|%[qw]\[[^]]*\]|%[qw]\$[^$]*\$|%[qw]\^[^^]*\^|%[qw]![^!]*!'
+
+# Pattern 22: constant.string.exec (root).
+rule.22.parent=-1
+rule.22.group='constant.string.exec'
+rule.22.match='%[x]\{[^}]*\}|%[x]\([^)]*\)|%[x]<[^>]*>|%[x]\[[^]]*\]|%[x]\$[^$]*\$|%[x]\^[^^]*\^|%[x]![^!]*!'
+
+# Pattern 23: constant.bool (root).
+rule.23.parent=-1
+rule.23.group='constant.bool'
+rule.23.match='\b(true|false|nil|TRUE|FALSE|NIL)\b'
+
+# Pattern 24: symbol.operator (root).
+rule.24.parent=-1
+rule.24.group='symbol.operator'
+rule.24.match='[-+/*=<>!~%&|^]|\b:'
+
+# Pattern 25: symbol.brackets (root).
+rule.25.parent=-1
+rule.25.group='symbol.brackets'
+rule.25.match='([(){}]|\[|\])'
+
+# Region 26: constant.macro (root).
+rule.26.parent=-1
+rule.26.group='constant.macro'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='<<-?''?EOT''?'
+rule.26.end='^EOT'
+
+# Pattern 27: preproc.shebang (root).
+rule.27.parent=-1
+rule.27.group='preproc.shebang'
+rule.27.match='^#!.+?( |$)'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=28
