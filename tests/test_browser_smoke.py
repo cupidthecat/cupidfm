@@ -80,7 +80,12 @@ fn on_key(key) {
         try:
             wait_for((root / "ready").exists)
             assert snapshot()[:3] == ["child folder", "0", "3"]
+            for close in (b"Q", b"q", b"Q"):
+                assert snapshot(b"~" + close)[:3] == ["child folder", "0", "3"]
             assert snapshot(b"~/ntab\nnNq")[:3] == ["child folder", "0", "3"]
+            assert snapshot(b"~/ntab\nQ")[2] == "3"
+            assert snapshot(b"ffile\n/file\n\x1b")[2] == "3", "one Escape clears stacked search"
+            snapshot(b"gg")
             # Help must survive shrinking below the browser's minimum and growing again.
             os.write(primary, b"~")
             time.sleep(0.1)

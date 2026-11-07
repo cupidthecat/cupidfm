@@ -467,15 +467,16 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         return APP_KEY_HANDLED;
     }
     if (ch == 27) {
-        if (state->find_query[0])
-            state->find_query[0] = '\0';
-        else if (state->visual_active)
-            state->visual_active = false;
-        else if (state->search_active) {
+        bool searching = state->find_query[0] || state->search_active || state->file_search;
+        if (searching) {
+            state->find_query[0] = 0;
             search_clear(state);
+            if (state->file_search)
+                app_search_stop(state, true);
+            state->visual_active = false;
             app_move_cursor(state, state->dir_window_cas.cursor);
-        } else if (state->file_search)
-            app_search_stop(state, true);
+        } else if (state->visual_active)
+            state->visual_active = false;
         else if (state->select_all_active || app_selection_count(state))
             app_selection_clear(state);
         return APP_KEY_HANDLED;

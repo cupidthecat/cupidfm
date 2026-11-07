@@ -237,7 +237,10 @@ void app_history_remember(AppState *state) {
         return;
     size_t at = state->history_position;
     if (state->history_length && !strcmp(state->history[at], state->current_directory)) {
-        char *hover = strdup(state->selected_entry ? state->selected_entry : "");
+        const char *name = state->selected_entry ? state->selected_entry : "";
+        if (state->history_hover[at] && !strcmp(state->history_hover[at], name))
+            return;
+        char *hover = strdup(name);
         if (hover) {
             free(state->history_hover[at]);
             state->history_hover[at] = hover;

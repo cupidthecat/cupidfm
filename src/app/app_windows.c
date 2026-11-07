@@ -72,10 +72,7 @@ void app_windows_create(void) {
 static void draw_status(AppState *state) {
     if (!statuswin)
         return;
-    TaskInfo jobs[128];
-    size_t total = tasks_snapshot(jobs, 128), running = 0;
-    for (size_t i = 0; i < total; i++)
-        running += jobs[i].status == TASK_QUEUED || jobs[i].status == TASK_RUNNING;
+    size_t running = tasks_pending_count();
     Vector *view = active_files(state);
     size_t count = Vector_len(*view), index = count ? (size_t)state->dir_window_cas.cursor + 1 : 0;
     size_t selected = app_selection_count(state);

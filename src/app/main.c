@@ -477,9 +477,10 @@ int main(int argc, char **argv) {
             continue;
         }
         bool files_changed = kb.vim_keymap && file_watch_poll(&watcher, state.current_directory);
-        if (tasks_take_changed() || files_changed)
+        bool tasks_changed = tasks_take_changed();
+        if (tasks_changed || files_changed)
             app_reload_view(&state);
-        (void)app_search_poll(&state);
+        bool search_changed = app_search_poll(&state);
         app_history_remember(&state);
         if (ch != ERR)
             invalidate_image_preview_overlay();
@@ -1690,7 +1691,19 @@ int main(int argc, char **argv) {
             plugins_update_context(&state, active_window);
         }
 
-        if (app_input_defer_scroll_frame(ch, kb.key_up, kb.key_down, &last_frame_time))
+        bool letter_movement = kb.vim_keymap && (ch == 'j' || ch == 'k');
+        if (app_input_defer_scroll_frame(ch, letter_movement ? 'k' : kb.key_up,
+                                         letter_movement ? 'j' : kb.key_down, &last_frame_time))
+            continue;
+
+        // Input and filesystem changes paint immediately; periodic refreshes still
+        // update directory-size estimates and task progress while idle.
+        struct timespec frame_now;
+        clock_gettime(CLOCK_MONOTONIC, &frame_now);
+        long long frame_age = (frame_now.tv_sec - last_frame_time.tv_sec) * 1000000000LL +
+                              frame_now.tv_nsec - last_frame_time.tv_nsec;
+        if (ch == ERR && !files_changed && !tasks_changed && !search_changed && frame_age >= 0 &&
+            frame_age < 250000000LL)
             continue;
 
         app_draw_browser(&state);

@@ -1052,6 +1052,29 @@ static void listing_details(const char *path, const struct stat *info, FileLineM
     }
 }
 
+void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const char *icon,
+                               const char *status) {
+    int left = g_kb.vim_keymap ? 0 : 1;
+    int width = getmaxx(window);
+    if (left >= width)
+        return;
+    mvwaddch(window, row, left, selected ? '*' : ' ');
+    int icon_column = left + (g_kb.vim_keymap ? 1 : 2);
+    if (icon_column < width) {
+        wmove(window, row, icon_column);
+        browser_draw_name(window, icon, MIN(2, width - icon_column));
+    }
+    int name_column = icon_column + 3;
+    if (!g_kb.vim_keymap) {
+        if (name_column < width) {
+            wmove(window, row, name_column);
+            browser_draw_name(window, status, MIN(2, width - name_column));
+        }
+        name_column += 3;
+    }
+    wmove(window, row, MIN(name_column, getmaxx(window) - 1));
+}
+
 static void draw_directory_list(WINDOW *window, const char *directory, Vector *files_vector,
                                 CursorAndSlice *cas, bool hover);
 
@@ -1115,11 +1138,8 @@ static void draw_directory_list(WINDOW *window, const char *directory, Vector *f
             wattron(window, A_REVERSE);
         if (selected)
             wattron(window, A_BOLD);
-        if (g_kb.vim_keymap)
-            mvwprintw(window, row, 0, "%c%s ", selected ? '*' : ' ', icon);
-        else
-            mvwprintw(window, row, 1, "%c %s %s ", selected ? '*' : ' ', icon,
-                      git_status_to_emoji(FileAttr_get_git_status(file)));
+        browser_draw_entry_prefix(window, row, selected, icon,
+                                  git_status_to_emoji(FileAttr_get_git_status(file)));
         int x = getcurx(window);
         if (metadata && cols >= 40)
             listing_details(path, &info, options.linemode, details, sizeof(details));

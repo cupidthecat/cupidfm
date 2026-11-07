@@ -18,6 +18,10 @@ int browser_draw_name(WINDOW *window, const char *text, int columns);
 void browser_clear_preview(WINDOW *window);
 void draw_directory_preview(WINDOW *window, const char *directory, Vector *files_vector,
                             CursorAndSlice *cas);
+// Fixed terminal-cell slots keep file icons, Git indicators, and names aligned.
+void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const char *icon,
+                               const char *status);
+
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas);
 

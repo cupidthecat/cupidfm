@@ -90,7 +90,11 @@ void app_parent_refresh(AppState *state) {
     slash[slash == parent ? 1 : 0] = '\0';
     if (!pane_refresh(&state->parent, parent, &parent_watch))
         return;
-    SIZE index = find_loaded_index_by_name(&state->parent.files, child);
+    SIZE index = state->parent.cas.cursor;
+    if (index >= 0 && (size_t)index < Vector_len(state->parent.files) &&
+        !strcmp(FileAttr_get_name(state->parent.files.el[index]), child))
+        return;
+    index = find_loaded_index_by_name(&state->parent.files, child);
     state->parent.cas.cursor = index == (SIZE)-1 ? 0 : index;
 }
 

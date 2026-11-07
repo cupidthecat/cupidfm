@@ -41,8 +41,7 @@ or reload. Yank, file tasks, openers, shell commands, and chooser output use eve
 including paths outside the current directory. With no selection, they use the hovered entry.
 Rename accepts selected paths, preserves existing destinations, and keeps successful moves selected
 under their new names. Selected paths use a reviewed editor list in the Vim profile. File information and
-permissions still use the hovered entry. Esc clears the tab's selection after leaving
-find, visual, and filter modes. A directory and its descendants cannot be selected together.
+permissions still use the hovered entry. Esc leaves search and filtering together, finishes visual mode, or clears selection. A directory and its descendants cannot be selected together.
 Reloading prunes missing paths and finishes any visual range; hidden selections remain active.
 
 ## Browser keys
@@ -58,7 +57,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | Space | Toggle the hovered entry and move down one position |
 | v, V | Select or unset a range, including across the list boundary |
 | Ctrl+A, Ctrl+R | Select all visible entries or invert selection |
-| Esc | Clear find, finish visual mode, clear the filter, then clear selection |
+| Esc | Leave search/filter together; otherwise finish visual mode or clear selection |
 | J, K | Seek five lines down or up in the preview |
 | f | Filter names live with a regular expression |
 | /, ?, n, N | Find next/previous, then repeat in either direction |
@@ -112,7 +111,7 @@ Use j/k or the arrow keys to scroll, PageUp/PageDown for a page, and Home/End fo
 Press / to fuzzy-find help commands. Results update as you type and rank closer matches first.
 Queries ignore case and spaces: ntab finds the new-tab command. Enter keeps the results;
 j/k, arrows, or n/N scroll through them. Backspace edits the query and Ctrl+U clears it.
-Esc cancels an edit or clears the results; q closes help. Text wraps when the terminal is resized.
+Esc or uppercase Q closes help immediately, including while editing a query. Lowercase q closes help outside query editing. Text wraps when the terminal is resized.
 
 Some commands use two keys. Press t, then t to create a tab, or t, then r to rename it.
 The g, comma, m, and c prefixes cover navigation, sorting, details, and copying text.
@@ -129,8 +128,7 @@ shows whether the search is running, complete, or failed.
 Results use paths relative to the physical search root. Preview, opening, yank, copying,
 moving, deletion, rename, and chooser output use their physical paths. Enter a result
 directory with l or Right. Ctrl+S stops and reaps the search process, clears the view's
-filter, and restores the root's original hovered entry. Esc clears find, visual mode,
-and filtering before leaving a recursive view. Switching back to a search tab reruns
+filter, and restores the root's original hovered entry. Esc leaves recursive search, find, and filtering together. Switching back to a search tab reruns
 its query; a new tab starts in the physical root directory.
 
 The browser supports paths up to its existing 1023-byte limit. Longer search results
@@ -330,3 +328,5 @@ streamed filename and content results, tab ownership, cancellation, live filteri
 file operations, and terminal clipboard output. Opener tests cover literal shell arguments,
 common choices, detached launches, reviewed rename and creation batches, and conflicts.
 Navigation tests exercise controlled backends and the real fzf and zoxide commands.
+
+See [browser responsiveness](performance-input.md) for benchmark commands, measured results, and input behavior.

@@ -3,6 +3,19 @@
 #include "../src/ui/ui.c"
 #include <assert.h>
 
+WINDOW *notifwin, *bannerwin;
+volatile sig_atomic_t resized;
+const char *BANNER_TEXT, *BUILD_INFO;
+int banner_offset;
+pthread_mutex_t banner_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void draw_scrolling_banner_nout(WINDOW *w, const char *t, const char *b, int o) {
+    (void)w;
+    (void)t;
+    (void)b;
+    (void)o;
+}
+
 static bool has(const StrVec *lines, const char *text) {
     for (size_t i = 0; i < lines->count; i++)
         if (strstr(lines->lines[i], text))
@@ -50,6 +63,32 @@ int main(void) {
             assert(strlen(lines.lines[j]) <= (size_t)widths[i]);
         strvec_free(&lines);
     }
+    FILE *input = tmpfile(), *output = tmpfile();
+    SCREEN *screen = newterm("xterm-256color", output, input);
+    assert(screen);
+    set_term(screen);
+    resizeterm(30, 100);
+    wtimeout(stdscr, 0);
+    assert(ungetch('Q') != ERR);
+    assert(ungetch(10) != ERR);
+    assert(ungetch('Q') != ERR);
+    assert(ungetch('/') != ERR);
+    show_help_menu(&keys);
+    assert(getch() == 10); // The first Q closes search mode without consuming later keys.
+    assert(getch() == 'Q');
+    const char *escapes[] = {"", "/", "/tab\n"};
+    for (size_t i = 0; i < 3; i++) {
+        assert(ungetch('!') != ERR);
+        assert(ungetch(27) != ERR);
+        for (size_t n = strlen(escapes[i]); n; n--)
+            assert(ungetch(escapes[i][n - 1]) != ERR);
+        show_help_menu(&keys);
+        assert(getch() == '!');
+    }
+    endwin();
+    delscreen(screen);
+    fclose(input);
+    fclose(output);
     puts("Profile-specific help, configured editor keys, syntax setup, fuzzy ranking, and wrapping "
          "passed");
 }

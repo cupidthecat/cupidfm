@@ -448,13 +448,17 @@ void tasks_cancel(unsigned id) {
     pthread_mutex_unlock(&mutex);
 }
 
-bool tasks_busy(void) {
-    bool busy = false;
+size_t tasks_pending_count(void) {
+    size_t busy = 0;
     pthread_mutex_lock(&mutex);
     for (size_t i = 0; i < job_count; i++)
-        busy |= jobs[i]->info.status <= TASK_RUNNING;
+        busy += jobs[i]->info.status <= TASK_RUNNING;
     pthread_mutex_unlock(&mutex);
     return busy;
+}
+
+bool tasks_busy(void) {
+    return tasks_pending_count() != 0;
 }
 
 bool tasks_take_changed(void) {

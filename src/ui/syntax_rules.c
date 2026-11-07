@@ -98,19 +98,23 @@ static const char *field(cupidconf_t *conf, size_t i, const char *name) {
 
 SyntaxRules *syntax_rules_load(const char *path) {
     cupidconf_t *conf = cupidconf_load(path);
+    SyntaxRules *rules = syntax_rules_from_config(conf);
+    cupidconf_free(conf);
+    return rules;
+}
+
+SyntaxRules *syntax_rules_from_config(cupidconf_t *conf) {
     if (!conf)
         return NULL;
     const char *version = cupidconf_get(conf, "format"), *name = cupidconf_get(conf, "name");
     const char *count = cupidconf_get(conf, "rules");
     if (!version || strcmp(version, "2") || !name || !count) {
-        cupidconf_free(conf);
         return NULL;
     }
     char *end;
     errno = 0;
     long length = strtol(count, &end, 10);
     if (errno || end == count || *end || length < 0 || length > 100000) {
-        cupidconf_free(conf);
         return NULL;
     }
     SyntaxRules *r = g_new0(SyntaxRules, 1);
@@ -143,7 +147,6 @@ SyntaxRules *syntax_rules_load(const char *path) {
         if (!rule->match && (!rule->start || !rule->end))
             ok = false;
     }
-    cupidconf_free(conf);
     if (!ok) {
         syntax_rules_free(r);
         return NULL;

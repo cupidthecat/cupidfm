@@ -168,9 +168,17 @@ static bool load_syntax_file(const char *filepath) {
     cupidconf_t *config = cupidconf_load(filepath);
     const char *format = config ? cupidconf_get(config, "format") : NULL;
     bool modern = format && !strcmp(format, "2");
-    cupidconf_free(config);
     if (modern) {
-        SyntaxRules *rules = syntax_rules_load(filepath);
+        const char *configured_name = cupidconf_get(config, "name");
+        if (configured_name) {
+            for (size_t i = 0; i < g_syntax_count; i++)
+                if (!strcmp(g_syntax_defs[i].language, configured_name)) {
+                    cupidconf_free(config);
+                    return true;
+                }
+        }
+        SyntaxRules *rules = syntax_rules_from_config(config);
+        cupidconf_free(config);
         if (!rules)
             return false;
         const char *name = syntax_rules_name(rules);
@@ -184,6 +192,7 @@ static bool load_syntax_file(const char *filepath) {
         return true;
     }
 
+    cupidconf_free(config);
     FILE *fp = fopen(filepath, "r");
     if (!fp)
         return false;

@@ -35,6 +35,7 @@ bool tasks_submit_shell(const char *command, const char *directory, const char *
                         size_t count);
 size_t tasks_snapshot(TaskInfo *out, size_t capacity);
 void tasks_cancel(unsigned id);
+size_t tasks_pending_count(void);
 bool tasks_busy(void);
 bool tasks_take_changed(void);
 void tasks_stop(void);

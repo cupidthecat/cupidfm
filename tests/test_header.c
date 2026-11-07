@@ -67,6 +67,19 @@ int main(void) {
     app_draw_tab_bar(&state, &tabs);
     assert(mvwinnstr(mainwin, 0, 0, text, 120) >= 0);
     assert(!strstr(text, "9:"));
+    const char *icons[] = {"📁", "⚙️", "x"};
+    for (int mode = 0; mode < 2; mode++) {
+        g_kb.vim_keymap = mode;
+        for (int i = 0; i < 3; i++) {
+            browser_draw_entry_prefix(mainwin, i + 1, false, icons[i], "🟢");
+            assert(getcurx(mainwin) == (mode ? 4 : 9));
+            if (!mode) {
+                char symbol[16];
+                assert(mvwinnstr(mainwin, i + 1, 6, symbol, 4) >= 0);
+                assert(!strncmp(symbol, "🟢", strlen("🟢")));
+            }
+        }
+    }
     delwin(bannerwin);
     delwin(mainwin);
     endwin();

@@ -479,7 +479,7 @@ void show_help_menu(const KeyBindings *kb) {
     }
 
     const char *title = "CupidFM - Help Menu";
-    const char *footer = "j/k: scroll  PgUp/Dn  /: fuzzy find  Esc: clear find/close  q: close";
+    const char *footer = "j/k: scroll  PgUp/Dn  /: fuzzy find  Esc: close  q/Q: close";
 
     WINDOW *popup_win = NULL;
     WINDOW *content_pad = NULL;
@@ -607,7 +607,7 @@ void show_help_menu(const KeyBindings *kb) {
                 return;
             }
             keypad(popup_win, TRUE);
-            wtimeout(popup_win, 10); // non-blocking
+            wtimeout(popup_win, 100); // Poll animation without spinning at 100 Hz.
             mouseinterval(0);
 
             // Create pad
@@ -667,8 +667,8 @@ void show_help_menu(const KeyBindings *kb) {
             const char *shown = popup_cols < 65 ? "/ fuzzy find; q close" : footer;
             if (finding || *query) {
                 snprintf(find_footer, sizeof(find_footer), "%s: %s%s",
-                         finding ? "Fuzzy find (Enter done, Esc cancel)"
-                                 : "Find (/ edit; Esc clear)",
+                         finding ? "Fuzzy find (Enter done, Esc close)"
+                                 : "Find (/ edit; Esc close)",
                          query, finding ? "_" : "");
                 shown = find_footer;
                 if ((int)strlen(shown) > footer_space)
@@ -737,6 +737,10 @@ void show_help_menu(const KeyBindings *kb) {
             continue;
         }
 
+        if (ch == 'Q' || ch == 27) {
+            done = true;
+            continue;
+        }
         if (finding) {
             size_t length = strlen(query);
             bool changed = false;
