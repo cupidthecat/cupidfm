@@ -132,7 +132,8 @@ output paths are resolved against the directory from which CupidFM was launched.
 CupidMIME is pinned in lib/cupidmime to upstream commit
 9db5a59401c077640463b838d5141ba497695ff2. Recognized binary formats use its bounded byte detector.
 libmagic supplies source-language types, descriptions, encodings, and format fallbacks.
-Native detection does not open directories, FIFOs, or device nodes. Cache entries distinguish
+Native detection does not open directories, FIFOs, or device nodes. Preview dispatch also skips
+special files, including FIFOs with image, archive, or source-file extensions. Cache entries distinguish
 the detection backends and recheck file identity before retaining a result.
 
 GIO supplies copying, moving, recoverable trash, and cancellation. GLib/GIO development headers

@@ -1220,6 +1220,13 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         return;
     }
 
+    if (!S_ISREG(file_stat.st_mode) && !S_ISDIR(file_stat.st_mode)) {
+        clear_preview_graphics(window, max_y, max_x);
+        mvwaddnstr(window, preview_top(), 2, "No preview for special files", MAX(0, max_x - 4));
+        wrefresh(window);
+        return;
+    }
+
     if (!g_kb.vim_keymap) {
         char fileSizeStr[64];
         if (S_ISDIR(file_stat.st_mode)) {

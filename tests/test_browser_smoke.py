@@ -149,6 +149,13 @@ fn on_key(key) {
             os.write(primary, b"p")
             wait_for((empty / "renamed.txt").exists)
             wait_for(lambda: snapshot()[2] == "1")
+            # File extensions must not send special files to readers that wait for input.
+            special = root / "special"; special.mkdir()
+            for name in ("aa.js", "bb.png", "cc.zip"):
+                os.mkfifo(special / name)
+            (special / "dd.bmp").symlink_to(special / "bb.png")
+            snapshot(b"g " + str(special).encode() + b"\n")
+            assert snapshot(b"JKjJKjJKjJK")[2] == "4"
             # Small terminals keep input safe while waiting for a usable layout.
             fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 3, 8, 0, 0))
             process.send_signal(signal.SIGWINCH)
@@ -156,7 +163,7 @@ fn on_key(key) {
             snapshot(b"~aw")
             fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
             process.send_signal(signal.SIGWINCH)
-            assert snapshot()[2] == "1"
+            assert snapshot()[2] == "4"
             os.write(primary, b"q")
             process.wait(timeout=10)
             errors.seek(0); error = errors.read().decode(errors="replace")
