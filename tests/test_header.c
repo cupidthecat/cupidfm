@@ -89,6 +89,22 @@ int main(void) {
             }
         }
     }
+    for (int mode = 0; mode < 2; mode++) {
+        g_kb.vim_keymap = mode;
+        werase(mainwin);
+        wattron(mainwin, A_REVERSE);
+        browser_draw_entry_prefix(mainwin, 1, false, "⚙", "🟢");
+        browser_draw_name(mainwin, "short.txt", 20);
+        wattroff(mainwin, A_REVERSE);
+        int left = mode ? 0 : 1, right = getmaxx(mainwin) - (mode ? 0 : 1);
+        for (int column = left; column < right; column++)
+            assert(mvwinch(mainwin, 1, column) & A_REVERSE);
+        assert(!(mvwinch(mainwin, 2, left) & A_REVERSE));
+        if (!mode) {
+            assert(!(mvwinch(mainwin, 1, 0) & A_REVERSE));
+            assert(!(mvwinch(mainwin, 1, right) & A_REVERSE));
+        }
+    }
     delwin(bannerwin);
     delwin(mainwin);
     endwin();

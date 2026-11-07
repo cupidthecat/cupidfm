@@ -1076,6 +1076,9 @@ void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const cha
     int width = getmaxx(window);
     if (left >= width)
         return;
+    // Paint the padding too: cursor highlighting must span the whole interior,
+    // including the fixed icon columns and the gap before right-aligned details.
+    mvwhline(window, row, left, ' ', MAX(0, width - left - (g_kb.vim_keymap ? 0 : 1)));
     mvwaddch(window, row, left, selected ? '*' : ' ');
     int icon_column = left + (g_kb.vim_keymap ? 1 : 2);
     if (icon_column < width) {
