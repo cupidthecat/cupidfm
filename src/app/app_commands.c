@@ -593,6 +593,8 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
             return APP_KEY_QUIT;
     } else if (ch == 'r' && app_selection_count(state)) {
         app_bulk_rename(state);
+    } else if (ch == 'A') {
+        app_bulk_create(state);
     } else if (ch == 'a') {
         create_entry(state);
     } else if (ch == 'w') {

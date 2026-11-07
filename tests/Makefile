@@ -13,7 +13,7 @@ ASAN_CFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 ASAN_LIBS = -fsanitize=address
 
 # Test executables
-TEST_TARGETS = test_file_search test_input_prompt test_openers test_bulk_rename test_picker test_help test_header syntax_snapshot test_syntax_rules test_layout test_tasks test_mime_native test_browser_session test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
+TEST_TARGETS = test_bulk_create test_file_search test_input_prompt test_openers test_bulk_rename test_picker test_help test_header syntax_snapshot test_syntax_rules test_layout test_tasks test_mime_native test_browser_session test_vector test_path_join test_memory_safety test_vecstack test_path_fuzz test_property test_mutation test_integration test_plugins_api file_command_driver test_history_allocations test_editor_ranges test_editor_allocations test_editor_loading test_editor_save test_editor_roundtrip test_editor_atomic_save test_config_keys test_archive_preview test_text_preview test_search_capacity test_mime_cache test_directory_listing test_input_queue test_image_preview test_image_preview_ui
 
 # Test sources include application code directly; header changes must rebuild them.
 TEST_HEADERS = $(wildcard ../src/*.h ../src/*/*.h ../lib/*/*.h ../lib/*/src/*.h)
@@ -34,6 +34,9 @@ syntax_snapshot: syntax_snapshot.c ../src/ui/syntax_rules.c ../lib/cupidconf/cup
 
 test_syntax_rules: test_syntax_rules.c ../src/ui/syntax.c ../src/ui/syntax_rules.c ../lib/cupidconf/cupidconf.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs glib-2.0) $(LIBS) -lncursesw
+
+test_bulk_create: test_bulk_create.c ../src/core/bulk_create.c
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs glib-2.0) $(LIBS)
 
 test_file_search: test_file_search.c ../src/fs/file_search.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs gio-2.0) $(LIBS)
@@ -185,6 +188,7 @@ test: all
 	@./test_picker
 	@./test_input_prompt
 	@./test_file_search
+	@./test_bulk_create
 	@./test_header
 	@./test_layout
 	@./test_tasks
@@ -247,6 +251,7 @@ test-asan: clean
 	@./test_picker
 	@./test_input_prompt
 	@./test_file_search
+	@./test_bulk_create
 	@./test_header
 	@./test_layout
 	@./test_tasks

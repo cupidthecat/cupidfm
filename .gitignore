@@ -69,3 +69,5 @@ __pycache__/
 /tests/test_input_prompt
 
 /tests/test_file_search
+
+/tests/test_bulk_create

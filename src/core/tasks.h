@@ -13,7 +13,8 @@ typedef enum {
     TASK_LINK,
     TASK_RELATIVE_LINK,
     TASK_HARDLINK,
-    TASK_SHELL
+    TASK_SHELL,
+    TASK_CREATE
 } TaskKind;
 
 typedef enum { TASK_QUEUED, TASK_RUNNING, TASK_DONE, TASK_FAILED, TASK_CANCELLED } TaskStatus;

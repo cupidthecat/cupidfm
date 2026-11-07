@@ -43,11 +43,19 @@ if mode == "edit" and len(paths) == 1 and Path(paths[0]).name.startswith("cupidf
     replacements = json.loads((root / "rename-request.json").read_text())
     Path(paths[0]).write_text("\\n".join(replacements.get(name, name) for name in before)+"\\n")
     (root / "bulk-edited").write_text("done")
+elif mode == "edit" and len(paths) == 1 and Path(paths[0]).name.startswith("cupidfm-create-"):
+    Path(paths[0]).write_text((root / "create-request.txt").read_text())
 else:
     record = {"paths": paths, "cwd": str(Path.cwd()), "session": os.getsid(0)}
     staging = root / (mode + ".tmp")
     staging.write_text(json.dumps(record))
     staging.replace(root / (mode + ".json"))
+    if mode == "shared":
+        import time
+        deadline = time.monotonic() + 30
+        while not (root / "release-detached").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        (root / "detached-finished").write_text("done")
 ''')
     config = home / ".cupidfm/openers.cupidconf"
     config.write_text('''
@@ -122,13 +130,37 @@ rule.bar.use = edit,shared
             os.write(primary, b"!")
             wait_for((root / "selected").exists)
             assert (root / "selected").read_text() == "3", "selections follow renamed paths"
+            (root / "create-request.txt").write_text("folder/one.txt\nfolder/empty/\n"
+                                                     + replacements[names[0]] + "\nafter-existing.txt\n")
+            offset = len(output)
+            os.write(primary, b"A")
+            wait_for(lambda: b"Enter approves" in output[offset:])
+            os.write(primary, b"\x1b")
+            time.sleep(0.1)
+            assert not (source / "folder").exists()
+            offset = len(output)
+            os.write(primary, b"A")
+            wait_for(lambda: b"Enter approves" in output[offset:])
+            os.write(primary, b"\n")
+            wait_for(lambda: (source / "folder/one.txt").exists() and
+                            (source / "folder/empty").is_dir() and (source / "after-existing.txt").exists())
+            assert (source / replacements[names[0]]).read_text() == names[0] + "\n"
+            os.write(primary, b"wjw")
+            time.sleep(0.1)
             os.write(primary, b"q")
             process.wait(timeout=10)
+            assert not (root / "detached-finished").exists(), "detached command still outlives the UI"
+            (root / "release-detached").write_text("release")
+            deadline = time.monotonic() + 5
+            while not (root / "detached-finished").exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert (root / "detached-finished").exists(), "detached command finishes after CupidFM exits"
             errors.seek(0); error_text = errors.read().decode(errors="replace")
             assert process.returncode == 0, error_text
             assert "AddressSanitizer" not in error_text and "runtime error:" not in error_text, error_text
         finally:
+            (root / "release-detached").write_text("release")
             if process.poll() is None:
                 process.kill(); process.wait()
             os.close(primary)
-print("Grouped openers, literal paths, common fuzzy choices, detached launches, and bulk rename passed")
+print("Grouped openers, literal paths, common fuzzy choices, detached launches, bulk rename, and reviewed background creation passed")

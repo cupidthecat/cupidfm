@@ -69,6 +69,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | Y, X | Clear the yank |
 | -, _, Ctrl+_ | Create absolute symlinks, relative symlinks, or hardlinks from the yank |
 | a | Create a file; end the name with / for a directory |
+| A | Review an editor list and queue creation of several files/directories |
 | r | Rename one entry, or edit a name list for multiple selections |
 | :, ; | Run a blocking shell command or queue a background shell task |
 | Tab | Show information about the hovered file |
@@ -221,7 +222,7 @@ their snapshots and source pins here.
 | Recursive filename/content search | Partial | Streamed fd/fdfind and rg views, NUL paths, cancellation, filtering, and physical file actions |
 | fzf/zoxide navigation | Missing | No built-in integration |
 | Openers and open-with | Partial | MIME/path rules, common fuzzy picker, grouped dispatch, blocking/tasks/orphan modes; no full placeholder language |
-| File creation | Partial | One file or nested directory path; no bulk create |
+| File creation | Partial | Single paths and reviewed editor batches, including parent directories; no overwrite confirmation |
 | Rename | Partial | Cursor before extension for files, reviewed editor batches, dependency ordering, and destination protection |
 | Copy/move/paste and overwrite | Partial | Background recursion; no conflict policy editor or aggregate progress estimate |
 | Absolute/relative/hard links | Covered | Yanked local paths, preserving existing destinations |

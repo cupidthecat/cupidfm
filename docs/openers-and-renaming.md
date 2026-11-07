@@ -60,6 +60,24 @@ Each move preserves an existing destination. Rename cycles fail without replacin
 Independent successes remain in place, failures are listed, and selections follow successful
 renames. A batch has no undo entry. Names containing line breaks cannot use the line-based list.
 
+## Create several entries
+
+Press A in the Vim profile to open an empty list in the configured blocking text opener.
+Write one name per line; end a directory name with /. Blank lines are ignored. Paths are
+relative to the current physical directory unless they start with /. Parent directories
+are created as needed.
+
+CupidFM shows the proposed paths after the editor exits. Enter queues the whole list;
+Esc cancels it. The review's fuzzy query only changes which rows are visible. It does
+not change which entries will be created. Use w to inspect progress, errors, or cancel
+the task. Existing files are preserved, existing directories are accepted, and a failed
+entry does not prevent later entries from being attempted. Cancellation keeps completed
+entries. Bulk creation has no undo entry.
+
+Lists accept up to 65536 paths within the browser's existing path-length limit. Embedded
+NUL bytes or oversized entries reject the list before anything is queued. Line breaks
+cannot form part of a name in this format.
+
 ## Check the workflows
 
 Run make test for opener rules, picker behavior, rename ordering, conflicts, and source replacement.

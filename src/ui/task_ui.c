@@ -32,8 +32,9 @@ void task_ui_show(void) {
     wtimeout(window, 100);
     size_t cursor = 0;
     static const char *states[] = {"queued", "running", "done", "failed", "cancelled"};
-    static const char *kinds[] = {
-        "copy", "move", "trash", "delete", "symlink", "relative symlink", "hardlink", "shell"};
+    static const char *kinds[] = {"copy",     "move",    "trash",
+                                  "delete",   "symlink", "relative symlink",
+                                  "hardlink", "shell",   "create"};
     for (;;) {
         size_t count = tasks_snapshot(info, 128);
         if (count && cursor >= count)

@@ -142,6 +142,34 @@ static char *relative_target(GFile *directory, GFile *source) {
     return g_string_free(prefix, FALSE);
 }
 
+static bool make_directory(GFile *directory, GCancellable *cancel, GError **error) {
+    if (g_file_make_directory_with_parents(directory, cancel, error))
+        return true;
+    if (g_error_matches(*error, G_IO_ERROR, G_IO_ERROR_EXISTS) &&
+        g_file_query_file_type(directory, G_FILE_QUERY_INFO_NONE, cancel) ==
+            G_FILE_TYPE_DIRECTORY) {
+        g_clear_error(error);
+        return true;
+    }
+    return false;
+}
+
+static bool create_path(Task *task, GFile *file, const char *path, GError **error) {
+    if (g_str_has_suffix(path, "/"))
+        return make_directory(file, task->cancel, error);
+    GFile *parent = g_file_get_parent(file);
+    bool ready = parent && make_directory(parent, task->cancel, error);
+    g_clear_object(&parent);
+    if (!ready)
+        return false;
+    GFileOutputStream *output = g_file_create(file, G_FILE_CREATE_NONE, task->cancel, error);
+    if (!output)
+        return false;
+    bool ok = g_output_stream_close(G_OUTPUT_STREAM(output), task->cancel, error);
+    g_object_unref(output);
+    return ok;
+}
+
 static bool perform_file(Task *task, const char *path, GError **error) {
     GFile *source = g_file_new_for_path(path);
     GFile *directory = task->destination ? g_file_new_for_path(task->destination) : NULL;
@@ -149,7 +177,9 @@ static bool perform_file(Task *task, const char *path, GError **error) {
     GFile *destination = directory && base ? g_file_get_child(directory, base) : NULL;
     g_free(base);
     bool ok = false;
-    if (task->info.kind == TASK_TRASH) {
+    if (task->info.kind == TASK_CREATE) {
+        ok = create_path(task, source, path, error);
+    } else if (task->info.kind == TASK_TRASH) {
         ok = g_file_trash(source, task->cancel, error);
     } else if (task->info.kind == TASK_DELETE) {
         ok = remove_tree(source, task->cancel, 0, error);
@@ -305,7 +335,15 @@ static void *run_worker(void *unused) {
                 }
                 if (!perform_file(task, task->paths[i], &error)) {
                     ok = false;
-                    break;
+                    if (task->info.kind != TASK_CREATE)
+                        break;
+                    pthread_mutex_lock(&mutex);
+                    size_t used = strlen(task->info.message);
+                    snprintf(task->info.message + used, sizeof(task->info.message) - used,
+                             "%s: %s\n", task->paths[i], error ? error->message : "Create failed");
+                    pthread_mutex_unlock(&mutex);
+                    g_clear_error(&error);
+                    continue;
                 }
                 pthread_mutex_lock(&mutex);
                 task->info.completed++;
@@ -337,9 +375,10 @@ bool tasks_start(void) {
 
 static bool submit(TaskKind kind, const char *const *paths, size_t count, const char *destination,
                    bool overwrite, const char *command) {
-    if (!started || kind < TASK_COPY || kind > TASK_SHELL || count > 65536 ||
+    if (!started || kind < TASK_COPY || kind > TASK_CREATE || count > 65536 ||
         (!count && kind != TASK_SHELL) || (count && !paths) ||
-        ((kind != TASK_TRASH && kind != TASK_DELETE) && (!destination || !*destination)))
+        ((kind != TASK_TRASH && kind != TASK_DELETE && kind != TASK_CREATE) &&
+         (!destination || !*destination)))
         return false;
     for (size_t i = 0; i < count; i++)
         if (!paths[i] || paths[i][0] != '/')

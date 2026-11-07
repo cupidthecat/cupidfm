@@ -41,10 +41,11 @@ jobs:
           ./tests/test_file_search
       - name: Check openers, picker, and bulk rename with sanitizers
         run: |
-          make -B -C tests test_openers test_picker test_bulk_rename CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          make -B -C tests test_openers test_picker test_bulk_rename test_bulk_create CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_openers
           ./tests/test_picker
           ./tests/test_bulk_rename
+          ./tests/test_bulk_create
       - name: Check header and help with sanitizers
         run: |
           make -B -C tests test_header test_help CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
