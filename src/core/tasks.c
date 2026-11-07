@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "tasks.h"
+#include "process.h"
 
 #include <errno.h>
 #include <gio/gio.h>
@@ -46,13 +47,18 @@ static void progress(goffset current, goffset total, gpointer data) {
     pthread_mutex_unlock(&mutex);
 }
 
-static bool remove_tree(GFile *file, GCancellable *cancel, unsigned depth, GError **error) {
+static bool remove_tree(GFile *file, GCancellable *cancel, unsigned depth, bool writable,
+                        GError **error) {
     if (depth > 256) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED, "Directory nesting exceeds 256");
         return false;
     }
     GFileType type = g_file_query_file_type(file, G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel);
     if (type == G_FILE_TYPE_DIRECTORY) {
+        if (writable &&
+            !g_file_set_attribute_uint32(file, G_FILE_ATTRIBUTE_UNIX_MODE, 0700,
+                                         G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel, error))
+            return false;
         GFileEnumerator *entries =
             g_file_enumerate_children(file, G_FILE_ATTRIBUTE_STANDARD_NAME,
                                       G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel, error);
@@ -62,7 +68,7 @@ static bool remove_tree(GFile *file, GCancellable *cancel, unsigned depth, GErro
         bool ok = true;
         while ((entry = g_file_enumerator_next_file(entries, cancel, error))) {
             GFile *child = g_file_get_child(file, g_file_info_get_name(entry));
-            ok = remove_tree(child, cancel, depth + 1, error);
+            ok = remove_tree(child, cancel, depth + 1, writable, error);
             g_object_unref(child);
             g_object_unref(entry);
             if (!ok)
@@ -182,7 +188,7 @@ static bool perform_file(Task *task, const char *path, GError **error) {
     } else if (task->info.kind == TASK_TRASH) {
         ok = g_file_trash(source, task->cancel, error);
     } else if (task->info.kind == TASK_DELETE) {
-        ok = remove_tree(source, task->cancel, 0, error);
+        ok = remove_tree(source, task->cancel, 0, false, error);
     } else if (destination) {
         /* Resolve the physical parent before creating anything. This also catches
          * a destination reached through a symlink into the source directory. */
@@ -211,7 +217,7 @@ static bool perform_file(Task *task, const char *path, GError **error) {
             if (!ok && g_error_matches(*error, G_IO_ERROR, G_IO_ERROR_WOULD_RECURSE)) {
                 g_clear_error(error);
                 ok = copy_tree(task, source, destination, 0, error) &&
-                     remove_tree(source, task->cancel, 0, error);
+                     remove_tree(source, task->cancel, 0, false, error);
             }
         } else if (task->info.kind == TASK_HARDLINK) {
             char *to = g_file_get_path(destination);
@@ -251,25 +257,53 @@ static void stop_process(GSubprocess *process) {
     g_subprocess_force_exit(process);
 }
 
-static bool perform_shell(Task *task, GError **error) {
+static bool perform_shell(Task *task, const char *extraction, GError **error) {
     size_t count = task->info.total;
     char **argv = g_new0(char *, count + 5);
-    argv[0] = "sh";
-    argv[1] = "-c";
-    argv[2] = task->command;
-    argv[3] = "cupidfm";
-    for (size_t i = 0; i < count; i++)
-        argv[i + 4] = task->paths[i];
+    if (extraction) {
+        // exec resolves this path before replacing the worker process image.
+        g_free(argv);
+        argv = g_new0(char *, 6);
+        argv[0] = "/proc/self/exe";
+        argv[1] = "--extract-worker";
+        argv[2] = task->paths[0];
+        argv[3] = "--into";
+        argv[4] = (char *)extraction;
+    } else {
+        argv[0] = "sh";
+        argv[1] = "-c";
+        argv[2] = task->command;
+        argv[3] = "cupidfm";
+        for (size_t i = 0; i < count; i++)
+            argv[i + 4] = task->paths[i];
+    }
     FILE *log = tmpfile();
     if (!log) {
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno), "Cannot create task log: %s",
+                    g_strerror(errno));
         g_free(argv);
         return false;
     }
     GSubprocessLauncher *launcher = g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_STDIN_PIPE);
-    g_subprocess_launcher_set_cwd(launcher, task->destination);
+    if (!extraction)
+        g_subprocess_launcher_set_cwd(launcher, task->destination);
     g_subprocess_launcher_set_child_setup(launcher, shell_child_setup, NULL, NULL);
-    g_subprocess_launcher_take_stdout_fd(launcher, dup(fileno(log)));
-    g_subprocess_launcher_take_stderr_fd(launcher, dup(fileno(log)));
+    int output_fd = dup(fileno(log)), error_fd = dup(fileno(log));
+    if (output_fd < 0 || error_fd < 0) {
+        int saved = errno;
+        if (output_fd >= 0)
+            close(output_fd);
+        if (error_fd >= 0)
+            close(error_fd);
+        g_object_unref(launcher);
+        g_free(argv);
+        fclose(log);
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(saved),
+                    "Cannot redirect task output: %s", g_strerror(saved));
+        return false;
+    }
+    g_subprocess_launcher_take_stdout_fd(launcher, output_fd);
+    g_subprocess_launcher_take_stderr_fd(launcher, error_fd);
     GSubprocess *process = g_subprocess_launcher_spawnv(launcher, (const char *const *)argv, error);
     g_object_unref(launcher);
     g_free(argv);
@@ -297,9 +331,64 @@ static bool perform_shell(Task *task, GError **error) {
     char output[3001] = {0};
     (void)fread(output, 1, sizeof(output) - 1, log);
     pthread_mutex_lock(&mutex);
-    snprintf(task->info.message, sizeof(task->info.message), "%s", output);
+    if (extraction)
+        snprintf(task->info.message, sizeof(task->info.message), "Archive: %s\n%s", task->paths[0],
+                 output);
+    else
+        snprintf(task->info.message, sizeof(task->info.message), "%s", output);
     pthread_mutex_unlock(&mutex);
     fclose(log);
+    return ok;
+}
+
+static bool perform_extract(Task *task, GError **error) {
+    char *parent = g_path_get_dirname(task->destination);
+    char *temporary = g_build_filename(parent, ".cupidfm-extract-XXXXXX", NULL);
+    g_free(parent);
+    if (!g_mkdtemp(temporary)) {
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno), "Cannot stage extraction: %s",
+                    g_strerror(errno));
+        g_free(temporary);
+        return false;
+    }
+    char *content = g_build_filename(temporary, "content", NULL);
+    bool ok = perform_shell(task, content, error);
+    if (ok && g_cancellable_set_error_if_cancelled(task->cancel, error))
+        ok = false;
+    char *published = NULL;
+    if (ok) {
+        for (unsigned suffix = 0; suffix < 10000; suffix++) {
+            g_free(published);
+            published = suffix ? g_strdup_printf("%s_%u", task->destination, suffix)
+                               : g_strdup(task->destination);
+            if (file_command_rename(content, published))
+                break;
+            if (errno != EEXIST || suffix == 9999) {
+                g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
+                            "Cannot place extracted files: %s", g_strerror(errno));
+                ok = false;
+                break;
+            }
+        }
+    }
+    GFile *staging = g_file_new_for_path(temporary);
+    GError *cleanup = NULL;
+    if (!remove_tree(staging, NULL, 0, true, &cleanup)) {
+        if (!*error)
+            g_propagate_error(error, cleanup);
+        else
+            g_clear_error(&cleanup);
+        ok = false;
+    }
+    g_object_unref(staging);
+    if (ok) {
+        pthread_mutex_lock(&mutex);
+        snprintf(task->info.message, sizeof(task->info.message), "Extracted to %s", published);
+        pthread_mutex_unlock(&mutex);
+    }
+    g_free(published);
+    g_free(content);
+    g_free(temporary);
     return ok;
 }
 
@@ -326,7 +415,9 @@ static void *run_worker(void *unused) {
         if (g_cancellable_set_error_if_cancelled(task->cancel, &error)) {
             ok = false;
         } else if (task->info.kind == TASK_SHELL) {
-            ok = perform_shell(task, &error);
+            ok = perform_shell(task, NULL, &error);
+        } else if (task->info.kind == TASK_EXTRACT) {
+            ok = perform_extract(task, &error);
         } else {
             for (size_t i = 0; i < task->info.total; i++) {
                 if (g_cancellable_set_error_if_cancelled(task->cancel, &error)) {
@@ -354,9 +445,13 @@ static void *run_worker(void *unused) {
         task->info.status = g_cancellable_is_cancelled(task->cancel) ? TASK_CANCELLED
                             : ok                                     ? TASK_DONE
                                                                      : TASK_FAILED;
-        if (error)
-            snprintf(task->info.message, sizeof(task->info.message), "%s", error->message);
-        else if (ok && task->info.kind == TASK_SHELL)
+        if (error) {
+            size_t used = (task->info.kind == TASK_SHELL || task->info.kind == TASK_EXTRACT)
+                              ? strlen(task->info.message)
+                              : 0;
+            snprintf(task->info.message + used, sizeof(task->info.message) - used, "%s%s",
+                     used ? "\n" : "", error->message);
+        } else if (ok && (task->info.kind == TASK_SHELL || task->info.kind == TASK_EXTRACT))
             task->info.completed = task->info.total;
         g_clear_error(&error);
         changed = true;
@@ -375,10 +470,12 @@ bool tasks_start(void) {
 
 static bool submit(TaskKind kind, const char *const *paths, size_t count, const char *destination,
                    bool overwrite, const char *command) {
-    if (!started || kind < TASK_COPY || kind > TASK_CREATE || count > 65536 ||
+    if (!started || kind < TASK_COPY || kind > TASK_EXTRACT || count > 65536 ||
         (!count && kind != TASK_SHELL) || (count && !paths) ||
         ((kind != TASK_TRASH && kind != TASK_DELETE && kind != TASK_CREATE) &&
          (!destination || !*destination)))
+        return false;
+    if (kind == TASK_EXTRACT && (count != 1 || destination[0] != '/'))
         return false;
     for (size_t i = 0; i < count; i++)
         if (!paths[i] || paths[i][0] != '/')
@@ -393,6 +490,8 @@ static bool submit(TaskKind kind, const char *const *paths, size_t count, const 
     task->cancel = g_cancellable_new();
     task->info.kind = kind;
     task->info.total = count;
+    if (kind == TASK_EXTRACT)
+        snprintf(task->info.message, sizeof(task->info.message), "Archive: %s", paths[0]);
     pthread_mutex_lock(&mutex);
     if (job_count == TASK_LIMIT) {
         for (size_t i = 0; i < job_count; i++) {

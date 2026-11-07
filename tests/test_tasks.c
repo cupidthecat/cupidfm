@@ -220,6 +220,12 @@ int main(void) {
     wait_for_task(20, TASK_CANCELLED);
     wait_for_task(21, TASK_CANCELLED);
     assert(access(cancelled_create, F_OK));
+    assert(tasks_submit_shell("printf '%s' 'diagnostic preserved' >&2; exit 7", dest, NULL, 0));
+    TaskInfo failed_shell = wait_for_task(22, TASK_FAILED);
+    assert(strstr(failed_shell.message, "diagnostic preserved"));
+    assert(strstr(failed_shell.message, "7"));
+    assert(!tasks_submit(TASK_EXTRACT, NULL, 0, dest, false));
+    assert(!tasks_submit(TASK_EXTRACT, paths, 1, "relative-output", false));
     tasks_stop();
     /* Trashing never uses CupidFM's session-temporary cleanup path. */
     snprintf(target, sizeof(target), "%s/Trash/files/literal$(touch injected)", data);

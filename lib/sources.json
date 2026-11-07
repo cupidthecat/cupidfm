@@ -1,8 +1,8 @@
 {
   "cupidarchive": {
     "repository": "https://github.com/cupidthecat/cupidarchive",
-    "commit": "c93c8914eb0b0d8c5c583d69fe9cbddadc364ed8",
-    "tree": "4627fff95ce5932dae034db57ae25b1791997b09"
+    "commit": "899751f0dcc5f9b1005eff1eaacb4402fc023aa7",
+    "tree": "1d131cdcc52c46bd229ea6ced3304f889aeef8ac"
   },
   "cupidconf": {
     "repository": "https://github.com/cupidthecat/cupidconf",

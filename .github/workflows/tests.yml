@@ -28,6 +28,7 @@ jobs:
           python3 tests/test_ctrlf_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_extract_smoke.py
           python3 tests/test_recursive_search.py
           python3 tests/test_jump_smoke.py
       - name: Run bundled library tests
@@ -151,6 +152,7 @@ jobs:
           python3 tests/test_ctrlf_smoke.py
           python3 tests/test_cli_output.py
           python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_extract_smoke.py
           python3 tests/test_recursive_search.py
           python3 tests/test_jump_smoke.py
           python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

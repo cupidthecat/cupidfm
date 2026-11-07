@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "app_extract.h"
 #include "app_process.h"
 #include "globals.h"
 #include "input_prompt.h"
@@ -40,6 +41,8 @@ static GPtrArray *choices(Openers *set, magic_t cookie, const char *path) {
 }
 
 static bool launch(AppState *state, const Opener *opener, const char *const *paths, size_t count) {
+    if (opener->internal_extract)
+        return app_extract_paths(state, paths, count, NULL) == count;
     return app_process_run(state, opener->command, paths, count, opener->block, opener->orphan);
 }
 

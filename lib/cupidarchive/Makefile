@@ -1,6 +1,6 @@
 # CupidArchive Makefile
 
-CC = gcc
+CC = clang
 CFLAGS = -Wall -Wextra -g -std=c11 -fPIC -Isrc
 AR = ar
 ARFLAGS = rcs

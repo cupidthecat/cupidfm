@@ -156,7 +156,7 @@ static bool pattern_match(const char *pattern, const char *text) {
 }
 
 static bool available(const Opener *opener) {
-    return opener && opener->command && *opener->command &&
+    return opener && (opener->internal_extract || (opener->command && *opener->command)) &&
            (!opener->platform || !strcmp(opener->platform, "any") ||
             !strcmp(opener->platform, "unix") || !strcmp(opener->platform, "linux"));
 }
@@ -206,6 +206,9 @@ GPtrArray *openers_match(Openers *set, const char *path, const char *mime) {
         append(result, set, "open");
     } else if (text && strncmp(mime, "image/", 6))
         append(result, set, "edit");
+    else if (mime && pattern_match(
+                         "application/{zip,x-7z-compressed,x-tar,gzip,x-gzip,x-xz,x-bzip*}", mime))
+        append(result, set, "extract");
     else if (mime && (!strncmp(mime, "audio/", 6) || !strncmp(mime, "video/", 6)))
         append(result, set, "play");
     else
@@ -227,6 +230,7 @@ Openers *openers_load(const char *filename, GError **error) {
          "$"
          "{EDITOR:-vi} \"$@\"",
          true, false},
+        {"extract", "Extract here", "", false, false},
         {"open", "Open", "for path do xdg-open \"$path\"; done", false, false},
         {"play", "Play", "for path do xdg-open \"$path\"; done", false, true},
         {"reveal", "Reveal parent directory",
@@ -241,6 +245,7 @@ Openers *openers_load(const char *filename, GError **error) {
         opener->command = g_strdup(defaults[i].command);
         opener->block = defaults[i].block;
         opener->orphan = defaults[i].orphan;
+        opener->internal_extract = !strcmp(opener->name, "extract");
     }
     if (!filename || !g_file_test(filename, G_FILE_TEST_EXISTS))
         return set;
@@ -267,9 +272,10 @@ Openers *openers_load(const char *filename, GError **error) {
         bool valid = true;
         if (is_opener) {
             Opener *opener = lookup(set, name, true);
-            if (!strcmp(field, "command"))
+            if (!strcmp(field, "command")) {
                 assign(&opener->command, entry->value);
-            else if (!strcmp(field, "description"))
+                opener->internal_extract = false;
+            } else if (!strcmp(field, "description"))
                 assign(&opener->description, entry->value);
             else if (!strcmp(field, "for")) {
                 valid = !strcmp(entry->value, "any") || !strcmp(entry->value, "unix") ||
@@ -308,7 +314,7 @@ Openers *openers_load(const char *filename, GError **error) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Invalid opener setting: %s", bad);
     for (guint i = 0; !bad && i < set->openers->len; i++) {
         Opener *opener = g_ptr_array_index(set->openers, i);
-        if (!opener->command || !*opener->command) {
+        if (!opener->internal_extract && (!opener->command || !*opener->command)) {
             g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Opener has no command: %s",
                         opener->name);
             bad = opener->name;

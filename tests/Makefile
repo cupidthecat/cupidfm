@@ -71,7 +71,7 @@ test_header: test_header.c ../src/app/app_header.c ../src/ui/browser_ui.c
 test_layout: test_layout.c ../src/app/app_layout.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(LIBS)
 
-test_tasks: test_tasks.c ../src/core/tasks.c
+test_tasks: test_tasks.c ../src/core/tasks.c ../src/core/process.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(filter %.c,$^) $(shell pkg-config --cflags --libs gio-2.0) $(LIBS) -pthread
 
 test_mime_native: test_mime_native.c ../src/fs/mime.c

@@ -31,7 +31,10 @@ bool app_options_parse(int argc, char **argv, AppOptions *options) {
         } else if (!positional && argument[0] == '-') {
             if (!set_option(argument, "--cwd-file", &options->cwd_file, &i, argc, argv) &&
                 !set_option(argument, "--chooser-file", &options->chooser_file, &i, argc, argv) &&
-                !set_option(argument, "--keymap", &options->keymap, &i, argc, argv))
+                !set_option(argument, "--keymap", &options->keymap, &i, argc, argv) &&
+                !set_option(argument, "--extract-worker", &options->extract_worker, &i, argc,
+                            argv) &&
+                !set_option(argument, "--into", &options->extract_into, &i, argc, argv))
                 return false;
         } else if (options->entry_count == APP_TAB_LIMIT) {
             return false;
@@ -39,6 +42,9 @@ bool app_options_parse(int argc, char **argv, AppOptions *options) {
             options->entries[options->entry_count++] = argument;
         }
     }
+    if (options->extract_worker || options->extract_into)
+        return options->extract_worker && options->extract_into && !options->entry_count &&
+               !options->cwd_file && !options->chooser_file && !options->keymap && !options->help;
     return !options->keymap || !strcmp(options->keymap, "vim") ||
            !strcmp(options->keymap, "cupidfm");
 }

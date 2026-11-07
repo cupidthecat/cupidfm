@@ -12,6 +12,8 @@ typedef struct {
     const char *cwd_file;
     const char *chooser_file;
     const char *keymap;
+    const char *extract_worker;
+    const char *extract_into;
     bool help;
 } AppOptions;
 

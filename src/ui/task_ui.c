@@ -32,9 +32,9 @@ void task_ui_show(void) {
     wtimeout(window, 100);
     size_t cursor = 0;
     static const char *states[] = {"queued", "running", "done", "failed", "cancelled"};
-    static const char *kinds[] = {"copy",     "move",    "trash",
-                                  "delete",   "symlink", "relative symlink",
-                                  "hardlink", "shell",   "create"};
+    static const char *kinds[] = {
+        "copy",     "move",  "trash",  "delete", "symlink", "relative symlink",
+        "hardlink", "shell", "create", "extract"};
     for (;;) {
         size_t count = tasks_snapshot(info, 128);
         if (count && cursor >= count)
@@ -42,7 +42,8 @@ void task_ui_show(void) {
         size_t start = cursor >= (size_t)(rows - 3) ? cursor - (size_t)(rows - 3) + 1 : 0;
         werase(window);
         box(window, 0, 0);
-        mvwaddnstr(window, 0, 2, " Tasks: x cancel, Enter inspect, w/Esc close ", cols - 4);
+        mvwaddnstr(window, 0, 2,
+                   " Tasks: j/k, PgUp/Dn, g/G; x cancel; Enter inspect; q/w/Esc close ", cols - 4);
         if (!count)
             mvwaddnstr(window, 1, 2, "No tasks", cols - 4);
         for (size_t i = start; i < count && i - start < (size_t)(rows - 2); i++) {
@@ -58,7 +59,7 @@ void task_ui_show(void) {
         }
         wrefresh(window);
         int key = wgetch(window);
-        if (key == 27 || key == 'w' || key == 3)
+        if (key == 27 || key == 'w' || key == 'q' || key == 'Q' || key == 3)
             break;
         if (key == KEY_RESIZE) {
             resized = 1;
@@ -68,6 +69,14 @@ void task_ui_show(void) {
             cursor++;
         else if ((key == 'k' || key == KEY_UP) && cursor)
             cursor--;
+        else if (key == KEY_HOME || key == 'g')
+            cursor = 0;
+        else if ((key == KEY_END || key == 'G') && count)
+            cursor = count - 1;
+        else if (key == KEY_PPAGE)
+            cursor -= MIN(cursor, (size_t)MAX(1, rows - 3));
+        else if (key == KEY_NPAGE && count)
+            cursor = MIN(count - 1, cursor + (size_t)MAX(1, rows - 3));
         else if (key == 'x' && count)
             tasks_cancel(info[cursor].id);
         else if ((key == '\n' || key == KEY_ENTER) && count)

@@ -26,6 +26,8 @@ int main(void) {
     first(set, "/src/logo.svg", "image/svg+xml", "open");
     first(set, "/src/song", "audio/ogg", "play");
     first(set, "/src/", "folder/local", "edit");
+    first(set, "/src/data.zip", "application/zip", "extract");
+    first(set, "/src/data.tar", "application/x-tar", "extract");
     first(set, "/src/unknown", NULL, "open");
     openers_free(set);
     char filename[] = "/tmp/cupidfm-openers-XXXXXX";
@@ -73,6 +75,14 @@ int main(void) {
     assert(capture->block && !capture->orphan);
     assert(viewer->orphan && !viewer->block);
     assert(!strcmp(capture->command, "record \"$@\""));
+    g_ptr_array_free(matched, TRUE);
+    openers_free(set);
+    assert(g_file_set_contents(filename, "opener.extract.command = 'custom-extract \"$@\"'\n", -1,
+                               NULL));
+    set = openers_load(filename, &error);
+    assert(set && !error);
+    matched = openers_match(set, "/src/file.zip", "application/zip");
+    assert(matched->len && !((Opener *)matched->pdata[0])->internal_extract);
     g_ptr_array_free(matched, TRUE);
     openers_free(set);
     const char *invalid[] = {"opener.edit.block = maybe\n",

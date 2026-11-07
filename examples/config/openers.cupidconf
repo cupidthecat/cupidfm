@@ -28,4 +28,9 @@ rule.code.mime = 'application/{json,*+json,*+xml,javascript}'
 rule.code.use = edit
 rule.code.use = inspect
 
-# Files not matched above keep the built-in text, image, media, and fallback rules.
+# Use the built-in extraction task for matching archives. Existing folders are preserved.
+# Override opener.extract.command to use another extraction tool.
+rule.archive.mime = 'application/{zip,x-7z-compressed,x-tar,gzip,x-gzip,x-xz,x-bzip*}'
+rule.archive.use = extract,reveal
+
+# Files not matched above keep the built-in text, image, media, archive, and fallback rules.

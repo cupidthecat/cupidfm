@@ -70,6 +70,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | -, _, Ctrl+_ | Create absolute symlinks, relative symlinks, or hardlinks from the yank |
 | a | Create a file; end the name with / for a directory |
 | A | Review an editor list and queue creation of several files/directories |
+| e, E | Extract archives beside their sources, or choose an output directory |
 | r | Rename one entry, or edit a name list for multiple selections |
 | :, ; | Run a blocking shell command or queue a background shell task |
 | Tab | Show information about the hovered file |
@@ -88,8 +89,8 @@ $EDITOR for text and xdg-open for other files. MIME/path rules can select custom
 tracked, or detached commands. O offers common opener choices and a custom command.
 See [openers and bulk rename](openers-and-renaming.md) for configuration and batch behavior.
 
-In the task manager, arrows or j/k select a task, Enter shows its error or captured shell output,
-x cancels it, and w or Esc closes the window. Quit asks before cancelling unfinished tasks.
+In the task manager, arrows or j/k select a task; g/G, Home/End, and PageUp/PageDown navigate
+the list. Enter shows its error or captured output, x cancels it, and q, w, or Esc closes the window. Quit asks before cancelling unfinished tasks.
 Cancellation can leave completed items and partially copied destinations. Check the task details
 before retrying a batch.
 
@@ -282,7 +283,7 @@ their snapshots and source pins here.
 | Text/code previews | Partial | Existing bounded index and syntax definitions; work runs on UI thread |
 | Image/graphics previews | Partial | Kitty/Sixel/ANSI; no complete terminal or multiplexer coverage |
 | PDF/SVG/video/font/JSON preview pipelines | Partial | Library capabilities and text fallback do not cover all preview formats |
-| Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
+| Archive preview/extraction | Partial | Native extraction tasks, private staging, cancellation, destination choice, collisions, and metadata; no complete format coverage or password prompts |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
 | Input editing/history/completion | Partial | UTF-8 editing, purpose-specific history, undo/redo, component completion and fuzzy picker; no modal input |
@@ -337,3 +338,5 @@ the browser clears that filter. Up/Down and PageUp/PageDown move through matches
 Idle search rebuilds results only after another listing batch arrives. Queued typing
 skips intermediate preview paints, and queued Escape takes priority over another paint.
 An already-running synchronous preview must still finish before input can be read.
+
+See [archive extraction](archive-guide.md) for opening rules, task controls, output folders, and supported formats.

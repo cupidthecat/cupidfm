@@ -13,6 +13,7 @@ typedef struct {
     char *platform;
     bool block;
     bool orphan;
+    bool internal_extract;
 } Opener;
 
 /* A missing optional file keeps the defaults. Invalid settings fail with a GError.

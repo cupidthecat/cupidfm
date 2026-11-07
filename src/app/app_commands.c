@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "app_commands.h"
 #include "app_bulk.h"
+#include "app_extract.h"
 #include "app_help.h"
 #include "app_jump.h"
 #include "app_mouse.h"
@@ -12,6 +13,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <regex.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -459,6 +461,10 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         for (size_t i = 0; i < sizeof(assigned) / sizeof(*assigned); i++)
             if (ch == assigned[i])
                 return APP_KEY_PASS;
+        if (ch >= 0 && ch <= UCHAR_MAX && kb->key_help >= 0 && kb->key_help <= UCHAR_MAX &&
+            isalpha((unsigned char)kb->key_help) &&
+            tolower((unsigned char)ch) == tolower((unsigned char)kb->key_help))
+            return APP_KEY_PASS;
     }
     if (ch == ',' || ch == 't' || ch == 'g' || (vim && (ch == 'm' || ch == 'c'))) {
         state->prefix_key = ch;
@@ -547,6 +553,14 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         (void)app_tab_switch(tabs, state, (size_t)(ch - '1'));
         return APP_KEY_HANDLED;
     }
+    if (ch == 'w') {
+        task_ui_show();
+        return APP_KEY_HANDLED;
+    }
+    if (ch == 'e' || ch == 'E') {
+        app_extract_selected(state, ch == 'E');
+        return APP_KEY_HANDLED;
+    }
     if (!vim)
         return APP_KEY_PASS;
     if (ch == 'q' || ch == 'Q') {
@@ -616,8 +630,7 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         app_bulk_create(state);
     } else if (ch == 'a') {
         create_entry(state);
-    } else if (ch == 'w') {
-        task_ui_show();
+
     } else if (ch == 'd' || ch == 'D' || ch == 'p' || ch == 'P' || ch == '-' || ch == '_' ||
                ch == 31) {
         TaskKind kind = ch == 'd'   ? TASK_TRASH

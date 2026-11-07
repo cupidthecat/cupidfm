@@ -38,6 +38,7 @@
 #include "app_session.h"
 #include "app_state.h"
 #include "app_windows.h"
+#include "archive_extract.h"
 #include "banner.h"
 #include "browser_ui.h"
 #include "clipboard.h"
@@ -135,6 +136,8 @@ int main(int argc, char **argv) {
         app_options_usage(stderr, program);
         return 2;
     }
+    if (options.extract_worker)
+        return archive_extract_worker(options.extract_worker, options.extract_into);
     if (options.help) {
         app_options_usage(stdout, program);
         return 0;

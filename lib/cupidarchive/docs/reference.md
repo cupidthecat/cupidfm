@@ -401,6 +401,8 @@ int main(int argc, char **argv) {
 }
 ```
 
+Whole-archive extraction starts at the reader's next entry; it does not rewind. Open a fresh reader when extracting the entire archive after a listing pass.
+
 `arc_extract_entry` extracts an individual returned entry. Use whole-archive extraction when forward hardlinks or deferred directory metadata are needed. Failed member writes preserve existing destinations; successful earlier members remain when a later member fails.
 
 ### Entry Structure
