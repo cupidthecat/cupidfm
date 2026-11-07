@@ -5,7 +5,9 @@
 
 #include "app_paths.h"
 
+#include <dirent.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -61,6 +63,55 @@ void resolve_path_under_cwd(char out[MAX_PATH_LENGTH], const char *cwd, const ch
         return;
     }
     memcpy(out, resolved, (size_t)length + 1);
+}
+
+bool app_startup_entry(AppStartupEntry *entry, const char *cwd, const char *path) {
+    if (!entry) {
+        errno = EINVAL;
+        return false;
+    }
+    *entry = (AppStartupEntry){0};
+    char resolved[MAX_PATH_LENGTH];
+    resolve_path_under_cwd(resolved, cwd, path);
+    if (!*resolved) {
+        if (!path || !*path)
+            errno = EINVAL;
+        return false;
+    }
+    struct stat info;
+    bool directory = !stat(resolved, &info) && S_ISDIR(info.st_mode);
+    if (!directory) {
+        if (lstat(resolved, &info))
+            return false;
+        char *slash = strrchr(resolved, '/');
+        if (!slash || !slash[1]) {
+            errno = EINVAL;
+            return false;
+        }
+        strcpy(entry->name, slash + 1);
+        slash[slash == resolved ? 1 : 0] = 0;
+    }
+    char *canonical = realpath(resolved, NULL);
+    if (!canonical)
+        return false;
+    size_t length = strlen(canonical), name_length = strlen(entry->name);
+    if (length >= MAX_PATH_LENGTH ||
+        (name_length && length + name_length + (length > 1 ? 1 : 0) >= MAX_PATH_LENGTH)) {
+        free(canonical);
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    DIR *handle = opendir(canonical);
+    if (!handle) {
+        int saved = errno;
+        free(canonical);
+        errno = saved;
+        return false;
+    }
+    closedir(handle);
+    strcpy(entry->directory, canonical);
+    free(canonical);
+    return true;
 }
 
 const char *basename_ptr(const char *p) {

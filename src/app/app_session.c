@@ -309,13 +309,17 @@ bool app_tab_switch(AppTabs *tabs, AppState *state, size_t index) {
 }
 
 bool app_tab_create(AppTabs *tabs, AppState *state) {
+    return app_tab_create_at(tabs, state, state->current_directory);
+}
+
+bool app_tab_create_at(AppTabs *tabs, AppState *state, const char *directory) {
     if (tabs->count >= APP_TAB_LIMIT)
         return false;
     AppState *created = calloc(1, sizeof(*created));
     if (!created)
         return false;
-    created->current_directory = strdup(state->current_directory);
-    created->lazy_load.directory_path = strdup(state->current_directory);
+    created->current_directory = strdup(directory);
+    created->lazy_load.directory_path = strdup(directory);
     created->files = Vector_new(16);
     created->search_files = Vector_new(16);
     if (!created->current_directory || !created->lazy_load.directory_path || !created->files.el ||

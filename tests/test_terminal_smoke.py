@@ -66,12 +66,13 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-terminal-") as directory:
     (dashed / "dash-only.txt").write_text("directory beginning with a dash\n")
     plain_env = dict(os.environ, HOME=str(home)); plain_env.pop("TERM", None)
     for args, status in ((["--help"], 0), (["-h"], 0), (["missing-directory"], 1),
-                         ([str(working / "default-only.txt")], 1), (["--unknown"], 2), (["one", "two"], 2)):
+                         (["--unknown"], 2), (["one", "two"], 1)):
         result = subprocess.run([str(binary), *args], cwd=working, env=plain_env, capture_output=True, text=True, timeout=5)
         assert result.returncode == status, (args, result.returncode, result.stderr)
         assert "\x1b[" not in result.stdout + result.stderr, "CLI validation initialized the terminal"
         if status == 0: assert "Usage:" in result.stdout
     for args, marker in (([], "default-only.txt"), (["../start folder"], "target-only.txt"),
-                         ([str(target)], "target-only.txt"), (["--", "-dash-start"], "dash-only.txt")):
+                         ([str(target)], "target-only.txt"),
+                         ([str(target / "target-only.txt")], "target-only.txt"), (["--", "-dash-start"], "dash-only.txt")):
         terminal(home, working, args, marker)
 print("CLI startup directories, plugin compatibility calls, and F1 shutdown passed")

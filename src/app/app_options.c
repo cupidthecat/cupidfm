@@ -33,10 +33,10 @@ bool app_options_parse(int argc, char **argv, AppOptions *options) {
                 !set_option(argument, "--chooser-file", &options->chooser_file, &i, argc, argv) &&
                 !set_option(argument, "--keymap", &options->keymap, &i, argc, argv))
                 return false;
-        } else if (options->directory) {
+        } else if (options->entry_count == APP_TAB_LIMIT) {
             return false;
         } else {
-            options->directory = argument;
+            options->entries[options->entry_count++] = argument;
         }
     }
     return !options->keymap || !strcmp(options->keymap, "vim") ||
@@ -45,8 +45,8 @@ bool app_options_parse(int argc, char **argv, AppOptions *options) {
 
 void app_options_usage(FILE *stream, const char *program) {
     fprintf(stream,
-            "Usage: %s [OPTIONS] [--] [DIRECTORY]\n"
-            "Open DIRECTORY, or the current directory when omitted.\n\n"
+            "Usage: %s [OPTIONS] [--] [ENTRY ...]\n"
+            "Open up to nine files or directories in tabs; default to the current directory.\n\n"
             "  --keymap=vim|cupidfm  Choose browser shortcuts\n"
             "  --cwd-file=FILE        Write the final directory on quit (Q skips it)\n"
             "  --chooser-file=FILE    Write opened file paths and quit\n"
@@ -54,6 +54,7 @@ void app_options_usage(FILE *stream, const char *program) {
             "New configurations use the Vim profile. Existing configurations keep their keys.\n"
             "Options accept --name=VALUE or --name VALUE. Use -- before a path starting with -.\n"
             "Relative output files are resolved from the launch directory.\n"
+            "File arguments reveal their names in parent directories; the first tab is active.\n"
             "Chooser output contains one selected path per line.\n\n",
             program);
     fputs(app_help_vim(), stream);
@@ -66,6 +67,7 @@ void app_options_usage(FILE *stream, const char *program) {
     fprintf(stream,
             "\nExamples\n  %s --keymap=vim ~/Documents\n"
             "  %s --cwd-file=/tmp/cupidfm-cwd\n"
-            "  %s --chooser-file=/tmp/cupidfm-selection\n",
-            program, program, program);
+            "  %s --chooser-file=/tmp/cupidfm-selection\n"
+            "  %s src/app/main.c ~/Documents\n",
+            program, program, program, program);
 }

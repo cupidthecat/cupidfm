@@ -4,8 +4,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#define APP_TAB_LIMIT 9
+
 typedef struct {
-    const char *directory;
+    const char *entries[APP_TAB_LIMIT];
+    size_t entry_count;
     const char *cwd_file;
     const char *chooser_file;
     const char *keymap;

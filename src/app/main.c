@@ -156,15 +156,17 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
-    const char *start_directory = options.directory;
-    if (start_directory && chdir(start_directory)) {
-        fprintf(stderr, "%s: cannot open directory '%s': %s\n", program, start_directory,
-                strerror(errno));
-        return 1;
+    AppStartupEntry entries[APP_TAB_LIMIT];
+    size_t entry_count = options.entry_count ? options.entry_count : 1;
+    for (size_t i = 0; i < entry_count; i++) {
+        const char *path = options.entry_count ? options.entries[i] : ".";
+        if (!app_startup_entry(&entries[i], launch_directory, path)) {
+            fprintf(stderr, "%s: cannot open entry '%s': %s\n", program, path, strerror(errno));
+            return 1;
+        }
     }
-    char initial_directory[MAX_PATH_LENGTH];
-    if (!getcwd(initial_directory, sizeof(initial_directory))) {
-        fprintf(stderr, "%s: cannot resolve the starting directory: %s\n", program,
+    if (chdir(entries[0].directory)) {
+        fprintf(stderr, "%s: cannot enter '%s': %s\n", program, entries[0].directory,
                 strerror(errno));
         return 1;
     }
@@ -360,8 +362,33 @@ int main(int argc, char **argv) {
         PREVIEW_WIN_ACTIVE = 2,
     } active_window = DIRECTORY_WIN_ACTIVE;
 
+    // Populate launch tabs before loading plugins.
+    bool startup_ok = true;
+    for (size_t i = 0; i < entry_count; i++) {
+        if (i && !app_tab_create_at(&tabs, &state, entries[i].directory)) {
+            startup_ok = false;
+            break;
+        }
+        FileListingOptions listing = initial_listing;
+        if (entries[i].name[0] == '.')
+            listing.show_hidden = true;
+        file_listing_configure(listing);
+        state.listing = listing;
+        app_reload_view(&state);
+        if (entries[i].name[0]) {
+            SIZE index = find_loaded_index_by_name(&state.files, entries[i].name);
+            if (index != (SIZE)-1)
+                app_move_cursor(&state, index);
+        }
+        app_history_remember(&state);
+    }
+    if (tabs.active && !app_tab_switch(&tabs, &state, 0))
+        startup_ok = false;
+
     // Initial drawing
     redraw_all_windows(&state);
+    if (!startup_ok)
+        show_notification(notifwin, "Unable to initialize every startup tab");
 
     if (!tasks_start())
         show_notification(notifwin, "Unable to start background tasks");

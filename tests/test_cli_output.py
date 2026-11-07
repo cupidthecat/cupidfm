@@ -23,15 +23,34 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-cli-output-") as temporary:
     source = root / "source"; source.mkdir()
     (source / "selected.txt").write_text("data")
     plugins = home / ".cupidfm/plugins"; plugins.mkdir(parents=True)
-    (plugins / "ready.cs").write_text('fn on_load() { write_file(getenv("CUPIDFM_READY"), "ready"); }')
-    def launch(options, keys):
+    (plugins / "ready.cs").write_text(r'''
+let checks = 0;
+fn snapshot(base) {
+    write_file(base + "-cwd", fm.cwd());
+    write_file(base + "-name", fm.selected_name());
+}
+fn on_load() {
+    let ready = getenv("CUPIDFM_READY");
+    write_file(ready, "ready");
+}
+fn on_key(key) {
+    if (key == "!") {
+        checks = checks + 1;
+        snapshot(getenv("CUPIDFM_READY") + "-" + to_str(checks));
+        return true;
+    }
+    return false;
+}
+''')
+    def launch(options, keys, entries=None):
         ready_path = root / "ready"
         ready_path.unlink(missing_ok=True)
         primary, secondary = pty.openpty()
         fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         env = dict(os.environ, TERM="xterm-256color", HOME=str(home), CUPIDFM_READY=str(ready_path))
         with tempfile.TemporaryFile() as errors:
-            process = subprocess.Popen([str(binary), "--keymap=vim", *options, "source"], cwd=root,
+            process = subprocess.Popen([str(binary), "--keymap=vim", *options,
+                                        *(entries if entries is not None else ["source"])], cwd=root,
                                        env=env, stdin=secondary, stdout=secondary, stderr=errors,
                                        start_new_session=True)
             os.close(secondary)
@@ -62,7 +81,30 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-cli-output-") as temporary:
     empty = root / "empty"; empty.mkdir()
     launch(["--chooser-file=across-directories.txt"], b" g " + str(empty).encode() + b"\no")
     assert (root / "across-directories.txt").read_text() == str(source / "selected.txt") + "\n"
-    for arguments in (["--keymap=unknown"], ["--cwd-file"], ["--chooser-file="]):
+    # File arguments keep their hover across independent startup tabs.
+    (source / "broken").symlink_to(root / "missing")
+    hidden = ".hidden\nname"
+    (source / hidden).write_text("hidden")
+    launch([], b"!2!3!4!1!q", ["source/selected.txt", "empty/", "source/broken", "source/" + hidden])
+    for index, (directory, name) in enumerate(((source, "selected.txt"), (empty, ""),
+                                               (source, "broken"), (source, hidden),
+                                               (source, "selected.txt")), start=1):
+        assert (root / f"ready-{index}-cwd").read_text() == str(directory)
+        assert (root / f"ready-{index}-name").read_text() == name, (index, name, (root / f"ready-{index}-name").read_text())
+    launch(["--chooser-file=file-argument.txt"], b"\n", ["source/selected.txt"])
+    assert (root / "file-argument.txt").read_text() == str(source / "selected.txt") + "\n"
+    for index in range(250): (source / f"item-{index:03}").write_text("")
+    launch([], b"!q", ["source/selected.txt"])
+    assert (root / "ready-1-name").read_text() == "selected.txt", "reveal beyond initial batch"
+    launch([], b"9!q", ["empty"] * 9)
+    assert (root / "ready-1-cwd").read_text() == str(empty)
+    dashed = root / "-directory"; dashed.mkdir()
+    launch(["--"], b"!q", ["-directory"])
+    assert (root / "ready-1-cwd").read_text() == str(dashed)
+    for arguments in (["missing"], ["empty", "missing"], ["source/selected.txt/"]):
+        result = subprocess.run([str(binary), *arguments], cwd=root, capture_output=True, timeout=5)
+        assert result.returncode == 1 and b"cannot open entry" in result.stderr, result
+    for arguments in (["--keymap=unknown"], ["--cwd-file"], ["--chooser-file="], ["empty"] * 10):
         result = subprocess.run([str(binary), *arguments], cwd=root, capture_output=True, timeout=5)
         assert result.returncode == 2, (arguments, result.returncode)
-print("CLI keymap override, cwd output, Q suppression, chooser output, and option validation passed")
+print("CLI entry tabs, literal file reveal, limits, keymap, cwd/chooser output, and validation passed")

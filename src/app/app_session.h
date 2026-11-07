@@ -1,9 +1,8 @@
 #ifndef APP_SESSION_H
 #define APP_SESSION_H
 
+#include "app_options.h"
 #include "app_state.h"
-
-#define APP_TAB_LIMIT 9
 
 typedef struct {
     AppState *saved[APP_TAB_LIMIT];
@@ -17,6 +16,8 @@ bool app_change_directory(AppState *state, const char *path);
 void app_history_remember(AppState *state);
 bool app_history_move(AppState *state, int direction);
 bool app_tab_create(AppTabs *tabs, AppState *state);
+// Create a tab at a checked absolute directory, with fresh history.
+bool app_tab_create_at(AppTabs *tabs, AppState *state, const char *directory);
 bool app_tab_switch(AppTabs *tabs, AppState *state, size_t index);
 bool app_tab_close(AppTabs *tabs, AppState *state);
 void app_tabs_dispose(AppTabs *tabs);

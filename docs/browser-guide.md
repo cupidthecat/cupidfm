@@ -202,6 +202,21 @@ Sorting reads the whole directory before displaying it, including entries beyond
 200-entry batch. The scan currently runs on the UI thread. Linux directory watches refresh the
 active Vim tab after external changes, with a 100 ms debounce.
 
+## Launch entries
+
+Pass up to nine file or directory paths to open them in tabs, in argument order:
+
+    cupidfm src/app/main.c ~/Documents /tmp
+
+The first tab is active. A file argument opens its parent and hovers its literal name,
+including a broken symlink. A symlink to a directory enters the target directory.
+Hidden file arguments enable hidden entries in that tab. Relative arguments resolve from
+the launch directory. Use -- before a filename beginning with a dash.
+
+CupidFM checks every entry before starting the terminal interface. A missing, unreadable,
+or oversized entry fails the launch with a diagnostic. Omit the entries to use the launch
+directory. The existing nine-tab and 1023-byte path limits also apply here.
+
 ## Shell integration
 
     cupidfm --keymap=vim --cwd-file=/tmp/cupidfm-cwd
@@ -248,6 +263,7 @@ their snapshots and source pins here.
 | Directory grouping and reverse sorting | Covered | Directories remain first |
 | Scrolloff and pane ratios | Covered | Configurable margin and weights, parent/current/preview panes, narrow-terminal fallback |
 | Individual, all, inverse, and visual selection | Covered | Per-tab paths survive navigation, filtering, hidden toggles, and reload; ancestor conflicts are rejected |
+| Startup files/directories | Covered | Up to nine entries, file reveal, hidden files, broken links, and preflight errors |
 | Tabs, naming, cycling, movement, closing | Covered | Independent state, insertion after current tab, nine-tab limit |
 | Find and filter | Partial | Live filter with rollback and history; POSIX regex still differs from the full regex language |
 | Recursive filename/content search | Partial | Streamed fd/fdfind and rg views, NUL paths, cancellation, filtering, and physical file actions |
@@ -269,17 +285,16 @@ their snapshots and source pins here.
 | Archive preview/extraction | Partial | CupidArchive previews; no general extraction workflow or full format coverage |
 | Spot inspector | Partial | File-info popup; no multi-file table, swipe, or cell-copy UI |
 | Mouse click, wheel, and drag | Covered | Click to hover or reveal side-pane entries, right-click to enter/open, wheel to scroll, drag to select |
-| Input editing/history/completion | Partial | UTF-8 editing, undo/redo, Purpose-specific history, undo/redo, component completion and fuzzy picker; no modal input |
+| Input editing/history/completion | Partial | UTF-8 editing, purpose-specific history, undo/redo, component completion and fuzzy picker; no modal input |
 | Help/which-key | Partial | Scrollable, searchable help and chord indicator; no action picker or action sequences |
-| TOML keymaps/themes/configuration | Missing | CupidConf bindings and two profiles remain |
-| Lua plugin API and preset plugins | Missing | CupidScript remains; the Lua runtime is not implemented |
+| Complete keymap/theme/component configuration | Missing | CupidConf bindings and two profiles remain |
+| Complete plugin API and bundled workflows | Missing | Current CupidScript hooks cover a subset of the browser lifecycle |
 | Async fetch/preload/peek/seek/spot lifecycle | Missing | Existing hooks do not implement this lifecycle |
 | Plugin/package manager and flavors | Missing | No package management commands |
 | IPC, emit, pub/sub, remote control | Missing | No IPC command interface |
 | Local/archive/remote/trash URL model | Missing | Local filesystem paths remain |
 | SFTP and remote transfers/caches | Missing | No remote browser backend |
 | CLI cwd/chooser output | Covered | Keymap override and Q cwd suppression |
-| Multiple startup entries and file reveal | Missing | One startup directory |
 | Native Windows/macOS behavior | Missing | This checkpoint targets Linux/WSL |
 | Notifications and theme components | Partial | Path/tab header, mode/task status, and ncurses colors; no configurable component/theme system |
 
@@ -292,6 +307,9 @@ their snapshots and source pins here.
     python3 tests/test_scroll_smoke.py
     python3 tests/test_browser_smoke.py
     python3 tests/test_cli_output.py
+    python3 tests/test_recursive_search.py
+    python3 tests/test_open_bulk_smoke.py
+    python3 tests/test_jump_smoke.py
 
 The layout test checks pane bounds across terminal sizes and ratios. Browser session tests cover
 side-pane navigation, mouse dragging, tab ownership, history branching, visual ranges, selections
@@ -303,3 +321,10 @@ screens, profile-specific shortcuts, fuzzy matching, and text wrapping.
 The Vim terminal test covers keys, selection reaching plugins, tabs, history, filtering,
 external changes, copying selections from multiple directories without X11, and trash that survives
 shutdown.
+
+The CLI tests cover startup tabs, file reveal beyond the initial batch, hidden names, broken
+symlinks, newline names, invalid entries, and relative cwd/chooser outputs. Search tests cover
+streamed filename and content results, tab ownership, cancellation, live filtering, physical
+file operations, and terminal clipboard output. Opener tests cover literal shell arguments,
+common choices, detached launches, reviewed rename and creation batches, and conflicts.
+Navigation tests exercise controlled backends and the real fzf and zoxide commands.
