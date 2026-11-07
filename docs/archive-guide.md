@@ -27,6 +27,9 @@ The output parent must exist and be writable. Folder paths retain the browser's 
 limit, with space reserved for a collision suffix. Archive member names and decoding work
 also follow CupidArchive's limits, including a 1 GiB decoded-byte limit and 64 path levels.
 
+Archive previews keep each member on one row. Names and link targets display line breaks
+and tabs as escaped text, and clipping uses terminal cells so multibyte names remain intact.
+
 ## Tasks and metadata
 
 Use w to inspect extraction jobs. Arrows or j/k move through the list, g/Home and G/End jump

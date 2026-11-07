@@ -59,6 +59,7 @@
 #endif
 
 // Local includes
+#include "browser_ui.h"
 #include "config.h"
 #include "console.h"
 #include "files.h" // for FileAttributes, FileAttr, MAX_PATH_LENGTH
@@ -3899,13 +3900,19 @@ void display_archive_preview(WINDOW *window, const char *file_path, int start_li
 
 void display_archive_preview_at(WINDOW *window, const char *file_path, int start_line, int max_y,
                                 int max_x, int top) {
+    if (!window)
+        return;
+    max_y = MIN(max_y, getmaxy(window));
+    max_x = MIN(max_x, getmaxx(window));
+    if (max_x <= 4 || top < 0 || top >= max_y)
+        return;
     ArcReader *reader = arc_open_path(file_path);
     if (!reader) {
-        // Show more detailed error message
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Unable to open archive: %s (errno: %s)", file_path,
                  strerror(errno));
-        mvwprintw(window, top == 8 ? 7 : top, 2, "%.*s", MAX(0, max_x - 4), error_msg);
+        wmove(window, top == 8 ? 7 : top, 2);
+        browser_draw_name(window, error_msg, max_x - 4);
         return;
     }
 
@@ -3942,10 +3949,14 @@ void display_archive_preview_at(WINDOW *window, const char *file_path, int start
         int ret = arc_next(reader, &entry);
         if (ret != 0) {
             if (ret < 0) {
-                mvwprintw(window, line_num++, 2, "Unable to read archive: %s", strerror(errno));
+                char message[160];
+                snprintf(message, sizeof(message), "Unable to read archive: %s", strerror(errno));
+                wmove(window, line_num++, 2);
+                browser_draw_name(window, message, max_x - 4);
             } else if (!found_any) {
-                mvwprintw(window, line_num++, 2, "%s",
-                          current_line ? "End of archive" : "Archive is empty");
+                wmove(window, line_num++, 2);
+                browser_draw_name(window, current_line ? "End of archive" : "Archive is empty",
+                                  max_x - 4);
             }
             break; // Done
         }
@@ -3961,7 +3972,6 @@ void display_archive_preview_at(WINDOW *window, const char *file_path, int start
         }
 
         // Format entry display
-        char entry_line[256];
         const char *type_icon = "📄";
         if (entry.type == ARC_ENTRY_DIR) {
             type_icon = "📁";
@@ -3982,29 +3992,37 @@ void display_archive_preview_at(WINDOW *window, const char *file_path, int start
             format_file_size(size_str, entry.size);
         }
 
-        // Build display line
-        if (entry.type == ARC_ENTRY_SYMLINK && entry.link_target) {
-            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s -> %s", type_icon,
-                     entry.path ? entry.path : "(null)", size_str, entry.link_target);
-        } else {
-            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s", type_icon,
-                     entry.path ? entry.path : "(null)", size_str);
+        int right = max_x - 2;
+        wmove(window, line_num, 2);
+        browser_draw_name(window, type_icon, MAX(0, right - 2));
+        if (getcurx(window) < right)
+            waddch(window, ' ');
+        int name_column = getcurx(window);
+        int size_width = max_x >= 16 ? MIN((int)strlen(size_str), (max_x - 4) / 3) : 0;
+        int size_column = right - size_width;
+        int available = MAX(0, size_column - name_column - (size_width ? 1 : 0));
+        int used = browser_draw_name(window, entry.path, available);
+        if (entry.link_target &&
+            (entry.type == ARC_ENTRY_SYMLINK || entry.type == ARC_ENTRY_HARDLINK) &&
+            used + 4 < available) {
+            waddstr(window, " -> ");
+            browser_draw_name(window, entry.link_target, available - used - 4);
         }
-
-        // Truncate if too long
-        int max_display_width = max_x - 4;
-        if ((int)strlen(entry_line) > max_display_width) {
-            entry_line[max_display_width] = '\0';
+        if (size_width) {
+            wmove(window, line_num, size_column);
+            browser_draw_name(window, size_str, size_width);
         }
-
-        mvwprintw(window, line_num++, 2, "%.*s", max_display_width, entry_line);
+        line_num++;
 
         arc_entry_free(&entry);
         entry_count++;
     }
 
-    if (entry_count >= max_entries) {
-        mvwprintw(window, line_num++, 2, "... (showing first %d entries)", max_entries);
+    if (entry_count >= max_entries && line_num < max_y - 1) {
+        char message[64];
+        snprintf(message, sizeof(message), "... (showing first %d entries)", max_entries);
+        wmove(window, line_num, 2);
+        browser_draw_name(window, message, max_x - 4);
     }
 
     arc_close(reader);

@@ -158,8 +158,8 @@ test_search_capacity: test_search_capacity.c ../src/core/search.c ../src/ds/vect
 test_text_preview: test_text_preview.c ../src/ui/text_preview.c ../src/ui/text_preview.h ../src/ui/syntax.c ../src/ui/syntax_rules.c ../lib/cupidconf/cupidconf.c
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--wrap=getline -o $@ test_text_preview.c ../src/ui/text_preview.c ../src/ui/syntax.c ../src/ui/syntax_rules.c ../lib/cupidconf/cupidconf.c $(shell pkg-config --cflags --libs glib-2.0) $(LIBS) -lncursesw
 
-test_archive_preview: test_archive_preview.c ../src/fs/files.c $(CUPIDARCHIVE_LIB)
-	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< $(CUPIDARCHIVE_LIB) $(LIBS) -lncursesw -lz -lbz2 -llzma
+test_archive_preview: test_archive_preview.c ../src/fs/files.c ../src/ui/browser_ui.c $(CUPIDARCHIVE_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< ../src/ui/browser_ui.c $(CUPIDARCHIVE_LIB) $(LIBS) -lncursesw -lz -lbz2 -llzma
 
 test_config_keys: test_config_keys.c ../src/core/config.c ../lib/cupidconf/cupidconf.c
 	$(CC) $(CFLAGS) $(INCLUDES) -ffunction-sections -fdata-sections -Wl,--gc-sections -o $@ $< ../lib/cupidconf/cupidconf.c $(LIBS) -lncursesw

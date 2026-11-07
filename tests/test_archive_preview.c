@@ -15,6 +15,7 @@ int main(int argc, char **argv) {
     assert(resizeterm(30, 120) != ERR);
     WINDOW *window = newwin(30, 120, 0, 0);
     assert(window);
+    display_archive_preview_at(window, argv[1], 0, 30, 3, 8);
     display_archive_preview(window, argv[1], argc >= 5 ? atoi(argv[4]) : 0, 30, 120);
     char text[16384] = {0};
     size_t used = 0;
