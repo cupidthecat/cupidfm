@@ -39,10 +39,15 @@ fn on_key(key) {
     return false;
 }
 ''')
+    editor = root / "bulk-editor.py"
+    editor.write_text("import os,sys\nfrom pathlib import Path\n"
+                      "Path(sys.argv[1]).write_text(Path(os.environ['CUPIDFM_RENAME_TARGET']).read_text())\n")
+    rename_target = root / "rename-target"
     primary, secondary = pty.openpty()
     fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
     env = dict(os.environ, TERM="xterm-256color", HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
-               XDG_DATA_HOME=str(data), CUPIDFM_RECEIPTS=str(root))
+               XDG_DATA_HOME=str(data), CUPIDFM_RECEIPTS=str(root),
+               EDITOR="python3 " + str(editor), CUPIDFM_RENAME_TARGET=str(rename_target))
     # The internal yank must work when no display server is available.
     env.pop("DISPLAY", None); env.pop("WAYLAND_DISPLAY", None)
     output = bytearray()
@@ -154,10 +159,15 @@ fn on_key(key) {
             snapshot(b"gg ")
             snapshot(b"g " + str(empty).encode() + b"\n")
             assert snapshot()[2:4] == ["0", "1"]
-            snapshot(b"rnested.txt\n")
+            rename_target.write_text("nested.txt\n")
+            snapshot(b"r")
             assert (target / "file2.txt").read_text() == "file2.txt\n"
             assert (target / "nested.txt").read_text() == "nested\n"
-            snapshot(b"rrenamed.txt\n")
+            rename_target.write_text("renamed.txt\n")
+            review_start = len(output)
+            os.write(primary, b"r")
+            wait_for(lambda: b"Enter approves" in output[review_start:])
+            snapshot(b"\n")
             wait_for((target / "renamed.txt").exists)
             assert snapshot()[3] == "1"
             snapshot(b"y")

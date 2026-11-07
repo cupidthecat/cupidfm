@@ -1,0 +1,31 @@
+# Copy to ~/.cupidfm/openers.cupidconf. The file is reread when opening files.
+# Commands receive literal selected paths as "$@"; "$1" is the first path.
+# Single-quoted CupidConf values preserve shell punctuation and backslashes.
+
+# A blocking editor also edits bulk rename lists.
+opener.edit.description = Editor
+opener.edit.command = '${EDITOR:-vi} "$@"'
+opener.edit.block = true
+
+# Nonblocking commands appear in the task list.
+opener.inspect.description = Inspect file types
+opener.inspect.command = 'file -- "$@"'
+opener.inspect.block = false
+
+# Detached applications continue after CupidFM exits.
+opener.browser.description = Open in browser
+opener.browser.command = 'for path do xdg-open "$path"; done'
+opener.browser.orphan = true
+opener.browser.for = linux
+
+# Rules run in first-appearance order. All specified selectors must match.
+# Patterns support *, ?, character classes, and brace alternatives.
+rule.web.path = '*.{html,htm,xhtml}'
+rule.web.use = browser,edit,inspect
+
+# Repeating use adds another choice. Choices are shown in this order.
+rule.code.mime = 'application/{json,*+json,*+xml,javascript}'
+rule.code.use = edit
+rule.code.use = inspect
+
+# Files not matched above keep the built-in text, image, media, and fallback rules.

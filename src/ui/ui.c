@@ -1,3 +1,4 @@
+#include "fuzzy.h"
 #define _GNU_SOURCE
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
@@ -416,7 +417,7 @@ static void build_help_lines(StrVec *out, const KeyBindings *kb, int width, cons
     size_t count = 0;
     bool filtering = query && *query;
     for (size_t i = 0; i < source.count; i++) {
-        int score = filtering ? app_help_fuzzy_score(query, source.lines[i]) : 0;
+        int score = filtering ? fuzzy_score(query, source.lines[i]) : 0;
         if (score >= 0)
             matches[count++] = (HelpMatch){source.lines[i], score, i};
     }

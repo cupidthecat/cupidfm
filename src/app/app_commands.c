@@ -1,8 +1,11 @@
 #define _GNU_SOURCE
 #include "app_commands.h"
+#include "app_bulk.h"
 #include "app_help.h"
 #include "app_mouse.h"
+#include "app_open.h"
 #include "app_panes.h"
+#include "app_process.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -132,29 +135,10 @@ static void run_shell(AppState *state, const char *command) {
         return;
     }
     ClipboardPaths paths = {.paths = (char **)selected.el, .count = Vector_len(selected)};
-    size_t count = paths.count;
-    char **argv = calloc(count + 5, sizeof(*argv));
-    if (!argv) {
-        clipboard_paths_free(&paths);
-        return;
-    }
-    argv[0] = "sh";
-    argv[1] = "-c";
-    argv[2] = (char *)command;
-    argv[3] = "cupidfm";
-    for (size_t i = 0; i < count; i++)
-        argv[i + 4] = paths.paths[i];
-    def_prog_mode();
-    endwin();
-    bool ok = run_process_in_directory(argv, state->current_directory, -1, -1);
-    reset_prog_mode();
-    refresh();
-    clearok(stdscr, TRUE);
-    resized = 1;
-    app_reload_view(state);
+    bool ok =
+        app_process_run(state, command, (const char *const *)paths.paths, paths.count, true, false);
     notify_result(ok, "Command finished");
     clipboard_paths_free(&paths);
-    free(argv);
 }
 
 static void open_selected(AppState *state, bool interactive) {
@@ -176,36 +160,11 @@ static void open_selected(AppState *state, bool interactive) {
         notify_result(ok, "Choose files");
         return;
     }
-    Vector *view = active_files(state);
-    SIZE cursor = state->dir_window_cas.cursor;
-    FileAttr file = cursor >= 0 && (size_t)cursor < Vector_len(*view) ? view->el[cursor] : NULL;
-    if (file && FileAttr_is_dir(file) && !app_selection_count(state)) {
-        notify_result(app_change_directory(state, FileAttr_get_name(file)), "Open directory");
-        return;
-    }
     ClipboardPaths paths;
     if (!browser_paths(state, &paths))
         return;
-    char path[MAX_PATH_LENGTH], type[512];
-    snprintf(path, sizeof(path), "%s", paths.paths[0]);
+    app_open_paths(state, interactive, (const char *const *)paths.paths, paths.count);
     clipboard_paths_free(&paths);
-    magic_t cookie = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK);
-    if (cookie && magic_load(cookie, NULL)) {
-        magic_close(cookie);
-        cookie = NULL;
-    }
-    const char *mime =
-        mime_type_cached(cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK, type, sizeof(type));
-    const char *opener = "xdg-open";
-    if (mime && (!strncmp(mime, "text/", 5) || is_supported_mime_type(mime) ||
-                 !strcmp(mime, "inode/empty")))
-        opener = getenv("EDITOR") && *getenv("EDITOR") ? getenv("EDITOR") : "vi";
-    if (cookie)
-        magic_close(cookie);
-    char command[1024];
-    snprintf(command, sizeof(command), "%s \"$@\"", opener);
-    if (!interactive || input_prompt("Open with (files are in \"$@\")", command, sizeof(command)))
-        run_shell(state, command);
 }
 
 static void create_entry(AppState *state) {
@@ -531,9 +490,15 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         return app_tab_close(tabs, state) || !task_ui_can_quit() ? APP_KEY_HANDLED : APP_KEY_QUIT;
     if (ch == KEY_F(1) || ch == '~') {
         show_help_menu(kb);
-    } else if (ch == 'h' || ch == 'l') {
-        *key = ch == 'h' ? kb->key_left : kb->key_right;
+    } else if (ch == 'h' || ch == KEY_LEFT) {
+        *key = kb->key_left;
         return APP_KEY_PASS;
+    } else if (ch == 'l' || ch == KEY_RIGHT) {
+        Vector *view = active_files(state);
+        SIZE at = state->dir_window_cas.cursor;
+        if (at >= 0 && (size_t)at < Vector_len(*view) && FileAttr_is_dir(view->el[at]))
+            notify_result(app_change_directory(state, FileAttr_get_name(view->el[at])),
+                          "Enter directory");
     } else if (ch == 'H' || ch == 'L') {
         (void)app_history_move(state, ch == 'H' ? -1 : 1);
     } else if (ch == 1 || ch == 18) {
@@ -573,6 +538,8 @@ AppKeyResult app_browser_key(AppState *state, AppTabs *tabs, int *key, const Key
         open_selected(state, ch == 'O');
         if (state->quit_requested && task_ui_can_quit())
             return APP_KEY_QUIT;
+    } else if (ch == 'r' && app_selection_count(state)) {
+        app_bulk_rename(state);
     } else if (ch == 'a') {
         create_entry(state);
     } else if (ch == 'w') {

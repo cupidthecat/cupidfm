@@ -1,9 +1,5 @@
 #include "app_help.h"
 
-#include <ctype.h>
-#include <limits.h>
-#include <stddef.h>
-
 const char *app_help_vim(void) {
     return "Vim browser keys\n"
            "\n"
@@ -33,15 +29,16 @@ const char *app_help_vim(void) {
            "  Selections belong to the tab and survive directory changes.\n"
            "\n"
            "Files and tasks\n"
-           "  o, Enter / O      Open / choose an opener command\n"
+           "  o, Enter / O      Open / choose an opener\n"
            "  y/x               Yank/cut selected paths, or the hovered path\n"
            "  p/P               Paste / allow overwrite\n"
            "  Y/X               Clear the yank\n"
            "  a                 Create a file; end the name with / for a folder\n"
-           "  r                 Rename one selected or hovered entry\n"
+           "  r                 Rename; selected paths use an editor list\n"
            "  d/D               System trash/permanent delete; asks first\n"
            "  -/_/Ctrl+_        Absolute symlink/relative symlink/hardlink\n"
            "  :/;               Blocking/background shell; files are in \"$@\"\n"
+           "  O: shared opener choices; / fuzzy-finds choices; Custom command uses \"$@\".\n"
            "  w                 Task list: progress, cancellation, errors, output\n"
            "  Tab               Information about the hovered entry\n"
            "  J/K               Seek down/up in the preview\n"
@@ -82,6 +79,7 @@ const char *app_help_tabs(void) {
 const char *app_help_setup(void) {
     return "Configuration and syntax\n"
            "  ~/.cupidfmrc       Browser profile, keys, pane weights, scrolloff\n"
+           "  ~/.cupidfm/openers.cupidconf  MIME/path rules and opener commands\n"
            "  ~/.cupidfm/plugins CupidScript plugins\n"
            "  ~/.cupidfm/syntax  User syntax overrides (restart to reload)\n"
            "  Bundled syntax loads beside the checkout binary or from share/cupidfm/syntax.\n"
@@ -91,6 +89,7 @@ const char *app_help_setup(void) {
            "\n"
            "Documentation\n"
            "  docs/browser-guide.md  Browser shortcuts, behavior, and remaining work\n"
+           "  docs/openers-and-renaming.md  Opener rules and bulk rename\n"
            "  docs/syntax-guide.md   Syntax format, colors, and installation\n"
            "  examples/syntax/      Highlighting samples and regression expectations\n";
 }
@@ -111,40 +110,4 @@ const char *app_help_prefix(int key) {
         default:
             return "";
     }
-}
-
-int app_help_fuzzy_score(const char *query, const char *text) {
-    if (!query || !text)
-        return -1;
-    while (*query && isspace((unsigned char)*query))
-        query++;
-    if (!*query)
-        return 0;
-    while (*text && isspace((unsigned char)*text))
-        text++;
-    int best = INT_MAX;
-    for (size_t start = 0; text[start]; start++) {
-        if (tolower((unsigned char)text[start]) != tolower((unsigned char)*query))
-            continue;
-        size_t position = start;
-        int score = (int)start;
-        if (start && isalnum((unsigned char)text[start - 1]))
-            score += 20;
-        const char *pattern = query;
-        for (; *pattern; pattern++) {
-            if (isspace((unsigned char)*pattern))
-                continue;
-            size_t before = position;
-            while (text[position] &&
-                   tolower((unsigned char)text[position]) != tolower((unsigned char)*pattern))
-                position++;
-            if (!text[position])
-                break;
-            score += (int)(position - before) * 3;
-            position++;
-        }
-        if (!*pattern && score < best)
-            best = score;
-    }
-    return best == INT_MAX ? -1 : best;
 }

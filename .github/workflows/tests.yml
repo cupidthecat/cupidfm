@@ -26,10 +26,17 @@ jobs:
         run: |
           python3 tests/test_browser_smoke.py
           python3 tests/test_cli_output.py
+          python3 tests/test_open_bulk_smoke.py
       - name: Run bundled library tests
         run: make -j2 test-libs
       - name: Run tests
         run: make test
+      - name: Check openers, picker, and bulk rename with sanitizers
+        run: |
+          make -B -C tests test_openers test_picker test_bulk_rename CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_openers
+          ./tests/test_picker
+          ./tests/test_bulk_rename
       - name: Check header and help with sanitizers
         run: |
           make -B -C tests test_header test_help CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
@@ -125,4 +132,5 @@ jobs:
           python3 tests/test_scroll_smoke.py
           python3 tests/test_browser_smoke.py
           python3 tests/test_cli_output.py
+          python3 tests/test_open_bulk_smoke.py
           python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

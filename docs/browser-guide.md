@@ -39,8 +39,8 @@ a resize message. Scrolloff ranges from 0 to 100 and is limited to half the visi
 Selections belong to the tab and keep their full paths when you navigate, filter, hide files,
 or reload. Yank, file tasks, openers, shell commands, and chooser output use every selected path,
 including paths outside the current directory. With no selection, they use the hovered entry.
-Rename accepts one selected path, preserves existing destinations, and keeps the item selected under
-its new name. File information and
+Rename accepts selected paths, preserves existing destinations, and keeps successful moves selected
+under their new names. Selected paths use a reviewed editor list in the Vim profile. File information and
 permissions still use the hovered entry. Esc clears the tab's selection after leaving
 find, visual, and filter modes. A directory and its descendants cannot be selected together.
 Reloading prunes missing paths and finishes any visual range; hidden selections remain active.
@@ -67,7 +67,7 @@ Reloading prunes missing paths and finishes any visual range; hidden selections 
 | Y, X | Clear the yank |
 | -, _, Ctrl+_ | Create absolute symlinks, relative symlinks, or hardlinks from the yank |
 | a | Create a file; end the name with / for a directory |
-| r | Use CupidFM's existing single-entry rename prompt |
+| r | Rename one entry, or edit a name list for multiple selections |
 | :, ; | Run a blocking shell command or queue a background shell task |
 | Tab | Show information about the hovered file |
 | Ctrl+E | Open CupidFM's editor |
@@ -80,8 +80,10 @@ Lowercase find/filter patterns ignore case. Uppercase letters make the pattern c
 Patterns use POSIX extended regular expressions rather than Rust regex syntax.
 
 Shell commands receive selected paths as positional arguments. Use "$@" for all selected paths
-and "$1" for the first. Filenames are not interpolated into command text. Blocking openers use
-$EDITOR for recognized text and xdg-open for other files. O lets you edit the opener command.
+and "$1" for the first. Filenames are not interpolated into command text. Default openers use
+$EDITOR for text and xdg-open for other files. MIME/path rules can select custom blocking,
+tracked, or detached commands. O offers common opener choices and a custom command.
+See [openers and bulk rename](openers-and-renaming.md) for configuration and batch behavior.
 
 In the task manager, arrows or j/k select a task, Enter shows its error or captured shell output,
 x cancels it, and w or Esc closes the window. Quit asks before cancelling unfinished tasks.
@@ -183,9 +185,9 @@ their snapshots and source pins here.
 | Find and filter | Partial | Submitted POSIX regex; no live filter or Rust regex compatibility |
 | Recursive filename/content search | Missing | fd and rg search views are not wired |
 | fzf/zoxide navigation | Missing | No built-in integration |
-| Openers and open-with | Partial | Editor/xdg-open and editable command; no MIME rule tables or opener picker |
+| Openers and open-with | Partial | MIME/path rules, common fuzzy picker, grouped dispatch, blocking/tasks/orphan modes; no full placeholder language |
 | File creation | Partial | One file or nested directory path; no bulk create |
-| Rename | Partial | Single-entry prompt; no bulk workflow or cursor presets |
+| Rename | Partial | Single-entry prompt and reviewed editor batches, dependency ordering, destination protection; no cursor presets |
 | Copy/move/paste and overwrite | Partial | Background recursion; no conflict policy editor or aggregate progress estimate |
 | Absolute/relative/hard links | Covered | Yanked local paths, preserving existing destinations |
 | Trash and permanent deletion | Partial | GIO trash for Vim keys; no trash browser, restore UI, or empty action |

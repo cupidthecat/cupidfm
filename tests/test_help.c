@@ -1,3 +1,4 @@
+#include "fuzzy.h"
 #define _GNU_SOURCE
 #include "../src/ui/ui.c"
 #include <assert.h>
@@ -22,11 +23,10 @@ int main(void) {
     assert(has(&lines, "t then t (tt)") && has(&lines, "t then r (tr)"));
     assert(has(&lines, "Key sequences:") && has(&lines, "fuzzy"));
     strvec_free(&lines);
-    assert(app_help_fuzzy_score("ntab", "Create a new tab") >= 0);
-    assert(app_help_fuzzy_score("N TAB", "Create a new tab") >= 0);
-    assert(app_help_fuzzy_score("xyz", "Create a new tab") < 0);
-    assert(app_help_fuzzy_score("tab", "Tabs") <
-           app_help_fuzzy_score("tab", "Information about another tab"));
+    assert(fuzzy_score("ntab", "Create a new tab") >= 0);
+    assert(fuzzy_score("N TAB", "Create a new tab") >= 0);
+    assert(fuzzy_score("xyz", "Create a new tab") < 0);
+    assert(fuzzy_score("tab", "Tabs") < fuzzy_score("tab", "Information about another tab"));
     build_help_lines(&lines, &keys, 100, "ntab");
     assert(has(&lines, "t then t (tt)"));
     assert(!has(&lines, "Foreground") && !has(&lines, "Mouse"));

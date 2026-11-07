@@ -25,6 +25,7 @@
 #include <unistd.h>    // for getenv
 
 // Local includes
+#include "app_bulk.h"
 #include "app_commands.h"
 #include "app_help.h"
 #include "app_input.h"
@@ -1381,10 +1382,13 @@ int main(int argc, char **argv) {
                     Vector paths;
                     if (!app_selection_paths(&state, &paths))
                         goto input_done;
-                    if (Vector_len(paths) != 1) {
+                    if (Vector_len(paths) > 1) {
                         Vector_bye(&paths);
-                        show_notification(notifwin, "Rename requires one item");
-                        should_clear_notif = false;
+                        app_bulk_rename(&state);
+                        goto input_done;
+                    }
+                    if (!Vector_len(paths)) {
+                        Vector_bye(&paths);
                         goto input_done;
                     }
                     char full_path[MAX_PATH_LENGTH];
