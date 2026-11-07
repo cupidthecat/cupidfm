@@ -18,7 +18,7 @@ format-check:
 all: $(BUILD)/libcupidmime.a $(BUILD)/cupidmime
 $(BUILD):
 	mkdir -p $(BUILD)
-$(BUILD)/cupidmime.o: src/cupidmime.c src/zip.h src/audio.h src/ebml.h src/font.h include/cupidmime.h | $(BUILD)
+$(BUILD)/cupidmime.o: src/cupidmime.c src/zip.h src/audio.h src/ebml.h src/font.h src/markup.h include/cupidmime.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 $(BUILD)/zip.o: src/zip.c src/zip.h include/cupidmime.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
@@ -30,7 +30,9 @@ $(BUILD)/ebml.o: src/ebml.c src/ebml.h include/cupidmime.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 $(BUILD)/font.o: src/font.c src/font.h include/cupidmime.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-$(BUILD)/libcupidmime.a: $(BUILD)/cupidmime.o $(BUILD)/zip.o $(BUILD)/audio.o $(BUILD)/mpeg.o $(BUILD)/ebml.o $(BUILD)/font.o
+$(BUILD)/markup.o: src/markup.c src/markup.h include/cupidmime.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(BUILD)/libcupidmime.a: $(BUILD)/cupidmime.o $(BUILD)/zip.o $(BUILD)/audio.o $(BUILD)/mpeg.o $(BUILD)/ebml.o $(BUILD)/font.o $(BUILD)/markup.o
 	$(AR) rcs $@ $^
 $(BUILD)/cupidmime: src/cli.c $(BUILD)/libcupidmime.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libcupidmime.a $(LDFLAGS) -o $@
@@ -46,8 +48,11 @@ $(BUILD)/test-ebml: tests/ebml.c $(BUILD)/libcupidmime.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libcupidmime.a $(LDFLAGS) -o $@
 $(BUILD)/test-font: tests/font.c $(BUILD)/libcupidmime.a
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libcupidmime.a $(LDFLAGS) -o $@
-test: all $(BUILD)/test $(BUILD)/test-zip $(BUILD)/test-audio $(BUILD)/test-mpeg $(BUILD)/test-ebml $(BUILD)/test-font
+$(BUILD)/test-markup: tests/markup.c $(BUILD)/libcupidmime.a
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< $(BUILD)/libcupidmime.a $(LDFLAGS) -o $@
+test: all $(BUILD)/test-markup $(BUILD)/test $(BUILD)/test-zip $(BUILD)/test-audio $(BUILD)/test-mpeg $(BUILD)/test-ebml $(BUILD)/test-font
 	./$(BUILD)/test
+	./$(BUILD)/test-markup
 	./$(BUILD)/test-zip
 	./$(BUILD)/test-audio
 	./$(BUILD)/test-mpeg
@@ -62,8 +67,8 @@ integration-ebml: all
 	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" sh tests/ebml_integration.sh
 integration-fonts: all
 	CUPIDMIME="$(abspath $(BUILD)/cupidmime)" python3 tests/font_integration.py "$(FONT_SOURCE)"
-$(BUILD)/fuzz: tests/fuzz.c src/cupidmime.c src/zip.c src/audio.c src/mpeg.c src/ebml.c src/font.c src/zip.h src/audio.h src/mpeg.h src/ebml.h src/font.h include/cupidmime.h | $(BUILD)
-	clang $(CPPFLAGS) -std=c99 -O1 -g -fsanitize=fuzzer,address,undefined tests/fuzz.c src/cupidmime.c src/zip.c src/audio.c src/mpeg.c src/ebml.c src/font.c -o $@
+$(BUILD)/fuzz: tests/fuzz.c src/cupidmime.c src/zip.c src/audio.c src/mpeg.c src/ebml.c src/font.c src/markup.c src/zip.h src/audio.h src/mpeg.h src/ebml.h src/font.h src/markup.h include/cupidmime.h | $(BUILD)
+	clang $(CPPFLAGS) -std=c99 -O1 -g -fsanitize=fuzzer,address,undefined tests/fuzz.c src/cupidmime.c src/zip.c src/audio.c src/mpeg.c src/ebml.c src/font.c src/markup.c -o $@
 fuzz-smoke: $(BUILD)/fuzz $(BUILD)/test-zip $(BUILD)/test-audio $(BUILD)/test-mpeg $(BUILD)/test-ebml $(BUILD)/test-font
 	BUILD_DIR="$(BUILD)" sh tests/fuzz.sh
 install: all

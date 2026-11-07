@@ -147,7 +147,9 @@ output paths are resolved against the directory from which CupidFM was launched.
 ## Libraries
 
 CupidMIME is pinned in lib/cupidmime to upstream commit
-9db5a59401c077640463b838d5141ba497695ff2. Recognized binary formats use its bounded byte detector.
+374eb1a61d8716afcbb24b5a462adf0119ef014f. Recognized binary formats and supported XML subtypes
+use its bounded byte detector. SVG root tags and namespaces distinguish images from generic XML;
+XHTML, Atom, and RSS retain their text previews. Generic XML permits a more specific fallback.
 libmagic supplies source-language types, descriptions, encodings, and format fallbacks.
 Native detection does not open directories, FIFOs, or device nodes. Preview dispatch also skips
 special files, including FIFOs with image, archive, or source-file extensions. Cache entries distinguish
@@ -226,7 +228,9 @@ The layout test checks pane bounds across terminal sizes and ratios. Browser ses
 side-pane navigation, mouse dragging, tab ownership, history branching, visual ranges, selections
 across directories and hidden toggles, scroll margins, and sorting beyond 200 entries. The task test checks recursive copying, symlink traversal, source/destination
 conflicts, overwrite, literal shell paths, cancellation, moving, and recoverable trash.
-The native MIME test checks CupidMIME routing and nonblocking special-file handling.
+The native MIME test checks CupidMIME routing, SVG and XHTML subtypes, generic XML refinement,
+and nonblocking special-file handling. Header and help tests cover path/tab separation, narrow
+screens, profile-specific shortcuts, fuzzy matching, and text wrapping.
 The Vim terminal test covers keys, selection reaching plugins, tabs, history, filtering,
 external changes, copying selections from multiple directories without X11, and trash that survives
 shutdown.

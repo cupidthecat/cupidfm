@@ -10,7 +10,29 @@ An incomplete UTF-8 sequence at the end of a known prefix is allowed only when i
 
 After an optional UTF-8 BOM and ASCII whitespace, a complete JSON object or array receives `application/json`. The parser checks strings and escapes, surrogate pairs, number syntax, delimiters, and trailing bytes. It accepts duplicate object keys without resolving them. It does not convert numbers or enforce a numeric range. Nesting is limited to 64 recursive levels. Deeper input remains `text/plain`. JSON scalars also remain text because a word such as `true` or a number alone is weak evidence. Known prefixes never receive a JSON classification.
 
-Selected HTML tokens are matched case-insensitively and require a delimiter. `htmlish` does not match `html`. An XML declaration prefix is case sensitive and requires whitespace after `xml`. These are token rules, not HTML or XML parsers. They do not verify the rest of the document.
+Markup detection skips leading whitespace, processing instructions, and comments. It can skip
+a DOCTYPE with quotes, comments, and an internal subset. It does not load a DTD, resolve an entity,
+or read a referenced resource. A familiar tag inside a comment, attribute, or declaration does not
+establish the root type.
+
+SVG uses a complete root start tag named `svg`. An unprefixed root can omit `xmlns`; an explicit
+namespace must be `http://www.w3.org/2000/svg`. A prefixed root needs its matching `xmlns:prefix`
+binding on that start tag. XHTML and Atom require the exact supported namespace and root name.
+RSS uses an unprefixed rss root with version 2.0 and no explicit default namespace. These results
+carry signature evidence: the root's attributes and namespace are inspected, but the document's
+children and closing tags are not validated.
+
+An XML declaration or a supported root's unresolved subtype returns generic `application/xml`
+with `CM_AMBIGUOUS`. An otherwise unknown root with an explicit namespace also receives this
+generic result. Callers that combine detectors can let a more specific result refine it. A cut
+XML declaration, prolog, or root start tag adds `CM_TRUNCATED` when an XML declaration established
+the family. Duplicate declarations for the root's namespace add `CM_MALFORMED` and prevent a
+subtype result. Attribute entities are not expanded, and namespace declarations inherited from
+outside the supplied root are not resolved.
+
+HTML leading tokens are matched without case sensitivity and require a delimiter. htmlish does
+not match html. These are header rules, not HTML or XML document parsers. Unrecognized markup
+without a declaration or namespace can remain `text/plain`.
 
 ## Ambiguity and limits
 

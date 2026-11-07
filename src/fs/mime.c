@@ -198,6 +198,7 @@ const char *supported_mime_types[] = {
     "text/plain",               // Plain text files
     "text/x-c",                 // C source files
     "application/json",         // JSON files
+    "application/*+xml",        // XML subtypes
     "application/xml",          // XML files
     "text/x-shellscript",       // Shell scripts
     "text/x-python",            // Python source files (common)

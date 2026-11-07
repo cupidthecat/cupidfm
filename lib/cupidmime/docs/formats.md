@@ -26,7 +26,10 @@ This table describes the checks in the source. A structural result means these p
 | ustar | `application/x-tar` | 512-byte header, ustar marker and unsigned header checksum; members and archive termination unchecked |
 | JSON | `application/json` | Complete UTF-8 object or array, bounded grammar parser; policy details in [detection](detection.md) |
 | HTML | `text/html` | Selected leading tokens and delimiters; not a document validator |
-| XML | `application/xml` | Declaration prefix; not a document validator |
+| SVG | `image/svg+xml` | Complete svg root start tag and its namespace binding; children, dimensions, and drawing data unchecked |
+| XHTML | `application/xhtml+xml` | html root in the XHTML namespace; document unchecked |
+| Atom / RSS | `application/atom+xml`, `application/rss+xml` | Atom feed/entry namespace or unprefixed RSS 2.0 root; feed contents unchecked |
+| XML | `application/xml` | Declaration or explicit root namespace; generic subtype stays ambiguous; not a document validator |
 | Text | `text/plain` | ASCII/UTF-8 policy; no charset parameter inferred |
 | Other or empty | `application/octet-stream` | Conservative fallback |
 

@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "ebml.h"
 #include "font.h"
+#include "markup.h"
 #include "zip.h"
 #include <stdint.h>
 #include <string.h>
@@ -41,16 +42,6 @@ static int space(byte c) {
 
 static byte lower(byte c) {
     return c >= 'A' && c <= 'Z' ? (byte)(c + 32) : c;
-}
-
-static int ci(const byte *p, size_t n, const char *s) {
-    size_t i, len = strlen(s);
-    if (n < len)
-        return 0;
-    for (i = 0; i < len; ++i)
-        if (lower(p[i]) != (byte)s[i])
-            return 0;
-    return 1;
 }
 
 /* Reject overlong sequences, surrogates and values beyond U+10FFFF. */
@@ -615,22 +606,8 @@ static cm_status detect(const void *data, size_t size, cm_result *out, int prefi
                       "Complete JSON object or array; depth at most 64");
         }
     }
-    if (off < n) {
-        static const char *tags[] = {"<!doctype html", "<html",   "<head",
-                                     "<body",          "<script", "<iframe"};
-        size_t i;
-        for (i = 0; i < sizeof(tags) / sizeof(tags[0]); ++i) {
-            size_t len = strlen(tags[i]);
-            if (ci(p + off, n - off, tags[i]) && n - off > len &&
-                (space(p[off + len]) || p[off + len] == '>')) {
-                match(&r, "text/html", CM_SIGNATURE, "HTML leading token with delimiter");
-                break;
-            }
-        }
-        if (at(p, n, off, "<?xml", 5) && n - off > 5 && space(p[off + 5]))
-            match(&r, "application/xml", CM_SIGNATURE,
-                  "XML declaration prefix; document unchecked");
-    }
+    if (off < n)
+        cm_markup_detect(p + off, n - off, &r);
     *out = r;
     return CM_OK;
 }

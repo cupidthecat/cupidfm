@@ -26,6 +26,12 @@ Flags are independent bits:
 | `CM_PARTIAL` | The caller supplied a prefix, or the buffer exceeded the scan limit |
 | `CM_AMBIGUOUS` | A container subtype or format candidate remains unresolved |
 
+Generic XML retains `CM_AMBIGUOUS` because the declaration or root namespace alone does not
+identify its subtype. Supported SVG, XHTML, Atom, and RSS roots can refine this result. These
+are signature results, including when the root start tag is complete within a prefix; they do
+not validate the rest of the document. See [detection policy](detection.md) for namespace and
+prolog limits.
+
 Generic ZIP retains `CM_AMBIGUOUS` even after the supported directory checks pass. It means the subtype remains unresolved, not that directory corruption was found. Contradictory checked ZIP metadata adds `CM_MALFORMED` while retaining the generic family. See [ZIP and EPUB detection](zip.md) for supported layouts and the effect of partial input.
 
 Generic Ogg also retains `CM_AMBIGUOUS`. Its audio subtype requires a complete supported single stream; `cm_detect_prefix` never returns `audio/ogg`. Native FLAC can be established from a complete STREAMINFO block in a prefix. See [audio detection](audio.md).

@@ -8,6 +8,21 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static int magic_calls;
+
+const char *__wrap_magic_file(magic_t cookie, const char *path) {
+    (void)cookie;
+    (void)path;
+    magic_calls++;
+    return "application/example+xml";
+}
+
+static void write_text(const char *path, const char *text) {
+    FILE *file = fopen(path, "w");
+    assert(file && fputs(text, file) >= 0 && !fclose(file));
+    mime_cache_clear();
+}
+
 int main(void) {
     char root[] = "/tmp/cupidfm-native-mime-XXXXXX";
     assert(mkdtemp(root));
@@ -36,10 +51,27 @@ int main(void) {
     assert(is_supported_mime_type("text/x-made-up"));
     assert(!is_supported_mime_type("application/json-invalid"));
     assert(!strcmp(get_file_emoji("text/plain", "example.py"), "🐍"));
+    magic_t cookie = magic_open(MAGIC_MIME_TYPE);
+    assert(cookie);
+    write_text(path, "<?xml version='1.0'?><!-- prolog --><svg "
+                     "xmlns='http://www.w3.org/2000/svg'/>");
+    assert(mime_type_cached(cookie, path, MAGIC_MIME_TYPE, type, sizeof(type)));
+    assert(!strcmp(type, "image/svg+xml") && magic_calls == 0);
+    write_text(path, "<html xmlns='http://www.w3.org/1999/xhtml'/>");
+    assert(mime_type_cached(cookie, path, MAGIC_MIME_TYPE, type, sizeof(type)));
+    assert(!strcmp(type, "application/xhtml+xml") && magic_calls == 0);
+    assert(is_supported_mime_type(type));
+    write_text(path, "<?xml version='1.0'?><document xmlns='urn:example'/>");
+    assert(mime_type_cached(cookie, path, MAGIC_MIME_TYPE, type, sizeof(type)));
+    assert(!strcmp(type, "application/example+xml") && magic_calls == 1);
+    assert(is_supported_mime_type(type));
+    assert(!is_supported_mime_type("application/example+xml-invalid"));
+    magic_close(cookie);
     assert(!unlink(path));
     assert(!mime_type_cached(NULL, path, MAGIC_MIME_TYPE, type, sizeof(type)));
     assert(!unlink(symlink_path) && !unlink(fifo) && !rmdir(root));
     mime_cache_clear();
-    puts("CupidMIME detection, symlinks, nonblocking special files, and MIME patterns passed");
+    puts("CupidMIME detection, XML subtype refinement, symlinks, nonblocking special files, and "
+         "MIME patterns passed");
     return 0;
 }
