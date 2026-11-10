@@ -1,0 +1,312 @@
+# Syntax: powershell
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='powershell'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ps(1|m1|d1)$'
+
+# Pattern 0: identifier.class (root).
+rule.0.parent=-1
+rule.0.group='identifier.class'
+rule.0.match='class +[A-Za-z0-9]+ *((:) +[A-Za-z0-9.]+)?'
+
+# Pattern 1: identifier.class (root).
+rule.1.parent=-1
+rule.1.group='identifier.class'
+rule.1.match='(function)(?:([[:space:]][A-Za-z0-9]+[[:space:]]*))'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='(Add|Approve|Assert|Backup|Block|Build|Checkpoint|Clear|Close|Compare|Complete|Compress|Confirm|Connect|Convert|ConvertFrom|ConvertTo|Copy)[-][A-Za-z0-9]+'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='(Debug|Deny|Deploy|Disable|Disconnect|Dismount|Edit|Enable|Enter|Exit|Expand|Export|Find|Format|Get|Grant|Group|Hide)[-][A-Za-z0-9]+'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='(Import|Initialize|Install|Invoke|Join|Limit|Lock|Measure|Merge|Mount|Move|New|Open|Optimize|Out|Ping|Pop|Protect|Publish|Push)[-][A-Za-z0-9]+'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='(Read|Receive|Redo|Register|Remove|Rename|Repair|Request|Reset|Resize|Resolve|Restart|Restore|Resume|Revoke)[-][A-Za-z0-9]+'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='(Save|Search|Select|Send|Set|Show|Skip|Split|Start|Step|Stop|Submit|Suspend|Switch|Sync|Test|Trace)[-][A-Za-z0-9]+'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='(Unblock|Undo|Uninstall|Unlock|Unprotect|Unpublish|Unregister|Update|Use|Wait|Watch|Write)[-][A-Za-z0-9]+'
+
+# Pattern 8: identifier.var (root).
+rule.8.parent=-1
+rule.8.group='identifier.var'
+rule.8.match='\$(?i)((Global|Local|Private|Script|Using|Workflow)[:])?[A-Za-z0-9]*'
+
+# Pattern 9: type (root).
+rule.9.parent=-1
+rule.9.group='type'
+rule.9.match='\[\b([A-Za-z]+|[A-Za-z]+[0-9]+)\b\]'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(alias|as|begin|break|catch|continue|data|default|define|do|dynamicparam)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(else|elseif|end|exit|finally|for|foreach|foreach-object|from|if|in|inlinescript)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(parallel|param|process|return|switch|throw|trap|try|until|using|var|where|where-object|while)\b'
+
+# Pattern 13: special (root).
+rule.13.parent=-1
+rule.13.group='special'
+rule.13.match='\b(break|continue|exit)\b'
+
+# Pattern 14: symbol.brackets (root).
+rule.14.parent=-1
+rule.14.group='symbol.brackets'
+rule.14.match='(\{|\})'
+
+# Pattern 15: symbol.brackets (root).
+rule.15.parent=-1
+rule.15.group='symbol.brackets'
+rule.15.match='(\(|\))'
+
+# Pattern 16: symbol.brackets (root).
+rule.16.parent=-1
+rule.16.group='symbol.brackets'
+rule.16.match='(\[|\])'
+
+# Pattern 17: symbol.operator (root).
+rule.17.parent=-1
+rule.17.group='symbol.operator'
+rule.17.match='[\-+/*=<>?:!~%&|]'
+
+# Pattern 18: symbol.operator (root).
+rule.18.parent=-1
+rule.18.group='symbol.operator'
+rule.18.match='[[:space:]][-](ne|eq|gt|ge|lt|le|like|notlike|match|notmatch|contains|notcontains|in|notin|replace|is|isnot)[[:space:]]'
+
+# Pattern 19: constant.bool (root).
+rule.19.parent=-1
+rule.19.group='constant.bool'
+rule.19.match='\b\$(true|false|null)\b'
+
+# Pattern 20: constant.number (root).
+rule.20.parent=-1
+rule.20.group='constant.number'
+rule.20.match='\b([0-9._]+|0x[A-Fa-f0-9_]+|0b[0-1_]+)[FL]?\b'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='"'
+rule.21.end='"'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\([btnfr]|''|\"|\\)'
+
+# Pattern 23: constant.specialChar (inside region 21).
+rule.23.parent=21
+rule.23.group='constant.specialChar'
+rule.23.match='\\u[A-Fa-f0-9]{4}'
+
+# Region 24: constant.string (root).
+rule.24.parent=-1
+rule.24.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.24.start=''''
+rule.24.end=''''
+
+# Pattern 25: constant.specialChar (inside region 24).
+rule.25.parent=24
+rule.25.group='constant.specialChar'
+rule.25.match='\\([btnfr]|''|\"|\\)'
+
+# Pattern 26: constant.specialChar (inside region 24).
+rule.26.parent=24
+rule.26.group='constant.specialChar'
+rule.26.match='\\u[A-Fa-f0-9]{4}'
+
+# Region 27: comment (root).
+rule.27.parent=-1
+rule.27.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='#'
+rule.27.end='$'
+
+# Pattern 28: todo (inside region 27).
+rule.28.parent=27
+rule.28.group='todo'
+rule.28.match='(TODO|XXX|FIXME|BUG):?'
+
+# Region 29: comment (root).
+rule.29.parent=-1
+rule.29.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.29.start='<#'
+rule.29.end='#>'
+
+# Pattern 30: todo (inside region 29).
+rule.30.parent=29
+rule.30.group='todo'
+rule.30.match='(TODO|XXX|FIXME|BUG):?'
+
+# Region 31: default (root).
+rule.31.parent=-1
+rule.31.group='default'
+# Start/end delimiters carry state between physical lines.
+rule.31.start='@"'
+rule.31.end='"@'
+
+# Included language: csharp. Local rules come first.
+
+# Pattern 32: identifier.class (inside region 31).
+rule.32.parent=31
+rule.32.group='identifier.class'
+rule.32.match='class +[A-Za-z0-9]+ *((:) +[A-Za-z0-9.]+)?'
+
+# Pattern 33: identifier.var (inside region 31).
+rule.33.parent=31
+rule.33.group='identifier.var'
+rule.33.match='@[A-Za-z]+'
+
+# Pattern 34: preproc (inside region 31).
+rule.34.parent=31
+rule.34.group='preproc'
+rule.34.match='^[[:space:]]*#[[:space:]]*(define|elif|else|endif|endregion|error|if|line|nullable|pragma|region|undef|warning)'
+
+# Pattern 35: identifier (inside region 31).
+rule.35.parent=31
+rule.35.group='identifier'
+rule.35.match='([A-Za-z0-9_]*[[:space:]]*[()])'
+
+# Pattern 36: type (inside region 31).
+rule.36.parent=31
+rule.36.group='type'
+rule.36.match='\b(bool|byte|sbyte|char|decimal|double|float|IntPtr|int|uint|long|ulong|managed|unmanaged|nint|nuint|object|short|ushort|string|base|this|var|void)\b'
+
+# Pattern 37: statement (inside region 31).
+rule.37.parent=31
+rule.37.group='statement'
+rule.37.match='\b(alias|as|case|catch|checked|default|do|dynamic|else|finally|fixed|for|foreach|goto|if|is|lock|new|null|return|switch|throw|try|unchecked|when|while|with)\b'
+
+# Pattern 38: statement (inside region 31).
+rule.38.parent=31
+rule.38.group='statement'
+rule.38.match='\b(abstract|add|and|args|async|await|class|const|delegate|enum|event|explicit|extern|file|get|global|implicit|in|init|internal|interface|nameof|namespace|not|notnull|operator|or|out|override|params|partial|private|protected|public|readonly|record|ref|remove|required|scoped|sealed|set|sizeof|stackalloc|static|struct|typeof|unsafe|using|value|virtual|volatile|yield)\b'
+
+# Pattern 39: statement (inside region 31).
+rule.39.parent=31
+rule.39.group='statement'
+rule.39.match='\b(from|where|select|group|info|orderby|join|let|in|on|equals|by|ascending|descending)\b'
+
+# Pattern 40: special (inside region 31).
+rule.40.parent=31
+rule.40.group='special'
+rule.40.match='\b(break|continue)\b'
+
+# Pattern 41: constant.bool (inside region 31).
+rule.41.parent=31
+rule.41.group='constant.bool'
+rule.41.match='\b(true|false)\b'
+
+# Pattern 42: symbol.operator (inside region 31).
+rule.42.parent=31
+rule.42.group='symbol.operator'
+rule.42.match='[\-+/*=<>?:!~%&|]'
+
+# Pattern 43: constant.number (inside region 31).
+rule.43.parent=31
+rule.43.group='constant.number'
+rule.43.match='\b([0-9._]+|0x[A-Fa-f0-9_]+|0b[0-1_]+)[FL]?\b'
+
+# Region 44: constant.string (inside region 31).
+rule.44.parent=31
+rule.44.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.44.start='"'
+rule.44.end='"'
+# Mask escaped text before matching delimiters.
+rule.44.skip='\\.'
+
+# Pattern 45: constant.specialChar (inside region 44).
+rule.45.parent=44
+rule.45.group='constant.specialChar'
+rule.45.match='\\([btnfr]|''|\"|\\)'
+
+# Pattern 46: constant.specialChar (inside region 44).
+rule.46.parent=44
+rule.46.group='constant.specialChar'
+rule.46.match='\\u[A-Fa-f0-9]{4}'
+
+# Region 47: constant.string (inside region 31).
+rule.47.parent=31
+rule.47.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.47.start=''''
+rule.47.end=''''
+# Mask escaped text before matching delimiters.
+rule.47.skip='\\.'
+
+# Pattern 48: constant.specialChar (inside region 47).
+rule.48.parent=47
+rule.48.group='constant.specialChar'
+rule.48.match='\\([btnfr]|''|\"|\\)'
+
+# Pattern 49: constant.specialChar (inside region 47).
+rule.49.parent=47
+rule.49.group='constant.specialChar'
+rule.49.match='\\u[A-Fa-f0-9]{4}'
+
+# Region 50: comment (inside region 31).
+rule.50.parent=31
+rule.50.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.50.start='//'
+rule.50.end='$'
+
+# Pattern 51: todo (inside region 50).
+rule.51.parent=50
+rule.51.group='todo'
+rule.51.match='(TODO|XXX|FIXME):?'
+
+# Region 52: comment (inside region 31).
+rule.52.parent=31
+rule.52.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.52.start='/\*'
+rule.52.end='\*/'
+
+# Pattern 53: todo (inside region 52).
+rule.53.parent=52
+rule.53.group='todo'
+rule.53.match='(TODO|XXX|FIXME):?'
+
+# Pattern 54: todo (root).
+rule.54.parent=-1
+rule.54.group='todo'
+rule.54.match='(TODO|XXX|FIXME|BUG):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=55

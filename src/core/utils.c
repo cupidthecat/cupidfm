@@ -23,6 +23,7 @@
 #include "clipboard.h"
 #include "files.h" // Include the header for FileAttr and related functions
 #include "globals.h"
+#include "input_prompt.h"
 #include "main.h"
 #include "mime.h"
 #include "mime.h" // For MIME type and emoji functions
@@ -391,23 +392,10 @@ int paste_from_clipboard(const char *target_directory, const char *filename, Pas
         log->src = NULL;
         log->dst = NULL;
     }
-    FILE *temp = tmpfile();
-    if (!temp)
-        return -1;
-    char *args[] = {"xclip", "-selection", "clipboard", "-o", NULL};
-    if (!run_process(args, -1, fileno(temp))) {
-        fprintf(stderr, "Error: Unable to read from clipboard.\n");
-        fclose(temp);
-        return -1;
-    }
-    rewind(temp);
-
     ClipboardPaths paths;
-    if (!clipboard_read_paths(temp, &paths)) {
-        fclose(temp);
+    if (!clipboard_get_paths(&paths))
         return -1;
-    }
-    fclose(temp);
+
     (void)filename; /* Names come from validated source paths, not local clipboard state. */
     PasteKind kind = paths.cut ? PASTE_KIND_CUT : PASTE_KIND_COPY;
     int pasted = 0;
@@ -717,96 +705,39 @@ bool create_new_directory(WINDOW *win, const char *dir_path, char *out_created_p
  * @return         true if rename was successful, false if canceled or failed.
  */
 bool rename_item(WINDOW *win, const char *old_path, char *out_new_path, size_t out_len) {
-    char new_name[MAX_PATH_LENGTH] = {0};
-    int ch, index = 0;
-
-    // Make input non-blocking to allow banner updates
-    wtimeout(win, 10);
-
-    // Initialize time-based update tracking
-    // banner_offset is now a global variable - no need for static
-    struct timespec last_banner_update;
-    clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
-    int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
-                              (BUILD_INFO ? (int)strlen(BUILD_INFO) : 0) + BANNER_TIME_PREFIX_LEN +
-                              BANNER_TIME_LEN + 4;
-
-    // Prompt for new name
-    werase(win);
-    mvwprintw(win, 0, 0, "Rename (Esc to cancel): ");
-    wrefresh(win);
-
-    while ((ch = wgetch(win)) != '\n') {
-        if (ch == ERR) {
-            // Handle time-based updates while waiting for input
-            struct timespec current_time;
-            clock_gettime(CLOCK_MONOTONIC, &current_time);
-
-            // Update banner scrolling
-            long banner_time_diff = (current_time.tv_sec - last_banner_update.tv_sec) * 1000000 +
-                                    (current_time.tv_nsec - last_banner_update.tv_nsec) / 1000;
-            if (banner_time_diff >= BANNER_SCROLL_INTERVAL && BANNER_TEXT && bannerwin) {
-                pthread_mutex_lock(&banner_mutex);
-                draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
-                pthread_mutex_unlock(&banner_mutex);
-                banner_offset = (banner_offset + 1) % total_scroll_length;
-                last_banner_update = current_time;
-            }
-
-            napms(10);
-            continue;
-        }
-        if (ch == 27) {        // Escape key pressed
-            wtimeout(win, -1); // Restore blocking input
-            show_notification(win, "❌ Rename canceled.");
-            should_clear_notif = false; // Prevent immediate clearing
-            return false;
-        }
-        if (ch == KEY_BACKSPACE || ch == 127) {
-            if (index > 0) {
-                index--;
-                new_name[index] = '\0';
-            }
-        } else if (isprint(ch) && index < MAX_PATH_LENGTH - 1) {
-            new_name[index++] = ch;
-            new_name[index] = '\0';
-        }
-        werase(win);
-        mvwprintw(win, 0, 0, "Rename (Esc to cancel): %s", new_name);
-        wrefresh(win);
-    }
-
-    wtimeout(win, -1); // Restore blocking input
-
-    if (index == 0) {
-        show_notification(win, "❌ Invalid name, rename canceled.");
+    if (!old_path || !*old_path || strlen(old_path) >= MAX_PATH_LENGTH)
+        return false;
+    const char *basename = strrchr(old_path, '/');
+    basename = basename ? basename + 1 : old_path;
+    char new_name[MAX_PATH_LENGTH];
+    snprintf(new_name, sizeof(new_name), "%s", basename);
+    struct stat info;
+    bool directory = !stat(old_path, &info) && S_ISDIR(info.st_mode);
+    char parent[MAX_PATH_LENGTH];
+    snprintf(parent, sizeof(parent), "%s", old_path);
+    char *dir = dirname(parent);
+    InputPromptOptions options = {.cursor = directory ? INPUT_CURSOR_END : INPUT_CURSOR_BEFORE_EXT,
+                                  .history = "rename",
+                                  .directory = dir};
+    if (!input_prompt_ex("Rename", new_name, sizeof(new_name), &options) || !*new_name)
+        return false;
+    char new_path[MAX_PATH_LENGTH];
+    int written = new_name[0] == '/' ? snprintf(new_path, sizeof(new_path), "%s", new_name)
+                                     : snprintf(new_path, sizeof(new_path), "%s/%s", dir, new_name);
+    if (written < 0 || (size_t)written >= sizeof(new_path) ||
+        (out_new_path && (!out_len || (size_t)written >= out_len))) {
+        show_notification(win, "Rename: destination is too long");
         should_clear_notif = false;
         return false;
     }
-
-    // Construct the new path
-    char temp_path[MAX_PATH_LENGTH];
-    strncpy(temp_path, old_path, MAX_PATH_LENGTH - 1);
-    temp_path[MAX_PATH_LENGTH - 1] = '\0'; // Ensure null-termination
-    char *dir = dirname(temp_path);
-
-    char new_path[MAX_PATH_LENGTH * 2];
-    snprintf(new_path, sizeof(new_path), "%s/%s", dir, new_name);
-
-    // Attempt to rename
-    if (rename(old_path, new_path) == 0) {
-        show_notification(win, "✅ Renamed to: %s", new_name);
-        should_clear_notif = false;
-        if (out_new_path && out_len > 0) {
-            strncpy(out_new_path, new_path, out_len - 1);
-            out_new_path[out_len - 1] = '\0';
-        }
-        return true;
-    } else {
-        show_notification(win, "❌ Rename failed: %s", strerror(errno));
-        should_clear_notif = false;
+    if (!strcmp(old_path, new_path))
         return false;
-    }
+    bool ok = file_command_rename(old_path, new_path);
+    show_notification(win, "Rename: %s", ok ? new_name : strerror(errno));
+    should_clear_notif = false;
+    if (ok && out_new_path)
+        memcpy(out_new_path, new_path, (size_t)written + 1);
+    return ok;
 }
 
 /**
@@ -938,6 +869,14 @@ void reload_directory_lazy(Vector *files, const char *current_directory, size_t 
     // Empties the vector
     Vector_set_len_no_free(files, 0);
     *files_loaded = 0;
+
+    /* A sort must see the entire directory, including entries beyond a lazy batch. */
+    if (file_listing_options().sort != FILE_SORT_NONE) {
+        append_files_to_vec(files, current_directory);
+        *files_loaded = Vector_len(*files);
+        *total_files = *files_loaded;
+        return;
+    }
 
     // Count total files first (for display purposes)
     *total_files = count_directory_files(current_directory);

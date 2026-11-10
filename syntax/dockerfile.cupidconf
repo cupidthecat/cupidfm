@@ -1,0 +1,68 @@
+# Syntax: dockerfile
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='dockerfile'
+
+# Detection: filename first, then header and content signature.
+detect.filename='((Docker|Container)file[^/]*$|\.(docker|container)file$)'
+
+# Pattern 0: type.keyword (root).
+rule.0.parent=-1
+rule.0.group='type.keyword'
+rule.0.match='(?i)^(FROM|MAINTAINER|RUN|CMD|LABEL|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ONBUILD|ARG|HEALTHCHECK|STOPSIGNAL|SHELL)[[:space:]]'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='(\(|\)|\[|\])'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='&&'
+
+# Region 3: comment (root).
+rule.3.parent=-1
+rule.3.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.3.start='#'
+rule.3.end='$'
+
+# Pattern 4: todo (inside region 3).
+rule.4.parent=3
+rule.4.group='todo'
+rule.4.match='(TODO|XXX|FIXME):?'
+
+# Region 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.5.start='"'
+rule.5.end='"'
+# Mask escaped text before matching delimiters.
+rule.5.skip='\\.'
+
+# Pattern 6: constant.specialChar (inside region 5).
+rule.6.parent=5
+rule.6.group='constant.specialChar'
+rule.6.match='\\.'
+
+# Region 7: constant.string (root).
+rule.7.parent=-1
+rule.7.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.7.start=''''
+rule.7.end=''''
+# Mask escaped text before matching delimiters.
+rule.7.skip='\\.'
+
+# Pattern 8: constant.specialChar (inside region 7).
+rule.8.parent=7
+rule.8.group='constant.specialChar'
+rule.8.match='\\.'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

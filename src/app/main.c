@@ -25,12 +25,21 @@
 #include <unistd.h>    // for getenv
 
 // Local includes
+#include "app_bulk.h"
+#include "app_commands.h"
+#include "app_help.h"
 #include "app_input.h"
+#include "app_inspector.h"
 #include "app_navigation.h"
+#include "app_options.h"
+#include "app_panes.h"
 #include "app_paths.h"
 #include "app_plugins.h"
+#include "app_search.h"
+#include "app_session.h"
 #include "app_state.h"
 #include "app_windows.h"
+#include "archive_extract.h"
 #include "banner.h"
 #include "browser_ui.h"
 #include "clipboard.h"
@@ -45,12 +54,15 @@
 #include "process.h"
 #include "search.h"
 #include "syntax.h"
+#include "task_ui.h"
+#include "tasks.h"
 #include "tempfiles.h"
 #include "ui.h"
 #include "undo.h"
 #include "utils.h"
 #include "vecstack.h"
 #include "vector.h"
+#include "watch.h"
 
 // Global resize flag
 volatile sig_atomic_t resized = 0;
@@ -107,37 +119,12 @@ static void banner_help_key_to_string(const KeyBindings *kb, char *out, size_t o
 }
 
 static bool selection_to_clipboard(AppState *state, bool cut, size_t *copied) {
-    Vector *files = active_files(state);
-    size_t count = state->select_all_active ? Vector_len(*files) : 1;
-    if (!count)
+    Vector paths;
+    if (!app_selection_paths(state, &paths))
         return false;
-    char **paths = calloc(count, sizeof(char *));
-    if (!paths)
-        return false;
-    bool ok = true;
-    for (size_t i = 0; i < count; ++i) {
-        const char *name = state->select_all_active ? FileAttr_get_name((FileAttr)files->el[i])
-                                                    : state->selected_entry;
-        if (!name || !*name) {
-            ok = false;
-            break;
-        }
-        paths[i] = malloc(MAX_PATH_LENGTH);
-        if (!paths[i]) {
-            ok = false;
-            break;
-        }
-        int n = snprintf(paths[i], MAX_PATH_LENGTH, "%s/%s", state->current_directory, name);
-        if (n < 0 || n >= MAX_PATH_LENGTH) {
-            ok = false;
-            break;
-        }
-    }
-    if (ok)
-        ok = clipboard_set_paths((const char *const *)paths, count, cut);
-    for (size_t i = 0; i < count; ++i)
-        free(paths[i]);
-    free(paths);
+    size_t count = Vector_len(paths);
+    bool ok = count && clipboard_set_paths((const char *const *)paths.el, count, cut);
+    Vector_bye(&paths);
     if (ok && copied)
         *copied = count;
     return ok;
@@ -145,33 +132,45 @@ static bool selection_to_clipboard(AppState *state, bool cut, size_t *copied) {
 
 int main(int argc, char **argv) {
     const char *program = argc > 0 && argv[0] && *argv[0] ? argv[0] : "cupidfm";
-    const char *start_directory = NULL;
-    if (argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
-        printf(
-            "Usage: %s [--] [DIRECTORY]\nOpen DIRECTORY, or the current directory when omitted.\n",
-            program);
-        return 0;
-    }
-    if (argc == 2 && strcmp(argv[1], "--")) {
-        if (argv[1][0] == '-') {
-            fprintf(stderr, "Usage: %s [--] [DIRECTORY]\n", program);
-            return 2;
-        }
-        start_directory = argv[1];
-    } else if (argc == 3 && !strcmp(argv[1], "--")) {
-        start_directory = argv[2];
-    } else if (argc > 2) {
-        fprintf(stderr, "Usage: %s [--] [DIRECTORY]\n", program);
+    AppOptions options;
+    if (!app_options_parse(argc, argv, &options)) {
+        app_options_usage(stderr, program);
         return 2;
     }
-    if (start_directory && chdir(start_directory)) {
-        fprintf(stderr, "%s: cannot open directory '%s': %s\n", program, start_directory,
-                strerror(errno));
-        return 1;
+    if (options.extract_worker)
+        return archive_extract_worker(options.extract_worker, options.extract_into);
+    if (options.help) {
+        app_options_usage(stdout, program);
+        return 0;
     }
-    char initial_directory[MAX_PATH_LENGTH];
-    if (!getcwd(initial_directory, sizeof(initial_directory))) {
-        fprintf(stderr, "%s: cannot resolve the starting directory: %s\n", program,
+    char cwd_file[MAX_PATH_LENGTH] = {0}, chooser_file[MAX_PATH_LENGTH] = {0};
+    char launch_directory[MAX_PATH_LENGTH];
+    if (!getcwd(launch_directory, sizeof(launch_directory)))
+        return 1;
+    const char *outputs[] = {options.cwd_file, options.chooser_file};
+    char *resolved[] = {cwd_file, chooser_file};
+    for (size_t i = 0; i < 2; i++) {
+        if (!outputs[i])
+            continue;
+        int length = outputs[i][0] == '/' ? snprintf(resolved[i], MAX_PATH_LENGTH, "%s", outputs[i])
+                                          : snprintf(resolved[i], MAX_PATH_LENGTH, "%s/%s",
+                                                     launch_directory, outputs[i]);
+        if (length < 0 || length >= MAX_PATH_LENGTH) {
+            fprintf(stderr, "%s: output path is too long\n", program);
+            return 2;
+        }
+    }
+    AppStartupEntry entries[APP_TAB_LIMIT];
+    size_t entry_count = options.entry_count ? options.entry_count : 1;
+    for (size_t i = 0; i < entry_count; i++) {
+        const char *path = options.entry_count ? options.entries[i] : ".";
+        if (!app_startup_entry(&entries[i], launch_directory, path)) {
+            fprintf(stderr, "%s: cannot open entry '%s': %s\n", program, path, strerror(errno));
+            return 1;
+        }
+    }
+    if (chdir(entries[0].directory)) {
+        fprintf(stderr, "%s: cannot enter '%s': %s\n", program, entries[0].directory,
                 strerror(errno));
         return 1;
     }
@@ -214,45 +213,7 @@ int main(int argc, char **argv) {
     // Load syntax highlighting definitions
     syntax_init();
 
-    // Initialize windows and other components
-    int notif_height = 1;
-    int banner_height = 3;
-
-    // Initialize notif window
-    notifwin = newwin(notif_height, COLS, LINES - notif_height, 0);
-    werase(notifwin);
-    box(notifwin, 0, 0);
-    wrefresh(notifwin);
-
-    // Initialize banner window
-    bannerwin = newwin(banner_height, COLS, 0, 0);
-    // Assuming COLOR_PAIR(1) is defined elsewhere; if not, remove or define it
-    // wbkgd(bannerwin, COLOR_PAIR(1)); // Set background color
-    box(bannerwin, 0, 0);
-    wrefresh(bannerwin);
-
-    // Initialize main window
-    mainwin = newwin(LINES - banner_height - notif_height, COLS, banner_height, 0);
-    wtimeout(mainwin, 100);
-
-    // Initialize subwindows
-    SIZE dir_win_width = MAX(COLS / 2, 20);
-    SIZE preview_win_width = MAX(COLS - dir_win_width, 20);
-
-    if (dir_win_width + preview_win_width > COLS) {
-        dir_win_width = COLS / 2;
-        preview_win_width = COLS - dir_win_width;
-    }
-
-    dirwin =
-        subwin(mainwin, LINES - banner_height - notif_height, dir_win_width - 1, banner_height, 0);
-    box(dirwin, 0, 0);
-    wrefresh(dirwin);
-
-    previewwin = subwin(mainwin, LINES - banner_height - notif_height, preview_win_width,
-                        banner_height, dir_win_width);
-    box(previewwin, 0, 0);
-    wrefresh(previewwin);
+    app_windows_create();
 
     // Initialize keybindings and configs
     KeyBindings kb;
@@ -277,6 +238,7 @@ int main(int argc, char **argv) {
         // Configuration loaded successfully
         show_notification(notifwin, "Configuration loaded successfully.");
     } else if (config_errors == 1) {
+        kb.vim_keymap = true;
         // Configuration file not found; create a default config file
         if (write_default_config_file(config_path, &kb, error_buffer, sizeof(error_buffer))) {
             // Notify the user about the creation of the default config file
@@ -300,6 +262,13 @@ int main(int argc, char **argv) {
         // For now, we'll proceed with whatever was loaded and keep defaults for invalid entries
     }
 
+    if (options.keymap)
+        kb.vim_keymap = !strcmp(options.keymap, "vim");
+    if (kb.vim_keymap) {
+        mouseinterval(0);
+        mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL);
+    }
+
     // If help == exit, help can never trigger (and banner would be confusing).
     if (kb.key_help == kb.key_exit) {
         kb.key_help = 'h';
@@ -316,8 +285,12 @@ int main(int argc, char **argv) {
     static char banner_text_buffer[256];
     char exit_key_buf[32];
     char help_key_buf[32];
-    snprintf(exit_key_buf, sizeof(exit_key_buf), "%s", keycode_to_string(kb.key_exit));
-    banner_help_key_to_string(&kb, help_key_buf, sizeof(help_key_buf));
+    snprintf(exit_key_buf, sizeof(exit_key_buf), "%s",
+             keycode_to_string(kb.vim_keymap ? 'q' : kb.key_exit));
+    if (kb.vim_keymap)
+        snprintf(help_key_buf, sizeof(help_key_buf), "F1");
+    else
+        banner_help_key_to_string(&kb, help_key_buf, sizeof(help_key_buf));
     snprintf(banner_text_buffer, sizeof(banner_text_buffer),
              "Welcome to CupidFM - Press %s to exit | Press %s for help", exit_key_buf,
              help_key_buf);
@@ -329,6 +302,7 @@ int main(int argc, char **argv) {
 
     // Initialize application state
     AppState state = {0};
+    state.chooser_file = chooser_file[0] ? chooser_file : NULL;
     undo_state_init(&state.undo_state);
     state.current_directory = malloc(MAX_PATH_LENGTH);
     if (state.current_directory == NULL) {
@@ -361,6 +335,16 @@ int main(int argc, char **argv) {
     git_init();
     git_update_directory(state.current_directory);
 
+    FileListingOptions initial_listing = file_listing_options();
+    if (kb.vim_keymap) {
+        initial_listing.sort = FILE_SORT_ALPHABETICAL;
+        initial_listing.show_hidden = false;
+        file_listing_configure(initial_listing);
+    }
+    state.listing = initial_listing;
+    AppTabs tabs = {.count = 1};
+    FileWatch watcher = {.fd = -1, .watch = -1};
+
     // Use lazy loading for initial directory load
     reload_directory_lazy(&state.files, state.current_directory, &state.lazy_load.files_loaded,
                           &state.lazy_load.total_files);
@@ -382,11 +366,44 @@ int main(int argc, char **argv) {
         PREVIEW_WIN_ACTIVE = 2,
     } active_window = DIRECTORY_WIN_ACTIVE;
 
+    // Populate launch tabs before loading plugins.
+    bool startup_ok = true;
+    for (size_t i = 0; i < entry_count; i++) {
+        if (i && !app_tab_create_at(&tabs, &state, entries[i].directory)) {
+            startup_ok = false;
+            break;
+        }
+        FileListingOptions listing = initial_listing;
+        if (entries[i].name[0] == '.')
+            listing.show_hidden = true;
+        bool reload =
+            entries[i].name[0] || listing.show_hidden != file_listing_options().show_hidden;
+        file_listing_configure(listing);
+        state.listing = listing;
+        if (reload)
+            app_reload_view(&state);
+        else
+            app_move_cursor(&state, 0);
+        if (entries[i].name[0]) {
+            SIZE index = find_loaded_index_by_name(&state.files, entries[i].name);
+            if (index != (SIZE)-1)
+                app_move_cursor(&state, index);
+        }
+        app_history_remember(&state);
+    }
+    if (tabs.active && !app_tab_switch(&tabs, &state, 0))
+        startup_ok = false;
+
     // Initial drawing
     redraw_all_windows(&state);
+    if (!startup_ok)
+        show_notification(notifwin, "Unable to initialize every startup tab");
+
+    if (!tasks_start())
+        show_notification(notifwin, "Unable to start background tasks");
 
     // Load plugins after the UI is drawn so their notifications aren't immediately overwritten.
-    state.plugins = plugins_create();
+    plugins_start(&state, active_window);
     if (state.plugins) {
         plugins_update_context(&state, active_window);
 
@@ -455,7 +472,20 @@ int main(int argc, char **argv) {
     struct timespec last_frame_time;
     clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
     int ch;
-    while ((ch = app_input_next_key()) != kb.key_exit) {
+    app_history_remember(&state);
+    while (true) {
+        ch = app_input_next_key();
+        if (!kb.vim_keymap && ch == kb.key_exit) {
+            if (task_ui_can_quit())
+                break;
+            continue;
+        }
+        bool files_changed = kb.vim_keymap && file_watch_poll(&watcher, state.current_directory);
+        bool tasks_changed = tasks_take_changed();
+        if (tasks_changed || files_changed)
+            app_reload_view(&state);
+        bool search_changed = app_search_poll(&state);
+        app_history_remember(&state);
         if (ch != ERR)
             invalidate_image_preview_overlay();
 
@@ -1017,7 +1047,7 @@ int main(int argc, char **argv) {
         long time_diff = (current_time.tv_sec - last_update_time.tv_sec) * 1000000 +
                          (current_time.tv_nsec - last_update_time.tv_nsec) / 1000;
 
-        if (time_diff >= BANNER_SCROLL_INTERVAL) {
+        if (!kb.vim_keymap && time_diff >= BANNER_SCROLL_INTERVAL) {
             // Update banner with current offset
             pthread_mutex_lock(&banner_mutex);
             draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
@@ -1048,6 +1078,17 @@ int main(int argc, char **argv) {
 
         if (ch != ERR) {
             dir_size_note_user_activity();
+            if ((LINES < 5 || COLS < 12) &&
+                !(kb.vim_keymap ? (ch == 'q' || ch == 'Q' || ch == 3) : ch == kb.key_exit))
+                goto input_done;
+
+            if (active_window == DIRECTORY_WIN_ACTIVE || kb.vim_keymap) {
+                AppKeyResult result = app_browser_key(&state, &tabs, &ch, &kb);
+                if (result == APP_KEY_QUIT)
+                    break;
+                if (result == APP_KEY_HANDLED)
+                    goto input_done;
+            }
 
             // 1) UP
             if (ch == kb.key_up) {
@@ -1148,7 +1189,7 @@ int main(int argc, char **argv) {
 
             // 6) EDIT
             else if (ch == kb.key_edit) {
-                if (active_window == PREVIEW_WIN_ACTIVE) {
+                if (active_window == PREVIEW_WIN_ACTIVE || kb.vim_keymap) {
                     char file_path[MAX_PATH_LENGTH];
                     path_join(file_path, state.current_directory, state.selected_entry);
                     edit_file_in_terminal(previewwin, file_path, notifwin, &kb, state.plugins);
@@ -1176,8 +1217,7 @@ int main(int argc, char **argv) {
                                  count == 1 ? state.selected_entry : "MULTI");
                         show_notification(notifwin, "%s %zu item(s) to clipboard",
                                           cut ? "Cut" : "Copied", count);
-                        state.select_all_active = false;
-                        g_select_all_highlight = false;
+                        app_selection_clear(&state);
                     }
                     should_clear_notif = false;
                 }
@@ -1243,6 +1283,9 @@ int main(int argc, char **argv) {
                 state.select_all_active = !state.select_all_active;
                 // Sync UI flag used by renderer
                 g_select_all_highlight = state.select_all_active;
+                Vector *selection_view = active_files(&state);
+                for (size_t i = 0; i < Vector_len(*selection_view); i++)
+                    app_selection_set(&state, selection_view->el[i], state.select_all_active);
                 if (state.select_all_active) {
                     show_notification(notifwin, "Selected all items in view");
                 } else {
@@ -1287,15 +1330,17 @@ int main(int argc, char **argv) {
             // 10) DELETE
             else if (ch == kb.key_delete) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        // Bulk delete: delete all items currently visible in the active view
-                        Vector *files = active_files(&state);
-                        size_t total = Vector_len(*files);
+                    if (state.select_all_active || app_selection_count(&state)) {
+                        Vector paths;
+                        if (!app_selection_paths(&state, &paths))
+                            goto input_done;
+                        size_t total = app_selection_count(&state);
                         bool should_delete = false;
                         char label[64];
                         snprintf(label, sizeof(label), "%zu selected items", total);
                         (void)confirm_delete(label, &should_delete);
                         if (!should_delete) {
+                            Vector_bye(&paths);
                             show_notification(notifwin, "Delete cancelled");
                             should_clear_notif = false;
                             state.select_all_active = false;
@@ -1305,13 +1350,8 @@ int main(int argc, char **argv) {
                         int deleted_count = 0;
                         UndoItem *undo_items =
                             (UndoItem *)calloc(total > 0 ? total : 1, sizeof(UndoItem));
-                        for (size_t i = 0; i < total; i++) {
-                            FileAttr fa = (FileAttr)files->el[i];
-                            const char *name = FileAttr_get_name(fa);
-                            if (!name || !*name)
-                                continue;
-                            char full_path[MAX_PATH_LENGTH];
-                            path_join(full_path, state.current_directory, name);
+                        for (size_t i = 0; i < Vector_len(paths); i++) {
+                            const char *full_path = paths.el[i];
                             char trashed[MAX_PATH_LENGTH] = {0};
                             if (delete_item(full_path, trashed, sizeof(trashed))) {
                                 if (undo_items) {
@@ -1333,14 +1373,8 @@ int main(int argc, char **argv) {
                         } else if (undo_items) {
                             free(undo_items);
                         }
-                        // Reload directory after bulk delete
-                        char saved_query[MAX_PATH_LENGTH];
-                        search_before_reload(&state, saved_query);
-                        reload_directory(&state.files, state.current_directory);
-                        state.dir_window_cas.num_files = Vector_len(state.files);
-                        state.lazy_load.files_loaded = Vector_len(state.files);
-                        state.lazy_load.total_files = state.lazy_load.files_loaded;
-                        search_after_reload(&state, &state.dir_window_cas, saved_query);
+                        Vector_bye(&paths);
+                        app_reload_view(&state);
                         show_notification(notifwin, "Deleted %d items", deleted_count);
                         should_clear_notif = false;
                         state.select_all_active = false;
@@ -1384,40 +1418,35 @@ int main(int argc, char **argv) {
             // 11) RENAME
             else if (ch == kb.key_rename) {
                 if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        show_notification(notifwin, "Rename does not support Select All");
-                        should_clear_notif = false;
-                        state.select_all_active = false;
-                        g_select_all_highlight = false;
+                    Vector paths;
+                    if (!app_selection_paths(&state, &paths))
+                        goto input_done;
+                    if (Vector_len(paths) > 1) {
+                        Vector_bye(&paths);
+                        app_bulk_rename(&state);
+                        goto input_done;
+                    }
+                    if (!Vector_len(paths)) {
+                        Vector_bye(&paths);
                         goto input_done;
                     }
                     char full_path[MAX_PATH_LENGTH];
-                    path_join(full_path, state.current_directory, state.selected_entry);
+                    snprintf(full_path, sizeof(full_path), "%s", (char *)paths.el[0]);
+                    Vector_bye(&paths);
 
                     char new_path[MAX_PATH_LENGTH * 2] = {0};
                     if (rename_item(notifwin, full_path, new_path, sizeof(new_path))) {
                         (void)undo_state_set_single(&state.undo_state, UNDO_OP_RENAME, full_path,
                                                     new_path);
-                    }
-
-                    // Reload to show changes
-                    char saved_query[MAX_PATH_LENGTH];
-                    search_before_reload(&state, saved_query);
-                    reload_directory(&state.files, state.current_directory);
-                    state.dir_window_cas.num_files = Vector_len(state.files);
-                    state.lazy_load.files_loaded = Vector_len(state.files);
-                    state.lazy_load.total_files = state.lazy_load.files_loaded;
-                    state.dir_window_cas.cursor = 0;
-                    state.dir_window_cas.start = 0;
-                    search_after_reload(&state, &state.dir_window_cas, saved_query);
-
-                    if (!state.search_active) {
-                        if (state.dir_window_cas.num_files > 0) {
-                            state.selected_entry = FileAttr_get_name(state.files.el[0]);
-                        } else {
-                            state.selected_entry = "";
+                        if (selection_has(state.selection, full_path)) {
+                            struct stat renamed;
+                            bool directory = !stat(new_path, &renamed) && S_ISDIR(renamed.st_mode);
+                            (void)selection_set(&state.selection, full_path, false, false);
+                            (void)selection_set(&state.selection, new_path, directory, true);
                         }
                     }
+
+                    app_reload_view(&state);
                 }
             }
 
@@ -1490,121 +1519,9 @@ int main(int argc, char **argv) {
                 }
             }
 
-            // Quick File Info (Ctrl+T by default)
+            // File information uses the current selection or hovered entry.
             else if (ch == kb.key_info) {
-                if (active_window == DIRECTORY_WIN_ACTIVE && state.selected_entry) {
-                    if (state.select_all_active) {
-                        show_notification(notifwin, "Quick info does not support Select All");
-                        should_clear_notif = false;
-                        goto input_done;
-                    }
-
-                    char file_path[MAX_PATH_LENGTH];
-                    path_join(file_path, state.current_directory, state.selected_entry);
-
-                    struct stat st;
-                    if (lstat(file_path, &st) != 0) {
-                        show_popup("File Info", "Unable to stat:\n\n%s\n\n%s", file_path,
-                                   strerror(errno));
-                        goto input_done;
-                    }
-
-                    char type_buf[64] = "Other";
-                    if (S_ISDIR(st.st_mode))
-                        strcpy(type_buf, "Directory");
-                    else if (S_ISREG(st.st_mode))
-                        strcpy(type_buf, "File");
-                    else if (S_ISLNK(st.st_mode))
-                        strcpy(type_buf, "Symlink");
-
-                    char size_buf[64] = "-";
-                    if (S_ISDIR(st.st_mode)) {
-                        long dir_size = get_directory_size_peek(file_path);
-                        if (dir_size == DIR_SIZE_PENDING) {
-                            long p = dir_size_get_progress(file_path);
-                            if (p > 0) {
-                                char tmp[32];
-                                format_file_size(tmp, (size_t)p);
-                                snprintf(size_buf, sizeof(size_buf), "Calculating... %s", tmp);
-                            } else {
-                                snprintf(size_buf, sizeof(size_buf), "Calculating...");
-                            }
-                        } else if (dir_size == DIR_SIZE_VIRTUAL_FS)
-                            snprintf(size_buf, sizeof(size_buf), "Virtual FS");
-                        else if (dir_size == DIR_SIZE_TOO_LARGE)
-                            snprintf(size_buf, sizeof(size_buf), "Too large");
-                        else if (dir_size == DIR_SIZE_PERMISSION_DENIED)
-                            snprintf(size_buf, sizeof(size_buf), "Permission denied");
-                        else if (dir_size < 0)
-                            snprintf(size_buf, sizeof(size_buf), "Error");
-                        else {
-                            char tmp[32];
-                            format_file_size(tmp, (size_t)dir_size);
-                            snprintf(size_buf, sizeof(size_buf), "%s", tmp);
-                        }
-                    } else {
-                        char tmp[32];
-                        format_file_size(tmp, (size_t)st.st_size);
-                        snprintf(size_buf, sizeof(size_buf), "%s", tmp);
-                    }
-
-                    char perm_buf[16];
-                    snprintf(perm_buf, sizeof(perm_buf), "%04o", (unsigned)(st.st_mode & 07777));
-
-                    char mtime_buf[64];
-                    struct tm tm_local;
-                    localtime_r(&st.st_mtime, &tm_local);
-                    strftime(mtime_buf, sizeof(mtime_buf), "%Y-%m-%d %H:%M:%S", &tm_local);
-
-                    // MIME type (best effort)
-                    char mime_buf[128] = "unknown";
-                    magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
-                    if (mc && magic_load(mc, NULL) == 0) {
-                        char mime_buffer[512];
-                        const char *m = mime_file_cached(
-                            mc, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
-                            mime_buffer, sizeof(mime_buffer));
-                        if (m && *m) {
-                            strncpy(mime_buf, m, sizeof(mime_buf) - 1);
-                            mime_buf[sizeof(mime_buf) - 1] = '\0';
-                        }
-                    }
-
-                    char link_target[MAX_PATH_LENGTH] = {0};
-                    if (S_ISLNK(st.st_mode)) {
-                        ssize_t n = readlink(file_path, link_target, sizeof(link_target) - 1);
-                        if (n > 0)
-                            link_target[n] = '\0';
-                    }
-
-                    if (mc)
-                        magic_close(mc);
-
-                    if (S_ISLNK(st.st_mode) && link_target[0]) {
-                        show_popup("File Info",
-                                   "Name: %s\n"
-                                   "Type: %s\n"
-                                   "Path: %s\n"
-                                   "Link: -> %s\n"
-                                   "Size: %s\n"
-                                   "Perm: %s\n"
-                                   "MIME: %s\n"
-                                   "MTime: %s",
-                                   state.selected_entry, type_buf, file_path, link_target, size_buf,
-                                   perm_buf, mime_buf, mtime_buf);
-                    } else {
-                        show_popup("File Info",
-                                   "Name: %s\n"
-                                   "Type: %s\n"
-                                   "Path: %s\n"
-                                   "Size: %s\n"
-                                   "Perm: %s\n"
-                                   "MIME: %s\n"
-                                   "MTime: %s",
-                                   state.selected_entry, type_buf, file_path, size_buf, perm_buf,
-                                   mime_buf, mtime_buf);
-                    }
-                }
+                app_inspector_show(&state);
             }
 
             // File Permissions (Ctrl+P by default)
@@ -1652,6 +1569,9 @@ int main(int argc, char **argv) {
         }
 
     input_done:
+        app_selection_restore(&state);
+        app_history_remember(&state);
+        sync_selection_from_active(&state, &state.dir_window_cas);
         // Clear notification window only if no new notification was displayed
         if (should_clear_notif) {
             werase(notifwin);
@@ -1663,74 +1583,56 @@ int main(int argc, char **argv) {
             plugins_update_context(&state, active_window);
         }
 
-        if (app_input_defer_scroll_frame(ch, kb.key_up, kb.key_down, &last_frame_time))
+        bool letter_movement = kb.vim_keymap && (ch == 'j' || ch == 'k');
+        if (app_input_defer_scroll_frame(ch, letter_movement ? 'k' : kb.key_up,
+                                         letter_movement ? 'j' : kb.key_down, &last_frame_time))
             continue;
 
-        // Redraw windows
-        draw_directory_window(dirwin, state.current_directory, active_files(&state),
-                              &state.dir_window_cas);
+        // Input and filesystem changes paint immediately; periodic refreshes still
+        // update directory-size estimates and task progress while idle.
+        struct timespec frame_now;
+        clock_gettime(CLOCK_MONOTONIC, &frame_now);
+        long long frame_age = (frame_now.tv_sec - last_frame_time.tv_sec) * 1000000000LL +
+                              frame_now.tv_nsec - last_frame_time.tv_nsec;
+        if (ch == ERR && !files_changed && !tasks_changed && !search_changed && frame_age >= 0 &&
+            frame_age < 250000000LL)
+            continue;
 
-        if (state.preview_override_active) {
-            draw_preview_window_path(previewwin, state.preview_override_path, NULL,
-                                     state.preview_start_line);
-        } else {
-            draw_preview_window(previewwin, state.current_directory, state.selected_entry,
-                                state.preview_start_line);
+        app_draw_browser(&state);
+        app_draw_tab_bar(&state, &tabs);
+        if (state.prefix_key) {
+            show_notification(notifwin, "%s", app_help_prefix(state.prefix_key));
+            should_clear_notif = false;
         }
-
-        // Removed: duplicate active-window cursor highlighting. Use render-only highlights in
-        // draw_directory_window.
-
-        wrefresh(mainwin);
-        wrefresh(notifwin);
-        // Highlight the active window
-        if (active_window == DIRECTORY_WIN_ACTIVE) {
-            wattron(dirwin, A_REVERSE);
-            Vector *view = active_files(&state);
-            if (view && Vector_len(*view) > 0 && state.dir_window_cas.cursor >= 0 &&
-                (size_t)state.dir_window_cas.cursor < Vector_len(*view)) {
-                mvwprintw(dirwin, state.dir_window_cas.cursor - state.dir_window_cas.start + 1, 1,
-                          "%s", FileAttr_get_name((FileAttr)view->el[state.dir_window_cas.cursor]));
-            }
-            wattroff(dirwin, A_REVERSE);
-        } else {
-            wattron(previewwin, A_REVERSE);
-            mvwprintw(previewwin, 1, 1, "Preview Window Active");
-            wattroff(previewwin, A_REVERSE);
-        }
-
-        wrefresh(mainwin);
         wrefresh(notifwin);
 
         clock_gettime(CLOCK_MONOTONIC, &last_frame_time);
     }
 
-    // Clean up
-    // Free all FileAttr objects before destroying the vector
-    for (size_t i = 0; i < Vector_len(state.files); i++) {
-        free_attr((FileAttr)state.files.el[i]);
-    }
-    Vector_set_len_no_free(&state.files, 0);
-    Vector_bye(&state.files);
-    // `search_files` is a shallow view into `files`, so only free its backing array.
-    if (state.search_files.el) {
-        free(state.search_files.el);
-        state.search_files.el = NULL;
+    tasks_stop();
+    file_watch_close(&watcher);
+    app_panes_stop();
+    int exit_status = 0;
+    if (cwd_file[0] && !state.no_cwd_file) {
+        FILE *output = fopen(cwd_file, "w");
+        if (!output)
+            exit_status = 1;
+        else {
+            bool written = fputs(state.current_directory, output) >= 0;
+            if (fclose(output))
+                written = false;
+            if (!written)
+                exit_status = 1;
+        }
     }
     if (state.plugins) {
         plugins_destroy(state.plugins);
         state.plugins = NULL;
     }
-    undo_state_clear(&state.undo_state);
-    free(state.current_directory);
-    if (state.lazy_load.directory_path) {
-        free(state.lazy_load.directory_path);
-    }
-    delwin(dirwin);
-    delwin(previewwin);
-    delwin(notifwin);
-    delwin(mainwin);
-    delwin(bannerwin);
+    app_tabs_dispose(&tabs);
+    app_state_dispose(&state);
+    clipboard_clear_paths();
+    app_windows_destroy();
     syntax_cleanup(); // Restore colors before endwin()
     endwin();
     cleanup_temp_files();
@@ -1740,5 +1642,5 @@ int main(int argc, char **argv) {
     // Destroy directory stack
     VecStack_bye(&directoryStack);
 
-    return 0;
+    return exit_status;
 }

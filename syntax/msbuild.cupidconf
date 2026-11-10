@@ -1,0 +1,71 @@
+# Syntax: msbuild
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='msbuild'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(.*proj|props|targets|tasks)$'
+
+# Included language: xml. Local rules come first.
+
+# Region 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+# Start/end delimiters carry state between physical lines.
+rule.0.start='<!DOCTYPE'
+rule.0.end='[/]?>'
+
+# Region 1: comment (root).
+rule.1.parent=-1
+rule.1.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.1.start='<!--'
+rule.1.end='-->'
+
+# Region 2: symbol.tag (root).
+rule.2.parent=-1
+rule.2.group='symbol.tag'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='<\??'
+rule.2.end='\??>'
+
+# Region 3: identifier (inside region 2).
+rule.3.parent=2
+rule.3.group='identifier'
+# Start/end delimiters carry state between physical lines.
+rule.3.start=' '
+rule.3.end='='
+
+# Region 4: constant.string (inside region 2).
+rule.4.parent=2
+rule.4.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='"'
+rule.4.end='"'
+# Mask escaped text before matching delimiters.
+rule.4.skip='\\.'
+
+# Pattern 5: constant.specialChar (inside region 4).
+rule.5.parent=4
+rule.5.group='constant.specialChar'
+rule.5.match='\\.'
+
+# Region 6: constant.string (inside region 2).
+rule.6.parent=2
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start=''''
+rule.6.end=''''
+# Mask escaped text before matching delimiters.
+rule.6.skip='\\.'
+
+# Pattern 7: constant.specialChar (inside region 6).
+rule.7.parent=6
+rule.7.group='constant.specialChar'
+rule.7.match='\\.'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=8

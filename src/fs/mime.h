@@ -9,6 +9,11 @@
  * file identity/size/mode/mtime/ctime; explicit reloads can clear the cache. */
 const char *mime_file_cached(magic_t cookie, const char *path, int flags, char *result,
                              size_t capacity);
+/* Prefer bounded CupidMIME byte detection for recognized binary formats. libmagic
+ * supplies source-language types, descriptions, encodings, and format fallbacks.
+ * cookie may be NULL for native-only regular-file detection. */
+const char *mime_type_cached(magic_t cookie, const char *path, int flags, char *result,
+                             size_t capacity);
 void mime_cache_clear(void);
 
 // MIME type support

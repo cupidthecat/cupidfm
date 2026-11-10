@@ -1,0 +1,61 @@
+# Syntax: crontab
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='crontab'
+
+# Detection: filename first, then header and content signature.
+detect.filename='crontab$|/tmp/crontab\.\w+$'
+detect.header='^#.*?/etc/crontab'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='^([\*0-9,\-\/]+)\s+([\*0-9,\-\/]+)\s+([\*0-9,\-\/]+)\s+(([\*0-9,\-\/]+)|(\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b))\s+(([\*0-9,\-\/]+)|(\b(sun|mon|tue|wed|thu|fri|sat)\b))\s+(.*)$\n?'
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='^([\*0-9,\-\/]+)\s+([\*0-9,\-\/]+)\s+([\*0-9,\-\/]+)\s+(([\*0-9,\-\/]+)|(\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b))\s+(([\*0-9,\-\/]+)|(\b(sun|mon|tue|wed|thu|fri|sat)\b))'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='^[A-Z]+\='
+
+# Pattern 3: constant (root).
+rule.3.parent=-1
+rule.3.group='constant'
+rule.3.match='\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b'
+
+# Pattern 4: constant (root).
+rule.4.parent=-1
+rule.4.group='constant'
+rule.4.match='\b(sun|mon|tue|wed|thu|fri|sat)\b'
+
+# Pattern 5: type (root).
+rule.5.parent=-1
+rule.5.group='type'
+rule.5.match='\@(reboot|yearly|annually|monthly|weekly|daily|midnight|hourly)\b'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='(\{|\}|\(|\)|\;|\]|\[|`|\\|\$|<|>|^|!|=|&|\|)'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='#'
+rule.7.end='$'
+
+# Pattern 8: todo (inside region 7).
+rule.8.parent=7
+rule.8.group='todo'
+rule.8.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

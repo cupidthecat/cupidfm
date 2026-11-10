@@ -64,6 +64,7 @@ struct PluginManager {
     char search_query[MAX_PATH_LENGTH];
     int active_pane;
     const Vector *view;
+    const PathSelection *selection_model;
     bool context_initialized;
 
     bool reload_requested;

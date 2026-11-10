@@ -1,0 +1,157 @@
+# Syntax: typescript
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='typescript'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.tsx?$'
+
+# Pattern 0: constant.number (root).
+rule.0.parent=-1
+rule.0.group='constant.number'
+rule.0.match='\b[-+]?([1-9][0-9]*|0[0-7]*|0x[0-9a-fA-F]+)([uU][lL]?|[lL][uU]?)?\b'
+
+# Pattern 1: constant.number (root).
+rule.1.parent=-1
+rule.1.group='constant.number'
+rule.1.match='\b[-+]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([EePp][+-]?[0-9]+)?[fFlL]?'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='\b[-+]?([0-9]+[EePp][+-]?[0-9]+)[fFlL]?'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[(]'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(abstract|as|async|await|break|case|catch|class|const|constructor|continue)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(debugger|declare|default|delete|do|else|enum|export|extends|finally|for|from)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(function|get|if|implements|import|in|instanceof|interface|is|let|module|namespace)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(new|of|package|private|protected|public|require|return|set|static|super|switch)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(this|throw|try|type|typeof|var|void|while|with|yield)\b'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='\b(false|true|null|undefined|NaN)\b'
+
+# Pattern 10: type (root).
+rule.10.parent=-1
+rule.10.group='type'
+rule.10.match='\b(Array|Boolean|Date|Enumerator|Error|Function|Math)\b'
+
+# Pattern 11: type (root).
+rule.11.parent=-1
+rule.11.group='type'
+rule.11.match='\b(Number|Object|RegExp|String|Symbol)\b'
+
+# Pattern 12: type (root).
+rule.12.parent=-1
+rule.12.group='type'
+rule.12.match='\b(any|unknown|boolean|never|number|string|symbol)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='[-+/*=<>!~%?:&|]'
+
+# Pattern 14: constant (root).
+rule.14.parent=-1
+rule.14.group='constant'
+rule.14.match='/[^*]([^/]|(\\/))*[^\\]/[gim]*'
+
+# Pattern 15: constant (root).
+rule.15.parent=-1
+rule.15.group='constant'
+rule.15.match='\\[0-7][0-7]?[0-7]?|\\x[0-9a-fA-F]+|\\[bfnrt''"\?\\]'
+
+# Region 16: comment (root).
+rule.16.parent=-1
+rule.16.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='//'
+rule.16.end='$'
+
+# Region 17: comment (root).
+rule.17.parent=-1
+rule.17.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.17.start='/\*'
+rule.17.end='\*/'
+
+# Pattern 18: todo (inside region 17).
+rule.18.parent=17
+rule.18.group='todo'
+rule.18.match='TODO:?'
+
+# Region 19: constant.string (root).
+rule.19.parent=-1
+rule.19.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='"'
+rule.19.end='"'
+# Mask escaped text before matching delimiters.
+rule.19.skip='\\.'
+
+# Pattern 20: constant.specialChar (inside region 19).
+rule.20.parent=19
+rule.20.group='constant.specialChar'
+rule.20.match='\\.'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start=''''
+rule.21.end=''''
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\.'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start='`'
+rule.23.end='`'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\.'
+
+# Pattern 25: identifier (inside region 23).
+rule.25.parent=23
+rule.25.group='identifier'
+rule.25.match='\x24\{.*?\}'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=26

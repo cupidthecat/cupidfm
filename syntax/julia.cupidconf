@@ -1,0 +1,116 @@
+# Syntax: julia
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='julia'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.jl$'
+detect.header='^#!.*/(env +)?julia( |$)'
+
+# Pattern 0: constant.bool (root).
+rule.0.parent=-1
+rule.0.group='constant.bool'
+rule.0.match='\b(true|false)\b'
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='\b(nothing|missing)\b'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='__[A-Za-z0-9_]+__'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[(]'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(baremodule|begin|break|catch|const|continue|do|else|elseif|end|export|finally|for|function|global|if|import|let|local|macro|module|public|quote|return|struct|try|using|while)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(abstract\s+type|primitive\s+type|mutable\s+struct)\b'
+
+# Pattern 6: identifier.macro (root).
+rule.6.parent=-1
+rule.6.group='identifier.macro'
+rule.6.match='@[A-Za-z0-9_]+'
+
+# Pattern 7: symbol.operator (root).
+rule.7.parent=-1
+rule.7.group='symbol.operator'
+rule.7.match='[:+*|=!%~<>/\-?&\\÷∈∉∘]|\b(in|isa|where)\b'
+
+# Pattern 8: symbol.operator (root).
+rule.8.parent=-1
+rule.8.group='symbol.operator'
+rule.8.match='\^'
+
+# Pattern 9: symbol.brackets (root).
+rule.9.parent=-1
+rule.9.group='symbol.brackets'
+rule.9.match='([(){}]|\[|\])'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b([0-9]+(_[0-9]+)*|0x[0-9a-fA-F]+(_[0-9a-fA-F]+)*|0b[01]+(_[01]+)*|0o[0-7]+(_[0-7]+)*|Inf(16|32|64)?|NaN(16|32|64)?)\b'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"""'
+rule.11.end='"""'
+
+# Region 12: constant.string (root).
+rule.12.parent=-1
+rule.12.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.12.start='"'
+rule.12.end='"'
+# Mask escaped text before matching delimiters.
+rule.12.skip='\\.'
+
+# Pattern 13: constant.specialChar (inside region 12).
+rule.13.parent=12
+rule.13.group='constant.specialChar'
+rule.13.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8})'
+
+# Pattern 14: constant.string (root).
+rule.14.parent=-1
+rule.14.group='constant.string'
+rule.14.match='''(\\.|.)'''
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='''"'
+rule.15.end=''''
+
+# Region 16: comment (root).
+rule.16.parent=-1
+rule.16.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.16.start='#='
+rule.16.end='=#'
+
+# Region 17: comment (root).
+rule.17.parent=-1
+rule.17.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.17.start='#'
+rule.17.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=18

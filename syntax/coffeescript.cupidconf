@@ -1,0 +1,165 @@
+# Syntax: coffeescript
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='coffeescript'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.coffee$'
+
+# Pattern 0: symbol.operator (root).
+rule.0.parent=-1
+rule.0.group='symbol.operator'
+rule.0.match='([-+/*=<>!~%?:&|]|[.]{3})|\b(and|or|is|isnt|not)\b'
+
+# Pattern 1: identifier.class (root).
+rule.1.parent=-1
+rule.1.group='identifier.class'
+rule.1.match='([A-Za-z_][A-Za-z0-9_]*:[[:space:]]*(->|\()|->)'
+
+# Pattern 2: symbol.brackets (root).
+rule.2.parent=-1
+rule.2.group='symbol.brackets'
+rule.2.match='[()]'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(await|when|catch|continue|debugger|default|by|until)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(delete|do|else|export|finally|for|class|extends|while|then)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(get|if|import|from|in|instanceof|new|reject|resolve|return)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(set|super|switch|this|throw|try|typeof|with|yield|unless)\b'
+
+# Pattern 7: constant.bool (root).
+rule.7.parent=-1
+rule.7.group='constant.bool'
+rule.7.match='\b(true|false|yes|no|on|off)\b'
+
+# Pattern 8: constant.bool.false (root).
+rule.8.parent=-1
+rule.8.group='constant.bool.false'
+rule.8.match='\b(false|no|off)\b'
+
+# Pattern 9: constant.bool.true (root).
+rule.9.parent=-1
+rule.9.group='constant.bool.true'
+rule.9.match='\b(true|yes|on)\b'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b[-+]?([1-9][0-9]*|0[0-7]*|0x[0-9a-fA-F]+)([uU][lL]?|[lL][uU]?)?\b'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='\b[-+]?([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([EePp][+-]?[0-9]+)?[fFlL]?'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='\b[-+]?([0-9]+[EePp][+-]?[0-9]+)[fFlL]?'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='@[A-Za-z0-9_]*'
+
+# Pattern 14: error (root).
+rule.14.parent=-1
+rule.14.group='error'
+rule.14.match='\b(enum|implements|interface|package|private|protected|public)'
+
+# Pattern 15: constant (root).
+rule.15.parent=-1
+rule.15.group='constant'
+rule.15.match='\b(globalThis|Infinity|null|undefined|NaN)\b'
+
+# Pattern 16: constant (root).
+rule.16.parent=-1
+rule.16.group='constant'
+rule.16.match='\b(null|undefined|NaN)\b'
+
+# Pattern 17: constant (root).
+rule.17.parent=-1
+rule.17.group='constant'
+rule.17.match='\b(true|false|yes|no|on|off)\b'
+
+# Pattern 18: type (root).
+rule.18.parent=-1
+rule.18.group='type'
+rule.18.match='\b(Array|Boolean|Date|Enumerator|Error|Function|Generator|Map|Math)\b'
+
+# Pattern 19: type (root).
+rule.19.parent=-1
+rule.19.group='type'
+rule.19.match='\b(Number|Object|Promise|Proxy|Reflect|RegExp|Set|String|Symbol|WeakMap|WeakSet)\b'
+
+# Pattern 20: type (root).
+rule.20.parent=-1
+rule.20.group='type'
+rule.20.match='\b(BigInt64Array|BigUint64Array|Float32Array|Float64Array|Int16Array)\b'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='"'
+rule.21.end='"'
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\.'
+
+# Region 23: constant.string (root).
+rule.23.parent=-1
+rule.23.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.23.start=''''
+rule.23.end=''''
+# Mask escaped text before matching delimiters.
+rule.23.skip='\\.'
+
+# Pattern 24: constant.specialChar (inside region 23).
+rule.24.parent=23
+rule.24.group='constant.specialChar'
+rule.24.match='\\.'
+
+# Region 25: comment (root).
+rule.25.parent=-1
+rule.25.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='###'
+rule.25.end='###'
+
+# Region 26: comment (root).
+rule.26.parent=-1
+rule.26.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='#'
+rule.26.end='$'
+
+# Pattern 27: todo (inside region 26).
+rule.27.parent=26
+rule.27.group='todo'
+rule.27.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=28

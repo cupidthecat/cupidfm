@@ -1,0 +1,107 @@
+# Syntax: cython
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='cython'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.pyx$|\.pxd$|\.pyi$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(and|as|assert|class|def|DEF|del|elif|ELIF|else|ELSE|except|exec|finally|for|from|global|if|IF|import|in|is|lambda|map|not|or|pass|print|raise|try|while|with|yield)\b'
+
+# Pattern 1: special (root).
+rule.1.parent=-1
+rule.1.group='special'
+rule.1.match='\b(continue|break|return)\b'
+
+# Pattern 2: identifier.macro (root).
+rule.2.parent=-1
+rule.2.group='identifier.macro'
+rule.2.match='\b(cdef|cimport|cpdef|cppclass|ctypedef|extern|include|namespace|property|struct)\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(bint|char|double|int|public|void|unsigned)\b'
+
+# Pattern 4: symbol (root).
+rule.4.parent=-1
+rule.4.group='symbol'
+rule.4.match='[.:;,+*|=!\%]|<|>|/|-|&'
+
+# Pattern 5: symbol.brackets (root).
+rule.5.parent=-1
+rule.5.group='symbol.brackets'
+rule.5.match='[(){}]|\[|\]'
+
+# Region 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start='"""'
+rule.6.end='"""'
+
+# Pattern 7: constant.specialChar (inside region 6).
+rule.7.parent=6
+rule.7.group='constant.specialChar'
+rule.7.match='\\.'
+
+# Region 8: constant.string (root).
+rule.8.parent=-1
+rule.8.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.8.start=''''''''
+rule.8.end=''''''''
+
+# Pattern 9: constant.specialChar (inside region 8).
+rule.9.parent=8
+rule.9.group='constant.specialChar'
+rule.9.match='\\.'
+
+# Region 10: constant.string (root).
+rule.10.parent=-1
+rule.10.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.10.start='"'
+rule.10.end='"'
+# Mask escaped text before matching delimiters.
+rule.10.skip='\\.'
+
+# Pattern 11: constant.specialChar (inside region 10).
+rule.11.parent=10
+rule.11.group='constant.specialChar'
+rule.11.match='\\.'
+
+# Region 12: constant.string (root).
+rule.12.parent=-1
+rule.12.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.12.start=''''
+rule.12.end=''''
+# Mask escaped text before matching delimiters.
+rule.12.skip='\\.'
+
+# Pattern 13: constant.specialChar (inside region 12).
+rule.13.parent=12
+rule.13.group='constant.specialChar'
+rule.13.match='\\.'
+
+# Region 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='#'
+rule.14.end='$'
+
+# Pattern 15: todo (inside region 14).
+rule.15.parent=14
+rule.15.group='todo'
+rule.15.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=16

@@ -1,0 +1,168 @@
+# Syntax: vhdl
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='vhdl'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.vhdl?$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='(?i)\b(string|integer|natural|positive|(un)?signed|std_u?logic(_vector)?|bit(_vector)?|boolean|u?x01z?|array|range)\b'
+
+# Pattern 1: identifier (root).
+rule.1.parent=-1
+rule.1.group='identifier'
+rule.1.match='(?i)library[[:space:]]+[a-zA-Z_0-9]+'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='(?i)use[[:space:]]+[a-zA-Z_0-9\.]+'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='(?i)component[[:space:]]+[a-zA-Z_0-9]+'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='(?i)(architecture|configuration)[[:space:]]+[a-zA-Z_0-9]+[[:space:]]+of[[:space:]]+[a-zA-Z_0-9]+'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='(?i)(entity|package)[[:space:]]+[a-zA-Z_0-9]+[[:space:]]+is'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='(?i)end[[:space:]]+((architecture|entity|component|process|package|generate)[[:space:]]+)?[a-zA-Z_0-9]+'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='(?i)\b(abs|access|after|alias|all|and|architecture|assert|attribute)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='(?i)\b(begin|block|body|buffer|bus|case|component|configuration|constant)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='(?i)\b(disconnect|downto|else|elsif|end|entity|exit)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='(?i)\b(file|for|function|generate|generic|guarded)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='(?i)\b(if|impure|in|inertial|inout|is)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='(?i)\b(label|library|linkage|literal|loop|map|mod)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='(?i)\b(nand|new|next|nor|not|null|of|on|open|or|others|out)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='(?i)\b(package|port|postponed|procedure|process|pure)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='(?i)\b(range|record|register|reject|rem|report|return|rol|ror)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='(?i)\b(select|severity|shared|signal|sla|sll|sra|srl|subtype)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='(?i)\b(then|to|transport|type|unaffected|units|until|use)\b'
+
+# Pattern 18: statement (root).
+rule.18.parent=-1
+rule.18.group='statement'
+rule.18.match='(?i)\b(variable|wait|when|while|with|xnor|xor)\b'
+
+# Pattern 19: statement (root).
+rule.19.parent=-1
+rule.19.group='statement'
+rule.19.match='(?i)''(base|left|right|high|low|pos|val|succ|pred|leftof|rightof|image|(last_)?value)'
+
+# Pattern 20: statement (root).
+rule.20.parent=-1
+rule.20.group='statement'
+rule.20.match='(?i)''((reverse_)?range|length|ascending|event|stable)'
+
+# Pattern 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+rule.21.match='(?i)''(simple|path|instance)_name'
+
+# Pattern 22: statement (root).
+rule.22.parent=-1
+rule.22.group='statement'
+rule.22.match='(?i)\b(std_match|(rising|falling)_edge|is_x)\b'
+
+# Pattern 23: statement (root).
+rule.23.parent=-1
+rule.23.group='statement'
+rule.23.match='(?i)\bto_(unsigned|signed|integer|u?x01z?|stdu?logic(vector)?)\b'
+
+# Pattern 24: symbol.operator (root).
+rule.24.parent=-1
+rule.24.group='symbol.operator'
+rule.24.match='(\+|-|\*|/|&|<|>|=|\.|:)'
+
+# Pattern 25: constant.number (root).
+rule.25.parent=-1
+rule.25.group='constant.number'
+rule.25.match='(?i)''([0-1]|u|x|z|w|l|h|-)''|[box]?"([0-1a-fA-F]|u|x|z|w|l|h|-)+"'
+
+# Pattern 26: constant.number (root).
+rule.26.parent=-1
+rule.26.group='constant.number'
+rule.26.match='(?i)\b[0-9\._]+(e[\-]?[0-9]+)?( ?[fpnum]?s)?\b'
+
+# Pattern 27: constant.bool (root).
+rule.27.parent=-1
+rule.27.group='constant.bool'
+rule.27.match='(?i)\b(true|false)\b'
+
+# Pattern 28: constant (root).
+rule.28.parent=-1
+rule.28.group='constant'
+rule.28.match='(?i)\b(note|warning|error|failure)\b'
+
+# Pattern 29: constant.string (root).
+rule.29.parent=-1
+rule.29.group='constant.string'
+rule.29.match='"[^"]*"'
+
+# Pattern 30: comment (root).
+rule.30.parent=-1
+rule.30.group='comment'
+rule.30.match='--.*'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=31

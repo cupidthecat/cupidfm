@@ -7,6 +7,7 @@
 struct VectorImpl {
     size_t cap;
     size_t len;
+    size_t revision;
 };
 
 typedef struct {
@@ -21,6 +22,7 @@ bool Vector_add(Vector *v, size_t add);
 void Vector_set_len_no_free(Vector *v, size_t len);
 void Vector_set_len(Vector *v, size_t len);
 size_t Vector_len(Vector v);
+size_t Vector_revision(Vector v);
 void Vector_min_cap(Vector *v);
 void Vector_sane_cap(Vector *v);
 

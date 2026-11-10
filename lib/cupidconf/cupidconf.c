@@ -162,19 +162,44 @@ cupidconf_t *cupidconf_load(const char *filename) {
         if (!*key)
             continue;
 
-        /* Handle inline comments (starting with # or ;) */
-        char *comment_start = value;
-        while (*comment_start) {
-            if (*comment_start == '#' || *comment_start == ';') {
-                *comment_start = '\0';          // Terminate the value at the comment start
-                value = trim_whitespace(value); // Re-trim in case there was space before comment
-                break;
+        char *expanded_value;
+        if (*value == '\'') {
+            /* Single-quoted values preserve regex punctuation, spaces, and backslashes. */
+            char *read = value + 1, *write = value;
+            bool closed = false;
+            while (*read) {
+                if (*read == '\'') {
+                    if (read[1] == '\'') {
+                        *write++ = '\'';
+                        read += 2;
+                        continue;
+                    }
+                    read++;
+                    closed = true;
+                    break;
+                }
+                *write++ = *read++;
             }
-            comment_start++;
+            if (!closed) {
+                errno = EINVAL;
+                goto fail;
+            }
+            while (isspace((unsigned char)*read))
+                read++;
+            if (*read && *read != '#' && *read != ';') {
+                errno = EINVAL;
+                goto fail;
+            }
+            *write = '\0';
+            expanded_value = strdup(value);
+        } else {
+            char *comment_start = strpbrk(value, "#;");
+            if (comment_start) {
+                *comment_start = '\0';
+                value = trim_whitespace(value);
+            }
+            expanded_value = expand_tilde(value);
         }
-
-        /* Expand ~ to home directory */
-        char *expanded_value = expand_tilde(value);
         if (!expanded_value)
             goto fail;
         if (add_entry(&tail, key, expanded_value) != 0) {
@@ -204,8 +229,9 @@ const char *cupidconf_get(cupidconf_t *conf, const char *key) {
     if (!conf || !key)
         return NULL;
 
+    bool literal = strpbrk(key, "*?[\\\\") == NULL;
     for (cupidconf_entry *entry = conf->entries; entry != NULL; entry = entry->next) {
-        if (match_wildcard(key, entry->key))
+        if ((literal ? strcmp(key, entry->key) == 0 : match_wildcard(key, entry->key)))
             return entry->value;
     }
     return NULL;
@@ -218,8 +244,9 @@ char **cupidconf_get_list(cupidconf_t *conf, const char *key, int *count) {
         return NULL;
 
     int cnt = 0;
+    bool literal = strpbrk(key, "*?[\\\\") == NULL;
     for (cupidconf_entry *entry = conf->entries; entry != NULL; entry = entry->next) {
-        if (match_wildcard(key, entry->key)) {
+        if ((literal ? strcmp(key, entry->key) == 0 : match_wildcard(key, entry->key))) {
             if (cnt == INT_MAX || (size_t)cnt >= SIZE_MAX / sizeof(char *)) {
                 errno = EOVERFLOW;
                 return NULL;
@@ -241,7 +268,7 @@ char **cupidconf_get_list(cupidconf_t *conf, const char *key, int *count) {
 
     int idx = 0;
     for (cupidconf_entry *entry = conf->entries; entry != NULL; entry = entry->next) {
-        if (match_wildcard(key, entry->key))
+        if ((literal ? strcmp(key, entry->key) == 0 : match_wildcard(key, entry->key)))
             values[idx++] = entry->value;
     }
 

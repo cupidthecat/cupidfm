@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <fcntl.h>
 
+KeyBindings g_kb;
 static int loads, kitty_encodes, sixel_encodes;
 int __real_cupidimage_load_image_file(const char *, cupidimage_image *, char *, size_t);
 
@@ -87,6 +88,12 @@ int main(void) {
     assert(screen);
     set_term(screen);
     start_color();
+    use_default_colors();
+    init_pair(44, COLOR_CYAN, -1);
+    ensure_image_palette();
+    short foreground, background;
+    assert(pair_content(44, &foreground, &background) != ERR);
+    assert(foreground == COLOR_CYAN && background == -1);
     assert(resizeterm(60, 140) != ERR);
     WINDOW *window = newwin(30, 100, 0, 0);
     assert(window);
@@ -136,6 +143,12 @@ int main(void) {
     draw_image_preview_kitty(window, first, 0, 40, 120);
     assert(!last_kitty_image_path[0] && !last_sixel_image_path[0] && !kitty_overlay.generation &&
            !sixel_overlay.generation);
+    g_kb.vim_keymap = true;
+    draw_image_preview_kitty(window, second, 0, 40, 120);
+    assert(loads == 5 && kitty_encodes == 5);
+    written = wire_size(wire);
+    draw_image_preview_kitty(window, second, 0, 40, 120);
+    assert(loads == 5 && kitty_encodes == 5 && wire_size(wire) == written);
     image_preview_clear_cache();
     delwin(window);
     endwin();

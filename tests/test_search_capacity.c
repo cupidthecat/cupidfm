@@ -37,6 +37,61 @@ const char *FileAttr_get_name(FileAttr file) {
     return file->name;
 }
 
+bool g_select_all_highlight, should_clear_notif;
+WINDOW *bannerwin;
+const char *BANNER_TEXT, *BUILD_INFO;
+int banner_offset;
+pthread_mutex_t banner_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int idle_reads, directory_draws;
+
+int __wrap_wgetch(WINDOW *window) {
+    (void)window;
+    return idle_reads++ < 5 ? ERR : 27;
+}
+
+void fix_cursor(CursorAndSlice *cas) {
+    (void)cas;
+}
+
+void load_more_files_if_needed(Vector *v, const char *p, void *c, size_t *n, size_t t) {
+    (void)v;
+    (void)p;
+    (void)c;
+    (void)n;
+    (void)t;
+}
+
+void draw_directory_window(WINDOW *w, const char *p, Vector *v, CursorAndSlice *c) {
+    (void)w;
+    (void)p;
+    (void)v;
+    (void)c;
+    directory_draws++;
+}
+
+void draw_preview_window(WINDOW *w, const char *p, const char *s, int n) {
+    (void)w;
+    (void)p;
+    (void)s;
+    (void)n;
+}
+
+void draw_preview_window_path(WINDOW *w, const char *p, const char *s, int n) {
+    draw_preview_window(w, p, s, n);
+}
+
+void draw_scrolling_banner(WINDOW *w, const char *t, const char *b, int o) {
+    (void)w;
+    (void)t;
+    (void)b;
+    (void)o;
+}
+
+void show_notification(WINDOW *w, const char *format, ...) {
+    (void)w;
+    (void)format;
+}
+
 int main(void) {
     AppState state = {0};
     state.files = Vector_new(1);
@@ -77,6 +132,26 @@ int main(void) {
             Vector_bye(&state.search_files);
         }
     }
+    FILE *input = tmpfile(), *output = tmpfile();
+    SCREEN *screen = newterm("xterm-256color", output, input);
+    assert(screen && set_term(screen));
+    WINDOW *notice = newwin(1, 80, 0, 0);
+    wtimeout(notice, 37);
+    state.search_files = Vector_new(1);
+    state.current_directory = "/tmp";
+    state.lazy_load.files_loaded = state.lazy_load.total_files = Vector_len(state.files);
+    strcpy(state.search_query, "file");
+    state.dir_window_cas.num_lines = 10;
+    assert(!prompt_fuzzy_search(&state, &state.dir_window_cas, notice, notice, notice));
+    assert(idle_reads == 6 && !state.search_active);
+    assert(directory_draws <= 2); // Opening and cancelling; idle input must not repaint.
+    assert(wgetdelay(notice) == 37);
+    Vector_bye(&state.search_files);
+    delwin(notice);
+    endwin();
+    delscreen(screen);
+    fclose(input);
+    fclose(output);
     for (size_t i = 0; i < Vector_len(state.files); i++) {
         FileAttr file = state.files.el[i];
         free(file->name);

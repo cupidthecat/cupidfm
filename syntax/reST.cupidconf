@@ -1,0 +1,73 @@
+# Syntax: rst
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='rst'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.rest$|\.rst$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\*\*[^*]+\*\*'
+
+# Pattern 1: preproc (root).
+rule.1.parent=-1
+rule.1.group='preproc'
+rule.1.match='::'
+
+# Pattern 2: constant.string (root).
+rule.2.parent=-1
+rule.2.group='constant.string'
+rule.2.match='`[^`]+`_{1,2}'
+
+# Pattern 3: constant.string (root).
+rule.3.parent=-1
+rule.3.group='constant.string'
+rule.3.match='``[^`]+``'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='^\.\. .*$'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='^__ .*$'
+
+# Pattern 6: type (root).
+rule.6.parent=-1
+rule.6.group='type'
+rule.6.match='^###+$'
+
+# Pattern 7: type (root).
+rule.7.parent=-1
+rule.7.group='type'
+rule.7.match='^\*\*\*+$'
+
+# Pattern 8: special (root).
+rule.8.parent=-1
+rule.8.group='special'
+rule.8.match='^===+$'
+
+# Pattern 9: special (root).
+rule.9.parent=-1
+rule.9.group='special'
+rule.9.match='^---+$'
+
+# Pattern 10: special (root).
+rule.10.parent=-1
+rule.10.group='special'
+rule.10.match='^\^\^\^+$'
+
+# Pattern 11: special (root).
+rule.11.parent=-1
+rule.11.group='special'
+rule.11.match='^"""+$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=12

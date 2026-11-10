@@ -1,0 +1,53 @@
+# Syntax: privoxy-action
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='privoxy-action'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.action$'
+
+# Pattern 0: constant.bool.false (root).
+rule.0.parent=-1
+rule.0.group='constant.bool.false'
+rule.0.match='[{[:space:]]\-block([[:space:]{}]|$)'
+
+# Pattern 1: constant.bool.true (root).
+rule.1.parent=-1
+rule.1.group='constant.bool.true'
+rule.1.match='[{[:space:]]\+block([[:space:]{}]|$)'
+
+# Pattern 2: constant.bool.false (root).
+rule.2.parent=-1
+rule.2.group='constant.bool.false'
+rule.2.match='-(add-header|change-x-forwarded-for|client-header-filter|client-header-tagger|content-type-overwrite|crunch-client-header|crunch-if-none-match|crunch-incoming-cookies|crunch-outgoing-cookies|crunch-server-header|deanimate-gifs|downgrade-http-version|fast-redirects|filter|force-text-mode|forward-override|handle-as-empty-document|handle-as-image|hide-accept-language|hide-content-disposition|hide-from-header|hide-if-modified-since|hide-referrer|hide-user-agent|limit-connect|overwrite-last-modified|prevent-compression|redirect|server-header-filter|server-header-tagger|session-cookies-only|set-image-blocker)'
+
+# Pattern 3: constant.bool.true (root).
+rule.3.parent=-1
+rule.3.group='constant.bool.true'
+rule.3.match='\+(add-header|change-x-forwarded-for|client-header-filter|client-header-tagger|content-type-overwrite|crunch-client-header|crunch-if-none-match|crunch-incoming-cookies|crunch-outgoing-cookies|crunch-server-header|deanimate-gifs|downgrade-http-version|fast-redirects|filter|force-text-mode|forward-override|handle-as-empty-document|handle-as-image|hide-accept-language|hide-content-disposition|hide-from-header|hide-if-modified-since|hide-referrer|hide-user-agent|limit-connect|overwrite-last-modified|prevent-compression|redirect|server-header-filter|server-header-tagger|session-cookies-only|set-image-blocker)'
+
+# Pattern 4: constant.specialChar (root).
+rule.4.parent=-1
+rule.4.group='constant.specialChar'
+rule.4.match='\\.?'
+
+# Pattern 5: comment (root).
+rule.5.parent=-1
+rule.5.group='comment'
+rule.5.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 6: indent-char.whitespace (root).
+rule.6.parent=-1
+rule.6.group='indent-char.whitespace'
+rule.6.match='[[:space:]]+$'
+
+# Pattern 7: indent-char (root).
+rule.7.parent=-1
+rule.7.group='indent-char'
+rule.7.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=8

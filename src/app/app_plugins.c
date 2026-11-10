@@ -5,16 +5,16 @@
 
 #include "app_plugins.h"
 
+#include "app_session.h"
 #include "plugins.h"
 #include "search.h"
 
-void plugins_update_context(AppState *state, int active_window) {
-    if (!state || !state->plugins)
-        return;
+static PluginsContext browser_context(AppState *state, int active_window) {
     // A plugin may have requested a reload that replaced the file attributes.
+    app_selection_restore(state);
     sync_selection_from_active(state, &state->dir_window_cas);
     Vector *view = active_files(state);
-    PluginsContext ctx = {
+    return (PluginsContext){
         .cwd = state->current_directory,
         .selected_name = state->selected_entry,
         .cursor_index = (int)state->dir_window_cas.cursor,
@@ -24,6 +24,20 @@ void plugins_update_context(AppState *state, int active_window) {
         .search_query = state->search_query,
         .active_pane = active_window,
         .view = view,
+        .selection_model = state->selection,
     };
-    plugins_set_context_ex(state->plugins, &ctx);
+}
+
+void plugins_start(AppState *state, int active_window) {
+    if (!state || state->plugins)
+        return;
+    PluginsContext context = browser_context(state, active_window);
+    state->plugins = plugins_create(&context);
+}
+
+void plugins_update_context(AppState *state, int active_window) {
+    if (!state || !state->plugins)
+        return;
+    PluginsContext context = browser_context(state, active_window);
+    plugins_set_context_ex(state->plugins, &context);
 }

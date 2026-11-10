@@ -1,0 +1,158 @@
+# Syntax: sql
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='sql'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.sql$|sqliterc$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='(?i)\b(ALL|ASC|AS|ALTER|AND|ADD|AUTO_INCREMENT)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='(?i)\b(BETWEEN|BINARY|BOTH|BY|BOOLEAN)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(?i)\b(CHANGE|CHECK|COLUMNS|COLUMN|CROSS|CREATE)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='(?i)\b(DATABASES|DATABASE|DATA|DELAYED|DESCRIBE|DESC|DISTINCT|DELETE|DROP|DEFAULT)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='(?i)\b(ENCLOSED|ESCAPED|EXISTS|EXPLAIN)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='(?i)\b(FIELDS|FIELD|FLUSH|FOR|FOREIGN|FUNCTION|FROM)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='(?i)\b(GROUP|GRANT|HAVING)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='(?i)\b(IGNORE|INDEX|INFILE|INSERT|INNER|INTO|IDENTIFIED|IN|IS|IF)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='(?i)\b(JOIN|KEYS|KILL|KEY)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='(?i)\b(LEADING|LIKE|LIMIT|LINES|LOAD|LOCAL|LOCK|LOW_PRIORITY|LEFT|LANGUAGE)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='(?i)\b(MODIFY|NATURAL|NOT|NULL|NEXTVAL)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='(?i)\b(OPTIMIZE|OPTION|OPTIONALLY|ORDER|OUTFILE|OR|OUTER|ON)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='(?i)\b(PROCEDURE|PROCEDURAL|PRIMARY)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='(?i)\b(READ|REFERENCES|REGEXP|RENAME|REPLACE|RETURN|REVOKE|RLIKE|RIGHT)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='(?i)\b(SHOW|SONAME|STATUS|STRAIGHT_JOIN|SELECT|SETVAL|SET)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='(?i)\b(TABLES|TERMINATED|TO|TRAILING|TRUNCATE|TABLE|TEMPORARY|TRIGGER|TRUSTED)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='(?i)\b(UNIQUE|UNLOCK|USE|USING|UPDATE|VALUES|VARIABLES|VIEW)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='(?i)\b(WITH|WRITE|WHERE|ZEROFILL|TYPE|XOR)\b'
+
+# Pattern 18: type (root).
+rule.18.parent=-1
+rule.18.group='type'
+rule.18.match='(?i)\b(VARCHAR|TINYINT|TEXT|DATE|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|FLOAT|DOUBLE|DECIMAL|DATETIME|TIMESTAMP|TIME|YEAR|UNSIGNED|CHAR|TINYBLOB|TINYTEXT|BLOB|MEDIUMBLOB|MEDIUMTEXT|LONGBLOB|LONGTEXT|ENUM|BOOL|BINARY|VARBINARY)\b'
+
+# Pattern 19: preproc (root).
+rule.19.parent=-1
+rule.19.group='preproc'
+rule.19.match='(?i)\.\b(databases|dump|echo|exit|explain|header(s)?|help)\b'
+
+# Pattern 20: preproc (root).
+rule.20.parent=-1
+rule.20.group='preproc'
+rule.20.match='(?i)\.\b(import|indices|mode|nullvalue|output|prompt|quit|read)\b'
+
+# Pattern 21: preproc (root).
+rule.21.parent=-1
+rule.21.group='preproc'
+rule.21.match='(?i)\.\b(schema|separator|show|tables|timeout|width)\b'
+
+# Pattern 22: constant.bool (root).
+rule.22.parent=-1
+rule.22.group='constant.bool'
+rule.22.match='\b(ON|OFF)\b'
+
+# Pattern 23: constant.number (root).
+rule.23.parent=-1
+rule.23.group='constant.number'
+rule.23.match='\b([0-9]+)\b'
+
+# Pattern 24: constant.string (root).
+rule.24.parent=-1
+rule.24.group='constant.string'
+rule.24.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 25: constant.string (root).
+rule.25.parent=-1
+rule.25.group='constant.string'
+rule.25.match='`(\\.|[^\\`])*`'
+
+# Pattern 26: comment (root).
+rule.26.parent=-1
+rule.26.group='comment'
+rule.26.match='\-\-.*$'
+
+# Pattern 27: indent-char.whitespace (root).
+rule.27.parent=-1
+rule.27.group='indent-char.whitespace'
+rule.27.match='[[:space:]]+$'
+
+# Pattern 28: indent-char (root).
+rule.28.parent=-1
+rule.28.group='indent-char'
+rule.28.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=29

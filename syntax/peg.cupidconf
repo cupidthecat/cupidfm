@@ -1,0 +1,63 @@
+# Syntax: peg
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='peg'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.l?peg$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='^[[:space:]]*[A-Za-z][A-Za-z0-9_]*[[:space:]]*<-'
+
+# Pattern 1: constant.number (root).
+rule.1.parent=-1
+rule.1.group='constant.number'
+rule.1.match='\^[+-]?[0-9]+'
+
+# Pattern 2: symbol.operator (root).
+rule.2.parent=-1
+rule.2.group='symbol.operator'
+rule.2.match='[-+*?^/!&]|->|<-|=>'
+
+# Pattern 3: identifier.var (root).
+rule.3.parent=-1
+rule.3.group='identifier.var'
+rule.3.match='%[A-Za-z][A-Za-z0-9_]*'
+
+# Pattern 4: special (root).
+rule.4.parent=-1
+rule.4.group='special'
+rule.4.match='\[[^]]*\]'
+
+# Pattern 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+rule.5.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 6: comment (root).
+rule.6.parent=-1
+rule.6.group='comment'
+rule.6.match='(^|[[:space:]])\-\-.*$'
+
+# Pattern 7: todo (root).
+rule.7.parent=-1
+rule.7.group='todo'
+rule.7.match='TODO:?'
+
+# Pattern 8: indent-char.whitespace (root).
+rule.8.parent=-1
+rule.8.group='indent-char.whitespace'
+rule.8.match='[[:space:]]+$'
+
+# Pattern 9: indent-char (root).
+rule.9.parent=-1
+rule.9.group='indent-char'
+rule.9.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=10

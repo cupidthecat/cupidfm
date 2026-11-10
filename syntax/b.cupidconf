@@ -1,0 +1,131 @@
+# Syntax: B
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='B'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.b$'
+detect.signature='\b(if|else|while|switch|case|default|break|return|goto|extrn|auto)\b'
+
+# Region 0: comment (root).
+rule.0.parent=-1
+rule.0.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.0.start='/\*'
+rule.0.end='\*/'
+
+# Region 1: comment (root).
+rule.1.parent=-1
+rule.1.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.1.start='//'
+rule.1.end='$'
+
+# Region 2: constant.string (root).
+rule.2.parent=-1
+rule.2.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.2.start='"'
+rule.2.end='"'
+# Mask escaped text before matching delimiters.
+rule.2.skip='\\\\.'
+
+# Pattern 3: constant.specialChar (inside region 2).
+rule.3.parent=2
+rule.3.group='constant.specialChar'
+rule.3.match='\\\\([0netr"\\\\\\*\\(\\)])'
+
+# Pattern 4: constant.specialChar (inside region 2).
+rule.4.parent=2
+rule.4.group='constant.specialChar'
+rule.4.match='%(%|[scdo])'
+
+# Region 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.5.start=''''
+rule.5.end=''''
+# Mask escaped text before matching delimiters.
+rule.5.skip='\\\\.'
+
+# Pattern 6: constant.specialChar (inside region 5).
+rule.6.parent=5
+rule.6.group='constant.specialChar'
+rule.6.match='\\\\([0netr"\\\\\\*\\(\\)])'
+
+# Pattern 7: constant.specialChar (inside region 5).
+rule.7.parent=5
+rule.7.group='constant.specialChar'
+rule.7.match='%(%|[scdo])'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b0[0-7]+\b'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='\b[0-9]+\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(if|else|while|switch|case|default|break|return|goto)\b'
+
+# Pattern 11: type (root).
+rule.11.parent=-1
+rule.11.group='type'
+rule.11.match='\b(extrn|auto)\b'
+
+# Pattern 12: constant.builtin (root).
+rule.12.parent=-1
+rule.12.group='constant.builtin'
+rule.12.match='\b(char|getchr|putchr|exit|printf|seek|setuid|stat|time|unlink|wait|lchar|chdir|chmod|chown|close|creat|execl|execv|fork|fstat|getuid|intr|link|makdir|open|read|write|ctime)\b'
+
+# Pattern 13: identifier (root).
+rule.13.parent=-1
+rule.13.group='identifier'
+rule.13.match='^\s*[_A-Za-z][_A-Za-z0-9]*\s*:'
+
+# Pattern 14: identifier (root).
+rule.14.parent=-1
+rule.14.group='identifier'
+rule.14.match='\b[_A-Za-z][_A-Za-z0-9]*\s*\('
+
+# Pattern 15: symbol.operator (root).
+rule.15.parent=-1
+rule.15.group='symbol.operator'
+rule.15.match='(=<<|=>>|=\+|=-|=\*|=/|=%|=&|=\|)'
+
+# Pattern 16: symbol.operator (root).
+rule.16.parent=-1
+rule.16.group='symbol.operator'
+rule.16.match='(==|!=|<=|>=|<<|>>)'
+
+# Pattern 17: symbol.operator (root).
+rule.17.parent=-1
+rule.17.group='symbol.operator'
+rule.17.match='(\+\+|--|\*\*)'
+
+# Pattern 18: symbol.operator (root).
+rule.18.parent=-1
+rule.18.group='symbol.operator'
+rule.18.match='[-+*/%&|^~!=<>?:=]'
+
+# Pattern 19: symbol.brackets (root).
+rule.19.parent=-1
+rule.19.group='symbol.brackets'
+rule.19.match='[(){}\[\]]'
+
+# Pattern 20: identifier (root).
+rule.20.parent=-1
+rule.20.group='identifier'
+rule.20.match='\b[_A-Za-z][_A-Za-z0-9]*\b'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=21

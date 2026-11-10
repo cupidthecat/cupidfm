@@ -9,13 +9,13 @@ CupidFM is a terminal file manager written in C with an ncurses interface. It in
 On Ubuntu or Debian:
 
 ```sh
-sudo apt install build-essential libncurses-dev libmagic-dev libssl-dev openssl \
+sudo apt install build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl \
     zlib1g-dev libbz2-dev liblzma-dev xclip python3
 make -j
 ./cupidfm
 ```
 
-The default build uses `-O2 -g`. Libraries are built from pinned source folders under `lib/`. See [Installation](https://github.com/cupidthecat/cupidfm/wiki/Installation) for other package managers, sanitizer builds, and terminal setup.
+The default build uses Clang with `-O2 -g`. Libraries are built from pinned source folders under `lib/`. See [Installation](https://github.com/cupidthecat/cupidfm/wiki/Installation) for other package managers, sanitizer builds, and terminal setup.
 
 ```sh
 ./cupidfm ~/Documents
@@ -23,18 +23,22 @@ The default build uses `-O2 -g`. Libraries are built from pinned source folders 
 ./cupidfm --help
 ```
 
-With the default configuration, arrows navigate, Tab switches panes, F1 exits, and Ctrl+E opens the editor. Settings are stored in `~/.cupidfmrc`; plugins load from `~/.cupidfm/plugins/`.
+New configurations use Vim browser keys: arrows or j/k move, h/l leave or enter a directory, q quits, and Ctrl+E opens the editor. Settings are stored in `~/.cupidfmrc`; plugins load from `~/.cupidfm/plugins/`.
 
 ## Features
 
 - Directory browsing, search, file operations, and an editor.
-- Text previews with syntax highlighting and bounded line indexing.
+- Text previews and editing with 158 bundled syntax definitions and bounded line indexing.
+  See the [syntax guide](docs/syntax-guide.md) for overrides and examples.
 - Image rendering through Kitty graphics, Sixel, or ANSI modes, with viewport-sized uploads and cached previews.
 - TAR, ZIP, compressed-file, and multi-file/solid 7z previews through CupidArchive.
 - Git working-tree status compared with the index through CupidGit.
 - CupidScript plugins with file manager and editor APIs.
 
 Scrolling preserves queued keys and reuses validated MIME results. See [the performance notes](PERFORMANCE.md) for measured workloads, benchmark commands, and limits.
+
+Existing configurations keep their bindings. Use `./cupidfm --keymap=vim` for tabs, selection, sorting, filtering, mouse navigation,
+and background tasks. The [browser guide](docs/browser-guide.md) lists shortcuts and current limits.
 
 ## Documentation
 
@@ -54,6 +58,8 @@ make test
 make test-libs
 python3 tests/test_terminal_smoke.py
 python3 tests/test_scroll_smoke.py
+python3 tests/test_browser_smoke.py
+python3 tests/test_cli_output.py
 ```
 
 `./dev.sh` builds with AddressSanitizer and UndefinedBehaviorSanitizer and prompts before launching. Hosted checks also run focused allocation, input, MIME, preview, and terminal regressions.

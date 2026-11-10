@@ -1,0 +1,77 @@
+# Syntax: glsl
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='glsl'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(frag|vert|fp|vp|glsl)$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[()]'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(void|bool|bvec2|bvec3|bvec4|int|ivec2|ivec3|ivec4|float|vec2|vec3|vec4|mat2|mat3|mat4|struct|sampler1D|sampler2D|sampler3D|samplerCUBE|sampler1DShadow|sampler2DShadow)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='\bgl_(DepthRangeParameters|PointParameters|MaterialParameters|LightSourceParameters|LightModelParameters|LightModelProducts|LightProducts|FogParameters)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(const|attribute|varying|uniform|in|out|inout|if|else|return|discard|while|for|do)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(break|continue)\b'
+
+# Pattern 5: constant.bool (root).
+rule.5.parent=-1
+rule.5.group='constant.bool'
+rule.5.match='\b(true|false)\b'
+
+# Pattern 6: symbol.operator (root).
+rule.6.parent=-1
+rule.6.group='symbol.operator'
+rule.6.match='[-+/*=<>?:!~%&|^]'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='\b([0-9]+|0x[0-9a-fA-F]*)\b'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='//'
+rule.8.end='$'
+
+# Pattern 9: todo (inside region 8).
+rule.9.parent=8
+rule.9.group='todo'
+rule.9.match='TODO:?'
+
+# Region 10: comment (root).
+rule.10.parent=-1
+rule.10.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.10.start='/\*'
+rule.10.end='\*/'
+
+# Pattern 11: todo (inside region 10).
+rule.11.parent=10
+rule.11.group='todo'
+rule.11.match='TODO:?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=12

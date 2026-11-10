@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang pkg-config libglib2.0-dev libncurses-dev libmagic-dev libssl-dev openssl zlib1g-dev libbz2-dev liblzma-dev python3 fd-find ripgrep fzf zoxide
       - name: Verify committed library source trees
         run: python3 tools/verify_library_sources.py
       - name: Build application
@@ -22,10 +22,55 @@ jobs:
         run: python3 tests/test_terminal_smoke.py
       - name: Preserve queued scrolling through slow plugin work
         run: python3 tests/test_scroll_smoke.py
+      - name: Check Vim browser workflows
+        run: |
+          python3 tests/test_browser_smoke.py
+          python3 tests/test_ctrlf_smoke.py
+          python3 tests/test_cli_output.py
+          python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_extract_smoke.py
+          python3 tests/test_inspector_smoke.py
+          python3 tests/test_recursive_search.py
+          python3 tests/test_jump_smoke.py
       - name: Run bundled library tests
-        run: make -j2 test-libs
+        run: |
+          make -j2 test-libs
+          make -C lib/cupidmime integration-elf CC=clang
       - name: Run tests
         run: make test
+      - name: Check file metadata with sanitizers
+        run: |
+          make -B -C tests test_file_info CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_file_info
+      - name: Check terminal clipboard encoding with sanitizers
+        run: |
+          make -B -C tests test_clipboard_terminal test_process_status CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_clipboard_terminal
+          ./tests/test_process_status
+      - name: Check live input and recursive search with sanitizers
+        run: |
+          make -B -C tests test_input_prompt test_file_search test_app_paths CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_input_prompt
+          ./tests/test_app_paths
+          ./tests/test_file_search
+      - name: Check openers, picker, and bulk rename with sanitizers
+        run: |
+          make -B -C tests test_openers test_picker test_bulk_rename test_bulk_create CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_openers
+          ./tests/test_picker
+          ./tests/test_bulk_rename
+          ./tests/test_bulk_create
+      - name: Check header and help with sanitizers
+        run: |
+          make -B -C tests test_header test_help CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_header
+          ./tests/test_help
+      - name: Check browser state and tasks with sanitizers
+        run: |
+          make -B -C tests test_browser_session test_tasks test_mime_native CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          ./tests/test_browser_session
+          ./tests/test_tasks
+          ./tests/test_mime_native
       - name: Run file-command regressions with sanitizers
         run: |
           rm tests/file_command_driver
@@ -67,6 +112,12 @@ jobs:
           make -C tests test_config_keys test_plugins_api CFLAGS='-Wall -Wextra -g -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
           ./tests/test_config_keys
           ./tests/test_plugins_api
+      - name: Check syntax rules and foreground rendering with sanitizers
+        run: |
+          make -B -C tests test_syntax_rules syntax_snapshot CFLAGS='-Wall -Wextra -g -O1 -std=c2x -fsanitize=address,undefined -fno-omit-frame-pointer' LIBS='-fsanitize=address,undefined'
+          cd tests
+          ./test_syntax_rules
+          python3 test_syntax_examples.py
       - name: Check archive previews with sanitizers
         run: |
           rm tests/test_archive_preview
@@ -102,4 +153,12 @@ jobs:
           make -j2 CFLAGS='-Wall -Wextra -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer'
           python3 tests/test_terminal_smoke.py
           python3 tests/test_scroll_smoke.py
+          python3 tests/test_browser_smoke.py
+          python3 tests/test_ctrlf_smoke.py
+          python3 tests/test_cli_output.py
+          python3 tests/test_open_bulk_smoke.py
+          python3 tests/test_extract_smoke.py
+          python3 tests/test_inspector_smoke.py
+          python3 tests/test_recursive_search.py
+          python3 tests/test_jump_smoke.py
           python3 tests/benchmark_image_preview.py --runs 1 > /tmp/image-preview-sanitizer.json

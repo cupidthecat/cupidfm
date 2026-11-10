@@ -35,6 +35,13 @@ int main(void) {
     assert(count == 2 && list);
     assert(!strcmp(list[0], "first") && !strcmp(list[1], "second"));
     free(list);
+    list = cupidconf_get_list(conf, "path", &count);
+    assert(list && count == 2 && !strcmp(list[0], "first") && !strcmp(list[1], "second"));
+    free(list);
+    assert(!strcmp(cupidconf_get(conf, "p?th"), "first"));
+    assert(!strcmp(cupidconf_get(conf, "p[a]th"), "first"));
+    assert(!strcmp(cupidconf_get(conf, "pa\\th"), "first"));
+    assert(!cupidconf_get(conf, "PATH"));
     assert(cupidconf_value_in_list(conf, "ignore", "x.txt"));
     assert(cupidconf_value_in_list(conf, "ignore", "build_test"));
     assert(!cupidconf_value_in_list(conf, "ignore", "x.c"));
@@ -46,6 +53,25 @@ int main(void) {
     conf = cupidconf_load("~/home file.conf");
     assert(conf);
     cupidconf_free(conf);
+    fp = fopen("quoted.conf", "w");
+    assert(fp);
+    fputs("regex = ' \\b[#;]\\s+''quoted'' $ ' # outside\n"
+          "literal = '~/literal'\nempty = ''\n",
+          fp);
+    assert(!fclose(fp));
+    conf = cupidconf_load("quoted.conf");
+    assert(conf);
+    assert(!strcmp(cupidconf_get(conf, "regex"), " \\b[#;]\\s+'quoted' $ "));
+    assert(!strcmp(cupidconf_get(conf, "literal"), "~/literal"));
+    assert(!strcmp(cupidconf_get(conf, "empty"), ""));
+    cupidconf_free(conf);
+    const char *bad[] = {"x='unfinished", "x='closed' garbage"};
+    for (size_t i = 0; i < 2; i++) {
+        fp = fopen("quoted.conf", "w");
+        assert(fp && fputs(bad[i], fp) >= 0 && !fclose(fp));
+        assert(!cupidconf_load("quoted.conf") && errno == EINVAL);
+    }
+    assert(!unlink("quoted.conf"));
     assert(unsetenv("HOME") == 0);
     fp = fopen("nul.conf", "wb");
     assert(fp);

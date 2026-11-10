@@ -1,0 +1,40 @@
+# Syntax: git-config
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='git-config'
+
+# Detection: filename first, then header and content signature.
+detect.filename='git(config|modules)$|^(.*[\\/])?\.?git[\\/]config$'
+
+# Pattern 0: constant (root).
+rule.0.parent=-1
+rule.0.group='constant'
+rule.0.match='\<(true|false)\>'
+
+# Pattern 1: type.keyword (root).
+rule.1.parent=-1
+rule.1.group='type.keyword'
+rule.1.match='^[[:space:]]*[^=]*='
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='^[[:space:]]*\[.*\]$'
+
+# Pattern 3: constant (root).
+rule.3.parent=-1
+rule.3.group='constant'
+rule.3.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Region 4: comment (root).
+rule.4.parent=-1
+rule.4.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='#'
+rule.4.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=5

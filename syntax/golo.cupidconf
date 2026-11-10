@@ -1,0 +1,245 @@
+# Syntax: golo
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='golo'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.golo$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(function|fun|)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(struct|DynamicObject|union|AdapterFabric|Adapter|DynamicVariable|Observable)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b(list|set|array|vector|tuple|map)\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(Ok|Error|Empty|None|Some|Option|Result|Result.ok|Result.fail|Result.error|Result.empty|Optional.empty|Optional.of)\b'
+
+# Pattern 4: identifier.class (root).
+rule.4.parent=-1
+rule.4.group='identifier.class'
+rule.4.match='\b(augment|pimp)\b'
+
+# Pattern 5: identifier.class (root).
+rule.5.parent=-1
+rule.5.group='identifier.class'
+rule.5.match='\b(interfaces|implements|extends|overrides|maker|newInstance)\b'
+
+# Pattern 6: identifier.class (root).
+rule.6.parent=-1
+rule.6.group='identifier.class'
+rule.6.match='\b(isEmpty|isNone|isPresent|isSome|iterator|flattened|toList|flatMap|`and|orElseGet|`or|toResult|apply|either)\b'
+
+# Pattern 7: identifier.class (root).
+rule.7.parent=-1
+rule.7.group='identifier.class'
+rule.7.match='\b(result|option|trying|raising|nullify|catching)\b'
+
+# Pattern 8: identifier.class (root).
+rule.8.parent=-1
+rule.8.group='identifier.class'
+rule.8.match='\b(promise|setFuture|failedFuture|all|any)\b'
+
+# Pattern 9: identifier.class (root).
+rule.9.parent=-1
+rule.9.group='identifier.class'
+rule.9.match='\b(initialize|initializeWithinThread|start|future|fallbackTo|onSet|onFail|cancel|enqueue)\b'
+
+# Pattern 10: identifier.class (root).
+rule.10.parent=-1
+rule.10.group='identifier.class'
+rule.10.match='\b(println|print|raise|readln|readPassword|secureReadPassword|requireNotNull|require|newTypedArray|range|reversedRange|mapEntry|asInterfaceInstance|asFunctionalInterface|isClosure|fileToText|textToFile|fileExists|currentDir|sleep|uuid|isArray|arrayTypeOf|charValue|intValue|longValue|doubleValue|floatValue|removeByIndex|box)\b'
+
+# Pattern 11: identifier.class (root).
+rule.11.parent=-1
+rule.11.group='identifier.class'
+rule.11.match='\b(likelySupported|reset|bold|underscore|blink|reverse_video|concealed|fg_black|fg_red|fg_green|fg_yellow|fg_blue|fg_magenta|fg_cyan|fg_white|bg_black|bg_red|bg_green|bg_yellow|bg_blue|bg_magenta|bg_cyan|bg_white|cursor_position|cursor_save_position|cursor_restore_position|cursor_up|cursor_down|cursor_forward|cursor_backward|erase_display|erase_line)\b'
+
+# Pattern 12: identifier.class (root).
+rule.12.parent=-1
+rule.12.group='identifier.class'
+rule.12.match='\b(emptyList|cons|lazyList|fromIter|generator|repeat|iterate)\b'
+
+# Pattern 13: identifier.class (root).
+rule.13.parent=-1
+rule.13.group='identifier.class'
+rule.13.match='\b(asLazyList|foldl|foldr|take|takeWhile|drop|dropWhile|subList)\b'
+
+# Pattern 14: identifier.class (root).
+rule.14.parent=-1
+rule.14.group='identifier.class'
+rule.14.match='\b(import)\b'
+
+# Pattern 15: identifier.class (root).
+rule.15.parent=-1
+rule.15.group='identifier.class'
+rule.15.match='\b(module)\b'
+
+# Pattern 16: identifier.class (root).
+rule.16.parent=-1
+rule.16.group='identifier.class'
+rule.16.match='\b(JSON)\b'
+
+# Pattern 17: identifier.class (root).
+rule.17.parent=-1
+rule.17.group='identifier.class'
+rule.17.match='\b(stringify|parse|toJSON|toDynamicObject|updateFromJSON)\b'
+
+# Pattern 18: identifier.class (root).
+rule.18.parent=-1
+rule.18.group='identifier.class'
+rule.18.match='\b(newInstance|define|getKey|getValue|properties|fallback)\b'
+
+# Pattern 19: identifier.class (root).
+rule.19.parent=-1
+rule.19.group='identifier.class'
+rule.19.match='\b(times|upTo|downTo)\b'
+
+# Pattern 20: identifier.class (root).
+rule.20.parent=-1
+rule.20.group='identifier.class'
+rule.20.match='\b(format|toInt|toInteger|toDouble|toFloat|toLong)\b'
+
+# Pattern 21: identifier.class (root).
+rule.21.parent=-1
+rule.21.group='identifier.class'
+rule.21.match='\b(head|tail|isEmpty|reduce|each|count|exists)\b'
+
+# Pattern 22: identifier.class (root).
+rule.22.parent=-1
+rule.22.group='identifier.class'
+rule.22.match='\b(newWithSameType|destruct|append|add|addIfAbsent|prepend|insert|last|unmodifiableView|find|filter|map|join|reverse|reversed|order|ordered|removeAt|include|exclude|remove|delete|has|contains|getOrElse|toArray)\b'
+
+# Pattern 23: identifier.class (root).
+rule.23.parent=-1
+rule.23.group='identifier.class'
+rule.23.match='\b(add|addTo|succ|pred|mul|neg|sub|rsub|div|rdiv|mod|rmod|pow|rpow|str|lt|gt|eq|ne|ge|le|`and|`or|`not|xor|even|odd|contains|isEmpty|`is|`isnt|`oftype|`orIfNull|fst|snd|getitem|setitem|getter|id|const|False|True|Null|curry|uncurry|unary|spreader|varargs|swapArgs|swapCurry|swapCouple|swap|invokeWith|pipe|compose|io|andThen|until|recur|cond)\b'
+
+# Pattern 24: identifier.class (root).
+rule.24.parent=-1
+rule.24.group='identifier.class'
+rule.24.match='\b(toUpperCase|equals|startsWith)\b'
+
+# Pattern 25: statement (root).
+rule.25.parent=-1
+rule.25.group='statement'
+rule.25.match='\b(if|else|then|when|case|match|otherwise)\b'
+
+# Pattern 26: special (root).
+rule.26.parent=-1
+rule.26.group='special'
+rule.26.match='\b(with|break|continue|return)\b'
+
+# Pattern 27: error (root).
+rule.27.parent=-1
+rule.27.group='error'
+rule.27.match='\b(try|catch|finally|throw)\b'
+
+# Pattern 28: identifier (root).
+rule.28.parent=-1
+rule.28.group='identifier'
+rule.28.match='\b(super|this|let|var|local)\b'
+
+# Pattern 29: symbol.brackets (root).
+rule.29.parent=-1
+rule.29.group='symbol.brackets'
+rule.29.match='[(){}]|\[|\]'
+
+# Pattern 30: statement (root).
+rule.30.parent=-1
+rule.30.group='statement'
+rule.30.match='\b(for|while|foreach|in)\b'
+
+# Pattern 31: constant (root).
+rule.31.parent=-1
+rule.31.group='constant'
+rule.31.match='\b(and|in|is|not|or|isnt|orIfNull)\b'
+
+# Pattern 32: constant.bool (root).
+rule.32.parent=-1
+rule.32.group='constant.bool'
+rule.32.match='\b(true|false)\b'
+
+# Pattern 33: constant (root).
+rule.33.parent=-1
+rule.33.group='constant'
+rule.33.match='\b(null|undefined)\b'
+
+# Pattern 34: symbol.operator (root).
+rule.34.parent=-1
+rule.34.group='symbol.operator'
+rule.34.match='[\-+/*=<>!~%&|^]|:='
+
+# Pattern 35: constant.number (root).
+rule.35.parent=-1
+rule.35.group='constant.number'
+rule.35.match='\b([0-9]+|0x[0-9a-fA-F]*)\b|''.'''
+
+# Region 36: constant.string (root).
+rule.36.parent=-1
+rule.36.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.36.start='"'
+rule.36.end='"'
+# Mask escaped text before matching delimiters.
+rule.36.skip='\\.'
+
+# Pattern 37: constant.specialChar (inside region 36).
+rule.37.parent=36
+rule.37.group='constant.specialChar'
+rule.37.match='\\.'
+
+# Region 38: constant.string (root).
+rule.38.parent=-1
+rule.38.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.38.start=''''
+rule.38.end=''''
+# Mask escaped text before matching delimiters.
+rule.38.skip='\\.'
+
+# Pattern 39: constant.specialChar (inside region 38).
+rule.39.parent=38
+rule.39.group='constant.specialChar'
+rule.39.match='\\.'
+
+# Region 40: comment (root).
+rule.40.parent=-1
+rule.40.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.40.start='#'
+rule.40.end='$'
+
+# Pattern 41: todo (inside region 40).
+rule.41.parent=40
+rule.41.group='todo'
+rule.41.match='(TODO|XXX|FIXME):?'
+
+# Region 42: comment (root).
+rule.42.parent=-1
+rule.42.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.42.start='----'
+rule.42.end='----'
+
+# Pattern 43: todo (inside region 42).
+rule.43.parent=42
+rule.43.group='todo'
+rule.43.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=44

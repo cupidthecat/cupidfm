@@ -1,0 +1,119 @@
+# Syntax: makefile
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='makefile'
+
+# Detection: filename first, then header and content signature.
+detect.filename='([Mm]akefile|\.ma?k)$'
+detect.header='^#!.*/(env +)?[bg]?make( |$)'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='\<(ifeq|ifdef|ifneq|ifndef|else|endif)\>'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='^(export|include|override)\>'
+
+# Pattern 2: symbol.operator (root).
+rule.2.parent=-1
+rule.2.group='symbol.operator'
+rule.2.match='^[^:=	]+:'
+
+# Pattern 3: symbol.operator (root).
+rule.3.parent=-1
+rule.3.group='symbol.operator'
+rule.3.match='([=,%]|\+=|\?=|:=|&&|\|\|)'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\$\((abspath|addprefix|addsuffix|and|basename|call|dir)[[:space:]]'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\$\((error|eval|filter|filter-out|findstring|firstword)[[:space:]]'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\$\((flavor|foreach|if|info|join|lastword|notdir|or)[[:space:]]'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\$\((origin|patsubst|realpath|shell|sort|strip|suffix)[[:space:]]'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\$\((value|warning|wildcard|word|wordlist|words)[[:space:]]'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='^.+:'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='[()$]'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"'
+rule.11.end='"'
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Pattern 12: constant.specialChar (inside region 11).
+rule.12.parent=11
+rule.12.group='constant.specialChar'
+rule.12.match='\\.'
+
+# Region 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.13.start=''''
+rule.13.end=''''
+# Mask escaped text before matching delimiters.
+rule.13.skip='\\.'
+
+# Pattern 14: constant.specialChar (inside region 13).
+rule.14.parent=13
+rule.14.group='constant.specialChar'
+rule.14.match='\\.'
+
+# Pattern 15: identifier (root).
+rule.15.parent=-1
+rule.15.group='identifier'
+rule.15.match='\$+(\{[^} ]+\}|\([^) ]+\))'
+
+# Pattern 16: identifier (root).
+rule.16.parent=-1
+rule.16.group='identifier'
+rule.16.match='\$[@^<*?%|+]|\$\([@^<*?%+-][DF]\)'
+
+# Pattern 17: identifier (root).
+rule.17.parent=-1
+rule.17.group='identifier'
+rule.17.match='\$\$|\\.?'
+
+# Region 18: comment (root).
+rule.18.parent=-1
+rule.18.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='#'
+rule.18.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=19

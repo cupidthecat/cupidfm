@@ -142,15 +142,17 @@ int arc_skip_data(ArcReader *reader);
 void arc_close(ArcReader *reader);
 
 /**
- * Extract all entries from an archive to a destination directory.
+ * Extract the remaining entries to a destination directory.
  *
- * @param reader The archive reader (will be reset to beginning)
+ * @param reader A newly opened reader, or one positioned before the next entry to extract
  * @param dest_dir Destination directory path (must exist)
- * @param preserve_permissions If true, preserve file permissions and ownership
+ * @param preserve_permissions If true, preserve rwx permissions; ownership and special mode bits
+ * are not restored
  * @param preserve_timestamps If true, preserve modification times
  * @return 0 on success, <0 on error
  *
- * Note: Creates subdirectories as needed. Overwrites existing files.
+ * Note: Does not rewind the reader. Open a fresh reader to extract the whole archive.
+ *       Creates subdirectories as needed. Overwrites existing files.
  *       Returns error if dest_dir doesn't exist or isn't writable.
  */
 int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool preserve_permissions,
@@ -162,7 +164,8 @@ int arc_extract_to_path(ArcReader *reader, const char *dest_dir, bool preserve_p
  * @param reader The archive reader (must have current entry from arc_next())
  * @param entry The entry to extract (from arc_next())
  * @param dest_dir Destination directory path (must exist)
- * @param preserve_permissions If true, preserve file permissions and ownership
+ * @param preserve_permissions If true, preserve rwx permissions; ownership and special mode bits
+ * are not restored
  * @param preserve_timestamps If true, preserve modification times
  * @return 0 on success, <0 on error
  *

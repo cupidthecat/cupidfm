@@ -1,4 +1,4 @@
-CC = gcc
+CC = clang
 CFLAGS = -Wall -Wextra -g -std=c11
 INCLUDES = -I../src -I..
 LIBS = -lz -lbz2 -llzma

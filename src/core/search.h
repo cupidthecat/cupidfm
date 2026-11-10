@@ -14,6 +14,7 @@ typedef enum {
     SEARCH_MODE_FUZZY = 0,
     SEARCH_MODE_EXACT = 1,
     SEARCH_MODE_REGEX = 2,
+    SEARCH_MODE_SMART = 3,
 } SearchMode;
 
 void search_clear(AppState *state);

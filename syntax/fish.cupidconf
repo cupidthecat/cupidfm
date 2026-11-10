@@ -1,0 +1,94 @@
+# Syntax: fish
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='fish'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.fish$'
+detect.header='^#!.*/(env +)?fish( |$)'
+
+# Pattern 0: constant (root).
+rule.0.parent=-1
+rule.0.group='constant'
+rule.0.match='\b[0-9]+\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(and|begin|break|case|continue|else|end|for|function|if|in|not|or|return|select|shift|switch|while)\b'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='(\{|\}|\(|\)|\;|\]|\[|`|\\|\$|<|>|^|!|=|&|\|)'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b(bg|bind|block|breakpoint|builtin|cd|count|command|commandline|complete|dirh|dirs|echo|emit|eval|exec|exit|fg|fish|fish_config|fish_ident|fish_pager|fish_prompt|fish_right_prompt|fish_update_completions|fishd|funced|funcsave|functions|help|history|jobs|math|mimedb|nextd|open|popd|prevd|psub|pushd|pwd|random|read|set|set_color|source|status|string|trap|type|ulimit|umask|vared)\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\b((g|ig)?awk|bash|dash|find|\w{0,4}grep|kill|killall|\w{0,4}less|make|pkill|sed|sh|tar)\b'
+
+# Pattern 5: type (root).
+rule.5.parent=-1
+rule.5.group='type'
+rule.5.match='\b(base64|basename|cat|chcon|chgrp|chmod|chown|chroot|cksum|comm|cp|csplit|cut|date|dd|df|dir|dircolors|dirname|du|env|expand|expr|factor|false|fmt|fold|head|hostid|id|install|join|link|ln|logname|ls|md5sum|mkdir|mkfifo|mknod|mktemp|mv|nice|nl|nohup|nproc|numfmt|od|paste|pathchk|pinky|pr|printenv|printf|ptx|pwd|readlink|realpath|rm|rmdir|runcon|seq|(sha1|sha224|sha256|sha384|sha512)sum|shred|shuf|sleep|sort|split|stat|stdbuf|stty|sum|sync|tac|tail|tee|test|time|timeout|touch|tr|true|truncate|tsort|tty|uname|unexpand|uniq|unlink|users|vdir|wc|who|whoami|yes)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='--[a-z-]+'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\ -[a-z]+'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='(?i)\{?\$[0-9A-Z_!@#$*?-]+\}?'
+
+# Region 9: constant.string (root).
+rule.9.parent=-1
+rule.9.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='"'
+rule.9.end='"'
+# Mask escaped text before matching delimiters.
+rule.9.skip='\\.'
+
+# Pattern 10: constant.specialChar (inside region 9).
+rule.10.parent=9
+rule.10.group='constant.specialChar'
+rule.10.match='\\.'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start=''''
+rule.11.end=''''
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Region 12: comment (root).
+rule.12.parent=-1
+rule.12.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.12.start='#'
+rule.12.end='$'
+
+# Pattern 13: todo (inside region 12).
+rule.13.parent=12
+rule.13.group='todo'
+rule.13.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=14

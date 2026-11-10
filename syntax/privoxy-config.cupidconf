@@ -1,0 +1,33 @@
+# Syntax: privoxy-config
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='privoxy-config'
+
+# Detection: filename first, then header and content signature.
+detect.filename='privoxy/config$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='(accept-intercepted-requests|actionsfile|admin-address|allow-cgi-request-crunching|buffer-limit|compression-level|confdir|connection-sharing|debug|default-server-timeout|deny-access|enable-compression|enable-edit-actions|enable-remote-http-toggle|enable-remote-toggle|enforce-blocks|filterfile|forward|forwarded-connect-retries|forward-socks4|forward-socks4a|forward-socks5|handle-as-empty-doc-returns-ok|hostname|keep-alive-timeout|listen-address|logdir|logfile|max-client-connections|permit-access|proxy-info-url|single-threaded|socket-timeout|split-large-forms|templdir|toggle|tolerate-pipelining|trustfile|trust-info-url|user-manual)[[:space:]]'
+
+# Pattern 1: comment (root).
+rule.1.parent=-1
+rule.1.group='comment'
+rule.1.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 2: indent-char.whitespace (root).
+rule.2.parent=-1
+rule.2.group='indent-char.whitespace'
+rule.2.match='[[:space:]]+$'
+
+# Pattern 3: indent-char (root).
+rule.3.parent=-1
+rule.3.group='indent-char'
+rule.3.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=4

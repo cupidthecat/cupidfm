@@ -1,0 +1,148 @@
+# Syntax: hare
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='hare'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ha$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z_][0-9A-Z_]+\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(bool|char|str|rune|void)\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b(f32|f64|uint|int|u8|u16|u32|u64|i8|i16|i32|i64|uintptr)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(case|else|for|if|switch)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(continue|break|return)\b'
+
+# Pattern 5: special (root).
+rule.5.parent=-1
+rule.5.group='special'
+rule.5.match='\b(as|const|def|defer|enum|export|fn|is|let|match|static|struct|type|union|yield|_)\b'
+
+# Pattern 6: preproc (root).
+rule.6.parent=-1
+rule.6.group='preproc'
+rule.6.match='\b(abort|alloc|append|assert|delete|free|insert|len|nullable|offset|size)\b'
+
+# Pattern 7: preproc (root).
+rule.7.parent=-1
+rule.7.group='preproc'
+rule.7.match='^use .+;'
+
+# Pattern 8: preproc (root).
+rule.8.parent=-1
+rule.8.group='preproc'
+rule.8.match='\@([a-zA-Z_][0-9a-zA-Z_]+)\b'
+
+# Pattern 9: constant (root).
+rule.9.parent=-1
+rule.9.group='constant'
+rule.9.match='\b(false|null|true)\b'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b(0x[0-9A-Fa-f]+(i(8|16|32|64)?|u(8|16|32|64)?|z)?)\b'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='\b(0o[0-7]+(i(8|16|32|64)?|u(8|16|32|64)?|z)?)\b'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='\b(0b[01]+(i(8|16|32|64)?|u(8|16|32|64)?|z)?)\b'
+
+# Pattern 13: constant.specialChar (root).
+rule.13.parent=-1
+rule.13.group='constant.specialChar'
+rule.13.match='\".*\"'
+
+# Pattern 14: constant.specialChar (root).
+rule.14.parent=-1
+rule.14.group='constant.specialChar'
+rule.14.match='`.*`'
+
+# Pattern 15: constant.specialChar (root).
+rule.15.parent=-1
+rule.15.group='constant.specialChar'
+rule.15.match='''([^''\\]|\\(0|a|b|f|n|r|t|v|\\|''|\"|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}))'''
+
+# Pattern 16: symbol.operator (root).
+rule.16.parent=-1
+rule.16.group='symbol.operator'
+rule.16.match='([.:;,+*|=!\%]|<|>|/|-|&)'
+
+# Pattern 17: symbol.brackets (root).
+rule.17.parent=-1
+rule.17.group='symbol.brackets'
+rule.17.match='[(){}]|\[|\]'
+
+# Region 18: constant.string (root).
+rule.18.parent=-1
+rule.18.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='"'
+rule.18.end='"'
+# Mask escaped text before matching delimiters.
+rule.18.skip='\\.'
+
+# Pattern 19: constant.specialChar (inside region 18).
+rule.19.parent=18
+rule.19.group='constant.specialChar'
+rule.19.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 20: constant.string (root).
+rule.20.parent=-1
+rule.20.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.20.start=''''
+rule.20.end=''''
+# Mask escaped text before matching delimiters.
+rule.20.skip='\\.'
+
+# Pattern 21: error (inside region 20).
+rule.21.parent=20
+rule.21.group='error'
+rule.21.match='..+'
+
+# Pattern 22: constant.specialChar (inside region 20).
+rule.22.parent=20
+rule.22.group='constant.specialChar'
+rule.22.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 23: comment (root).
+rule.23.parent=-1
+rule.23.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.23.start='//'
+rule.23.end='$'
+
+# Pattern 24: todo (inside region 23).
+rule.24.parent=23
+rule.24.group='todo'
+rule.24.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=25

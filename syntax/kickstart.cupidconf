@@ -1,0 +1,63 @@
+# Syntax: kickstart
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='kickstart'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ks$|\.kickstart$'
+
+# Pattern 0: special (root).
+rule.0.parent=-1
+rule.0.group='special'
+rule.0.match='%[a-z]+'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='^[[:space:]]*(install|cdrom|text|graphical|volgroup|logvol|reboot|timezone|lang|keyboard|authconfig|firstboot|rootpw|user|firewall|selinux|repo|part|partition|clearpart|bootloader)'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='--(name|mirrorlist|baseurl|utc)(=|\>)'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\$(releasever|basearch)\>'
+
+# Pattern 4: brightblack (root).
+rule.4.parent=-1
+rule.4.group='brightblack'
+rule.4.match='^@[A-Za-z][A-Za-z-]*'
+
+# Pattern 5: brightred (root).
+rule.5.parent=-1
+rule.5.group='brightred'
+rule.5.match='^-@[a-zA-Z0-9*-]+'
+
+# Pattern 6: red (root).
+rule.6.parent=-1
+rule.6.group='red'
+rule.6.match='^-[a-zA-Z0-9*-]+'
+
+# Pattern 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+rule.7.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 8: indent-char.whitespace (root).
+rule.8.parent=-1
+rule.8.group='indent-char.whitespace'
+rule.8.match='[[:space:]]+$'
+
+# Pattern 9: indent-char (root).
+rule.9.parent=-1
+rule.9.group='indent-char'
+rule.9.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=10

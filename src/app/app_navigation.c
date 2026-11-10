@@ -4,7 +4,9 @@
 #endif
 
 #include "app_navigation.h"
+#include "app_session.h"
 
+#include <dirent.h>
 #include <ncurses.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,134 +33,87 @@ void navigate_up(CursorAndSlice *cas, Vector *files, const char **selected_entry
     if (!cas || !files || !selected_entry)
         return;
     cas->num_files = Vector_len(*files);
-    if (cas->num_files > 0) {
-        if (cas->cursor == 0) {
-            if (lazy_load && current_directory) {
-                load_more_files_if_needed(files, current_directory, cas, &lazy_load->files_loaded,
-                                          lazy_load->total_files);
-                cas->num_files = Vector_len(*files);
-            }
-
-            cas->cursor = cas->num_files - 1;
-            int visible_lines = cas->num_lines - 2;
-            int max_start = cas->num_files - visible_lines;
-            if (max_start < 0) {
-                cas->start = 0;
-            } else {
-                cas->start = max_start;
-            }
-        } else {
-            cas->cursor -= 1;
-            if (cas->cursor < cas->start) {
-                cas->start = cas->cursor;
-            }
+    if (cas->cursor > 0)
+        cas->cursor--;
+    else if (cas->num_files) {
+        if (lazy_load && current_directory) {
+            size_t remaining = lazy_load->total_files > lazy_load->files_loaded
+                                   ? lazy_load->total_files - lazy_load->files_loaded
+                                   : 0;
+            if (remaining)
+                append_files_to_vec_lazy(files, current_directory, remaining,
+                                         &lazy_load->files_loaded);
+            cas->num_files = Vector_len(*files);
         }
-        fix_cursor(cas);
-        if (cas->num_files > 0) {
-            *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
-        }
+        cas->cursor = cas->num_files - 1;
     }
+    fix_cursor(cas);
+    *selected_entry = cas->num_files ? FileAttr_get_name(files->el[cas->cursor]) : "";
 }
 
 void navigate_down(CursorAndSlice *cas, Vector *files, const char **selected_entry,
                    const char *current_directory, LazyLoadState *lazy_load) {
     if (!cas || !files || !selected_entry)
         return;
+    if (lazy_load && current_directory)
+        load_more_files_if_needed(files, current_directory, cas, &lazy_load->files_loaded,
+                                  lazy_load->total_files);
     cas->num_files = Vector_len(*files);
-    if (cas->num_files > 0) {
-        if (cas->cursor >= cas->num_files - 1) {
-            cas->cursor = 0;
-            cas->start = 0;
-        } else {
-            cas->cursor += 1;
-            int visible_lines = cas->num_lines - 2;
-
-            if (cas->cursor >= cas->start + visible_lines) {
-                cas->start = cas->cursor - visible_lines + 1;
-            }
-
-            int max_start = cas->num_files - visible_lines;
-            if (max_start < 0)
-                max_start = 0;
-            if (cas->start > max_start) {
-                cas->start = max_start;
-            }
-        }
-        fix_cursor(cas);
-
-        if (lazy_load && current_directory) {
-            load_more_files_if_needed(files, current_directory, cas, &lazy_load->files_loaded,
-                                      lazy_load->total_files);
-            cas->num_files = Vector_len(*files);
-        }
-
-        if (cas->num_files > 0) {
-            *selected_entry = FileAttr_get_name(files->el[cas->cursor]);
-        }
-    }
+    if (cas->cursor + 1 < cas->num_files)
+        cas->cursor++;
+    else if (cas->num_files)
+        cas->cursor = 0;
+    fix_cursor(cas);
+    *selected_entry = cas->num_files ? FileAttr_get_name(files->el[cas->cursor]) : "";
 }
 
 void navigate_left(char **current_directory, Vector *files, CursorAndSlice *dir_window_cas,
                    AppState *state, VecStack *dir_stack) {
-    if (!current_directory || !*current_directory || !files || !dir_window_cas || !state)
+    if (!current_directory || !*current_directory || !files || !dir_window_cas || !state ||
+        !strcmp(*current_directory, "/"))
         return;
-
+    char *parent = strdup(*current_directory);
+    if (!parent)
+        return;
+    size_t length = strlen(parent);
+    while (length > 1 && parent[length - 1] == '/')
+        parent[--length] = '\0';
+    char *slash = strrchr(parent, '/');
+    if (!slash) {
+        free(parent);
+        return;
+    }
+    char child[MAX_PATH_LENGTH];
+    snprintf(child, sizeof(child), "%s", slash + 1);
+    slash[slash == parent ? 1 : 0] = '\0';
+    DIR *directory = opendir(parent);
+    char *lazy_path = directory ? strdup(parent) : NULL;
+    if (directory)
+        closedir(directory);
+    if (!lazy_path) {
+        free(parent);
+        return;
+    }
     search_clear(state);
-
-    char *popped_dir = dir_stack ? VecStack_pop(dir_stack) : NULL;
-
-    if (strcmp(*current_directory, "/") != 0) {
-        char *last_slash = strrchr(*current_directory, '/');
-        if (last_slash != NULL) {
-            *last_slash = '\0';
-            if (state->lazy_load.directory_path) {
-                free(state->lazy_load.directory_path);
-            }
-            state->lazy_load.directory_path = strdup(*current_directory);
-            git_update_directory(*current_directory);
-            reload_directory_lazy(files, *current_directory, &state->lazy_load.files_loaded,
-                                  &state->lazy_load.total_files);
-        }
-    }
-
-    if ((*current_directory)[0] == '\0') {
-        strcpy(*current_directory, "/");
-        if (state->lazy_load.directory_path) {
-            free(state->lazy_load.directory_path);
-        }
-        state->lazy_load.directory_path = strdup(*current_directory);
-        git_update_directory(*current_directory);
-        reload_directory_lazy(files, *current_directory, &state->lazy_load.files_loaded,
-                              &state->lazy_load.total_files);
-    }
-
-    if (popped_dir) {
-        SIZE idx = find_index_by_name_lazy(files, *current_directory, dir_window_cas,
-                                           &state->lazy_load, popped_dir);
-        if (idx != (SIZE)-1) {
-            dir_window_cas->cursor = idx;
-        } else {
-            dir_window_cas->cursor = 0;
-        }
-        free(popped_dir);
-    }
-
+    free(*current_directory);
+    *current_directory = parent;
+    free(state->lazy_load.directory_path);
+    state->lazy_load.directory_path = lazy_path;
+    if (dir_stack)
+        free(VecStack_pop(dir_stack));
+    git_update_directory(parent);
+    reload_directory_lazy(files, parent, &state->lazy_load.files_loaded,
+                          &state->lazy_load.total_files);
     dir_window_cas->cursor = 0;
     dir_window_cas->start = 0;
-    dir_window_cas->num_lines = LINES - 6;
     dir_window_cas->num_files = Vector_len(*files);
-
-    if (dir_window_cas->num_files > 0) {
-        state->selected_entry = FileAttr_get_name(files->el[0]);
-    } else {
-        state->selected_entry = "";
-    }
-
-    werase(notifwin);
-    show_notification(notifwin, "Navigated to parent directory: %s", *current_directory);
+    SIZE index = find_index_by_name_lazy(files, parent, dir_window_cas, &state->lazy_load, child);
+    dir_window_cas->cursor = index == (SIZE)-1 ? 0 : index;
+    fix_cursor(dir_window_cas);
+    app_selection_restore(state);
+    sync_selection_from_active(state, dir_window_cas);
+    show_notification(notifwin, "Parent: %s", parent);
     should_clear_notif = false;
-
-    wrefresh(notifwin);
 }
 
 void navigate_right(AppState *state, char **current_directory, Vector *files_view,
@@ -184,7 +139,19 @@ void navigate_right(AppState *state, char **current_directory, Vector *files_vie
     }
 
     char new_path[MAX_PATH_LENGTH];
+    if (strlen(*current_directory) + strlen(selected_entry) + 2 > sizeof(new_path)) {
+        show_notification(notifwin, "Directory path is too long");
+        should_clear_notif = false;
+        return;
+    }
     path_join(new_path, *current_directory, selected_entry);
+    DIR *directory = opendir(new_path);
+    if (!directory) {
+        show_notification(notifwin, "Cannot enter directory: %s", selected_entry);
+        should_clear_notif = false;
+        return;
+    }
+    closedir(directory);
 
     if (strcmp(new_path, *current_directory) == 0) {
         werase(notifwin);
@@ -248,6 +215,7 @@ void navigate_right(AppState *state, char **current_directory, Vector *files_vie
         state->selected_entry = FileAttr_get_name(state->files.el[0]);
     }
 
+    app_selection_restore(state);
     werase(notifwin);
     show_notification(notifwin, "Entered directory: %s", state->selected_entry);
     should_clear_notif = false;

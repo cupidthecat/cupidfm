@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "clipboard.h"
+#include "process.h"
 #include "tempfiles.h"
 #include "undo.h"
 #include "utils.h"
@@ -12,6 +13,8 @@
 int main(int argc, char **argv) {
     if (argc < 3)
         return 2;
+    if (strcmp(argv[1], "rename") == 0 && argc == 4)
+        return file_command_rename(argv[2], argv[3]) ? 0 : 1;
     if (strcmp(argv[1], "clipboard") == 0)
         return clipboard_set_from_file(argv[2]) ? 0 : 1;
     if (strcmp(argv[1], "paste") == 0 || strcmp(argv[1], "paste-undo") == 0) {

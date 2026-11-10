@@ -1,0 +1,43 @@
+# Syntax: man
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='man'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.[1-9]x?$'
+
+# Pattern 0: green (root).
+rule.0.parent=-1
+rule.0.group='green'
+rule.0.match='\.(S|T)H.*$'
+
+# Pattern 1: brightgreen (root).
+rule.1.parent=-1
+rule.1.group='brightgreen'
+rule.1.match='\.(S|T)H|\.TP'
+
+# Pattern 2: brightred (root).
+rule.2.parent=-1
+rule.2.group='brightred'
+rule.2.match='\.(BR?|I[PR]?).*$'
+
+# Pattern 3: brightblue (root).
+rule.3.parent=-1
+rule.3.group='brightblue'
+rule.3.match='\.(BR?|I[PR]?|PP)'
+
+# Pattern 4: brightwhite (root).
+rule.4.parent=-1
+rule.4.group='brightwhite'
+rule.4.match='\\f[BIPR]'
+
+# Pattern 5: yellow (root).
+rule.5.parent=-1
+rule.5.group='yellow'
+rule.5.match='\.(br|DS|RS|RE|PD)'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=6

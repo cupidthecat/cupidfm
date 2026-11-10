@@ -1,0 +1,143 @@
+# Syntax: crystal
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='crystal'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.cr$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(abstract|alias|as|asm|begin|break|case|class|def|do|else|elsif|end|ensure|enum|extend|for|fun|if|in|include|instance_sizeof|lib|loop|macro|module|next|of|out|pointerof|private|protected|raise|require|rescue|return|select|self|sizeof|spawn|struct|super|then|type|typeof|uninitialized|union|unless|until|verbatim|when|while|with|yield)\b'
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='\b(true|false|nil)\b'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='\b[0-9]+\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(nil\?|as(\?|\b)|is_a\?|responds_to\?)'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='(\$|@|@@)?\b[A-Z]+[0-9A-Z_a-z]*'
+
+# Pattern 5: constant (root).
+rule.5.parent=-1
+rule.5.group='constant'
+rule.5.match='([ 	]|^):[0-9A-Z_]+\b'
+
+# Pattern 6: constant (root).
+rule.6.parent=-1
+rule.6.group='constant'
+rule.6.match='\b(__FILE__|__LINE__)\b'
+
+# Pattern 7: constant (root).
+rule.7.parent=-1
+rule.7.group='constant'
+rule.7.match='/([^/]|(\\/))*/[iomx]*|%r\{([^}]|(\\}))*\}[iomx]*'
+
+# Pattern 8: constant.string (root).
+rule.8.parent=-1
+rule.8.group='constant.string'
+rule.8.match='`[^`]*`|%x\{[^}]*\}'
+
+# Region 9: constant.string (root).
+rule.9.parent=-1
+rule.9.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='`'
+rule.9.end='`'
+
+# Region 10: constant.string (root).
+rule.10.parent=-1
+rule.10.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.10.start='%x\{'
+rule.10.end='\}'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"'
+rule.11.end='"'
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Pattern 12: constant.specialChar (inside region 11).
+rule.12.parent=11
+rule.12.group='constant.specialChar'
+rule.12.match='\\.'
+
+# Region 13: symbol.brackets (inside region 11).
+rule.13.parent=11
+rule.13.group='symbol.brackets'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='#\{'
+rule.13.end='\}'
+
+# Pattern 14: default (inside region 13).
+rule.14.parent=13
+rule.14.group='default'
+rule.14.match='.*'
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start=''''
+rule.15.end=''''
+# Mask escaped text before matching delimiters.
+rule.15.skip='\\.'
+
+# Pattern 16: constant.specialChar (inside region 15).
+rule.16.parent=15
+rule.16.group='constant.specialChar'
+rule.16.match='\\.'
+
+# Region 17: comment (root).
+rule.17.parent=-1
+rule.17.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.17.start='#'
+rule.17.end='$'
+
+# Pattern 18: todo (inside region 17).
+rule.18.parent=17
+rule.18.group='todo'
+rule.18.match='(TODO|XXX|FIXME):?'
+
+# Region 19: comment.bright (root).
+rule.19.parent=-1
+rule.19.group='comment.bright'
+# Start/end delimiters carry state between physical lines.
+rule.19.start='##'
+rule.19.end='$'
+
+# Pattern 20: todo (inside region 19).
+rule.20.parent=19
+rule.20.group='todo'
+rule.20.match='(TODO|XXX|FIXME):?'
+
+# Region 21: constant (root).
+rule.21.parent=-1
+rule.21.group='constant'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='<<-?''?EOT''?'
+rule.21.end='^EOT'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=22

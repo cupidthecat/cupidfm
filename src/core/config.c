@@ -18,6 +18,12 @@ static void keycode_to_config_string(int keycode, char *buf, size_t buf_size);
 static void write_kv_line(FILE *fp, const char *key, int keycode, const char *comment);
 
 void load_default_keybindings(KeyBindings *kb) {
+    kb->vim_keymap = false;
+    kb->pane_parent = 1;
+    kb->pane_current = 4;
+    kb->pane_preview = 3;
+    kb->scrolloff = 5;
+
     // Navigation keys
     kb->key_up = KEY_UP;
     kb->key_down = KEY_DOWN;
@@ -194,6 +200,9 @@ bool write_default_config_file(const char *filepath, const KeyBindings *kb, char
     write_kv_line(fp, "edit_uppercase", kb->edit_uppercase, "Uppercase selection");
     fputc('\n', fp);
 
+    fprintf(fp, "keymap=%s\n", kb->vim_keymap ? "vim" : "cupidfm");
+    fprintf(fp, "pane_parent=%d\npane_current=%d\npane_preview=%d\nscrolloff=%d\n", kb->pane_parent,
+            kb->pane_current, kb->pane_preview, kb->scrolloff);
     fprintf(fp, "info_label_width=%d\n", kb->info_label_width);
 
     bool ok = (fclose(fp) == 0);
@@ -322,6 +331,43 @@ int load_config_file(KeyBindings *kb, const char *filepath, char *error_buffer,
                          "Invalid label_width: %s\n", label_val);
             }
         }
+    }
+
+    const char *keymap = cupidconf_get(conf, "keymap");
+    if (keymap) {
+        if (!strcasecmp(keymap, "vim") || !strcasecmp(keymap, "cupidfm"))
+            kb->vim_keymap = !strcasecmp(keymap, "vim");
+        else {
+            errors++;
+            if (error_buffer && buffer_size > strlen(error_buffer))
+                snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
+                         "Invalid keymap: %s\n", keymap);
+        }
+    }
+
+    struct {
+        const char *name;
+        int *value;
+        int minimum;
+    } layout[] = {{"pane_parent", &kb->pane_parent, 0},
+                  {"pane_current", &kb->pane_current, 1},
+                  {"pane_preview", &kb->pane_preview, 0},
+                  {"scrolloff", &kb->scrolloff, 0}};
+
+    for (size_t i = 0; i < sizeof(layout) / sizeof(*layout); i++) {
+        const char *value = cupidconf_get(conf, layout[i].name);
+        if (!value)
+            continue;
+        char *end = NULL;
+        errno = 0;
+        long parsed = strtol(value, &end, 10);
+        if (errno || end == value || *end || parsed < layout[i].minimum || parsed > 100) {
+            errors++;
+            if (error_buffer && buffer_size > strlen(error_buffer))
+                snprintf(error_buffer + strlen(error_buffer), buffer_size - strlen(error_buffer),
+                         "Invalid %s: expected %d..100\n", layout[i].name, layout[i].minimum);
+        } else
+            *layout[i].value = (int)parsed;
     }
 
     // 5) Free conf

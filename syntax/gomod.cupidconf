@@ -1,0 +1,65 @@
+# Syntax: gomod
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='gomod'
+
+# Detection: filename first, then header and content signature.
+detect.filename='go.mod'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='(^|[ \t])+\b([a-zA-Z0-9-]+\.?)+(/[a-zA-Z0-9-_\.]+)*\b'
+
+# Pattern 1: special (root).
+rule.1.parent=-1
+rule.1.group='special'
+rule.1.match='(^|[ \t])+\b(module|go)\b'
+
+# Pattern 2: preproc (root).
+rule.2.parent=-1
+rule.2.group='preproc'
+rule.2.match='(^|[ \t])+\b(toolchain|require|exclude|replace|retract)\b'
+
+# Pattern 3: symbol.operator (root).
+rule.3.parent=-1
+rule.3.group='symbol.operator'
+rule.3.match='=>'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='(\(|\))'
+
+# Pattern 5: type (root).
+rule.5.parent=-1
+rule.5.group='type'
+rule.5.match='(^|[ \t])+([0-9]+\.?)+'
+
+# Pattern 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+rule.6.match='(^|[ \t])+v([0-9]+\.?){3}.*'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='(^|[ \t])+v([0-9]+\.?){3}'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='//'
+rule.8.end='$'
+
+# Pattern 9: todo (inside region 8).
+rule.9.parent=8
+rule.9.group='todo'
+rule.9.match='(indirect):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=10

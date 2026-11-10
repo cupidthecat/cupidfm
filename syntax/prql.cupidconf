@@ -1,0 +1,211 @@
+# Syntax: prql
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='prql'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.prql$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(let|module|into|case|type|func)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(u?int(8|16|32|64)?|float(32|64)|bool|text|date|time|timestamp)\b'
+
+# Pattern 2: type.keyword (root).
+rule.2.parent=-1
+rule.2.group='type.keyword'
+rule.2.match='\b(enum)\b'
+
+# Pattern 3: constant.bool (root).
+rule.3.parent=-1
+rule.3.group='constant.bool'
+rule.3.match='\b(true|false|null|this|that)\b'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='\b(abs|floor|ceil|pi|exp|ln|log10|log|sqrt|degrees|radians|cos|acos|sin|asin|tan|atan|pow|round)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='\b(min|max|sum|average|stddev|all|any|concat_array|count)\b'
+
+# Pattern 6: identifier (root).
+rule.6.parent=-1
+rule.6.group='identifier'
+rule.6.match='\b(lag|lead|first|last|rank|rank_dense|row_number)\b'
+
+# Pattern 7: identifier (root).
+rule.7.parent=-1
+rule.7.group='identifier'
+rule.7.match='\b(tuple_every|tuple_map|tuple_zip|_eq|_is_null)\b'
+
+# Pattern 8: identifier (root).
+rule.8.parent=-1
+rule.8.group='identifier'
+rule.8.match='\b(as|in|from_text)\b'
+
+# Pattern 9: identifier (root).
+rule.9.parent=-1
+rule.9.group='identifier'
+rule.9.match='\b(lower|upper|ltrim|rtrim|trim|length|extract|replace|starts_with|contains|ends_with)\b'
+
+# Pattern 10: identifier (root).
+rule.10.parent=-1
+rule.10.group='identifier'
+rule.10.match='\b(to_text)\b'
+
+# Pattern 11: identifier (root).
+rule.11.parent=-1
+rule.11.group='identifier'
+rule.11.match='\b(read_parquet|read_csv)\b'
+
+# Pattern 12: identifier.class (root).
+rule.12.parent=-1
+rule.12.group='identifier.class'
+rule.12.match='\b(math|text|date|prql)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(aggregate|derive|filter|from|group|join|select|sort|take|window)\b'
+
+# Pattern 14: symbol.operator (root).
+rule.14.parent=-1
+rule.14.group='symbol.operator'
+rule.14.match='([~^.:;,+*|=!\%@?]|<|>|/|-|&)'
+
+# Pattern 15: symbol.brackets (root).
+rule.15.parent=-1
+rule.15.group='symbol.brackets'
+rule.15.match='[{}()\[\]]'
+
+# Pattern 16: constant.number (root).
+rule.16.parent=-1
+rule.16.group='constant.number'
+rule.16.match='\b[0-9](_?[0-9])*(\.([0-9](_?[0-9])*)?)?(e[0-9](_?[0-9])*)?\b'
+
+# Pattern 17: constant.number (root).
+rule.17.parent=-1
+rule.17.group='constant.number'
+rule.17.match='\b0b(_?[01])+\b'
+
+# Pattern 18: constant.number (root).
+rule.18.parent=-1
+rule.18.group='constant.number'
+rule.18.match='\b0o(_?[0-7])+\b'
+
+# Pattern 19: constant.number (root).
+rule.19.parent=-1
+rule.19.group='constant.number'
+rule.19.match='\b0x(_?[0-9a-fA-F])+\b'
+
+# Pattern 20: constant (root).
+rule.20.parent=-1
+rule.20.group='constant'
+rule.20.match='\b[0-9]+(years|months|weeks|days|hours|minutes|seconds|milliseconds|microseconds)\b'
+
+# Region 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.21.start='[frs]?"""'
+rule.21.end='"""'
+# Mask escaped text before matching delimiters.
+rule.21.skip='\\.'
+
+# Pattern 22: constant.specialChar (inside region 21).
+rule.22.parent=21
+rule.22.group='constant.specialChar'
+rule.22.match='\\[bfnrt''"\\]'
+
+# Pattern 23: constant.specialChar (inside region 21).
+rule.23.parent=21
+rule.23.group='constant.specialChar'
+rule.23.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u\{[0-9A-Fa-f]{1,6}\})'
+
+# Region 24: constant.string (root).
+rule.24.parent=-1
+rule.24.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.24.start='[frs]?'''''''
+rule.24.end=''''''''
+# Mask escaped text before matching delimiters.
+rule.24.skip='\\.'
+
+# Pattern 25: constant.specialChar (inside region 24).
+rule.25.parent=24
+rule.25.group='constant.specialChar'
+rule.25.match='\\[bfnrt''"\\]'
+
+# Pattern 26: constant.specialChar (inside region 24).
+rule.26.parent=24
+rule.26.group='constant.specialChar'
+rule.26.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u\{[0-9A-Fa-f]{1,6}\})'
+
+# Region 27: constant.string (root).
+rule.27.parent=-1
+rule.27.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='[frs]?"'
+rule.27.end='"'
+# Mask escaped text before matching delimiters.
+rule.27.skip='\\.'
+
+# Pattern 28: constant.specialChar (inside region 27).
+rule.28.parent=27
+rule.28.group='constant.specialChar'
+rule.28.match='\\[bfnrt''"\\]'
+
+# Pattern 29: constant.specialChar (inside region 27).
+rule.29.parent=27
+rule.29.group='constant.specialChar'
+rule.29.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u\{[0-9A-Fa-f]{1,6}\})'
+
+# Region 30: constant.string (root).
+rule.30.parent=-1
+rule.30.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.30.start='[frs]?'''
+rule.30.end=''''
+# Mask escaped text before matching delimiters.
+rule.30.skip='\\.'
+
+# Pattern 31: constant.specialChar (inside region 30).
+rule.31.parent=30
+rule.31.group='constant.specialChar'
+rule.31.match='\\[bfnrt''"\\]'
+
+# Pattern 32: constant.specialChar (inside region 30).
+rule.32.parent=30
+rule.32.group='constant.specialChar'
+rule.32.match='\\([0-7]{3}|x[A-Fa-f0-9]{2}|u\{[0-9A-Fa-f]{1,6}\})'
+
+# Region 33: comment (root).
+rule.33.parent=-1
+rule.33.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.33.start='#'
+rule.33.end='$'
+
+# Pattern 34: todo (inside region 33).
+rule.34.parent=33
+rule.34.group='todo'
+rule.34.match='(TODO|FIXME|NOTE):?'
+
+# Pattern 35: preproc (root).
+rule.35.parent=-1
+rule.35.group='preproc'
+rule.35.match='@\{([a-z]+(=[a-z0-9]+,?)?)*\}'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=36

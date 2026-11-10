@@ -1,0 +1,98 @@
+# Syntax: nftables
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='nftables'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(nftables\.(conf|rules)$|nftables(\.rules)?\.d/)'
+detect.header='^(#!.*/(env +)?nft( |$)|flush +ruleset)'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(chain|counter|map|rule|ruleset|set|table)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(ether|inet|i(cm)?p(x|(v?(4|6))?)|tcp|udp|8021q)\b'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='\b(element(s)?|hook|policy|priority|type|state)\b'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='\b(ct|iif|iifname|meta|oif|oifname|th|dport|sport|saddr|daddr|l4proto)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(accept|drop|goto|jump|log|masquerade|reject|limit|queue)\b'
+
+# Pattern 5: preproc (root).
+rule.5.parent=-1
+rule.5.group='preproc'
+rule.5.match='\b(add|define|flush|include|delete)\b'
+
+# Pattern 6: symbol.operator (root).
+rule.6.parent=-1
+rule.6.group='symbol.operator'
+rule.6.match='[<>.&|^!=:;,@]|\b(and|ge|gt|le|lt|or|xor)\b'
+
+# Region 7: constant.string (root).
+rule.7.parent=-1
+rule.7.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='"'
+rule.7.end='"'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b([0-9]+)\b'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='\b(0x[0-9a-fA-F]+)\b'
+
+# Pattern 10: identifier.var (root).
+rule.10.parent=-1
+rule.10.group='identifier.var'
+rule.10.match='[$@][a-zA-Z_.][a-zA-Z0-9_/.-]*'
+
+# Pattern 11: comment (root).
+rule.11.parent=-1
+rule.11.group='comment'
+rule.11.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 12: indent-char.whitespace (root).
+rule.12.parent=-1
+rule.12.group='indent-char.whitespace'
+rule.12.match='[[:space:]]+$'
+
+# Pattern 13: indent-char (root).
+rule.13.parent=-1
+rule.13.group='indent-char'
+rule.13.match='    + +| +  +'
+
+# Region 14: comment (root).
+rule.14.parent=-1
+rule.14.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='#'
+rule.14.end='$'
+
+# Pattern 15: todo (inside region 14).
+rule.15.parent=14
+rule.15.group='todo'
+rule.15.match='(TODO|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=16

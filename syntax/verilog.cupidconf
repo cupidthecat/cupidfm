@@ -1,0 +1,176 @@
+# Syntax: verilog
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='verilog'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(v|vh|sv|svh)$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='\b(module|package|program|endmodule|endpackage|endprogram)\b'
+
+# Pattern 1: type.keyword (root).
+rule.1.parent=-1
+rule.1.group='type.keyword'
+rule.1.match='\b(task|interface|class|endtask|endinterface|endclass)\b'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='\$[0-9A-Za-z_]+'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(always|and|assign|automatic|begin|buf|bufif0|bufif1|case|casex|casez|cell|cmos|config)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(deassign|default|defparam|design|disable|edge|else|end|endcase|endconfig|endfunction|endgenerate)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(endprimitive|endspecify|endtable|event|for|force|forever|fork|function|generate)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(genvar|highz0|highz1|if|iff|ifnone|incdir|include|initial|input|instance|join)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(large|liblist|library|localparam|macromodule|medium|nand|negedge|nmos|nor|noshowcancelled)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(not|notif0|notif1|null|or|output|parameter|pmos|posedge|primitive|pull0|pull1|pulldown|pullup)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(pulsestyle_onevent|pulsestyle_ondetect|rcmos|realtime|reg|release|repeat|rnmos|rpmos|rtran)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(rtranif0|rtranif1|scalared|showcancelled|small|specify|specparam|strong0|strong1|supply0)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(supply1|table|time|tran|tranif0|tranif1|tri0|tri1|triand|trior|trireg|use|uwire)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(vectored|wait|wand|weak0|weak1|while|wor|xnor|xor)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(alias|always_comb|always_ff|always_latch|assert|assume|before|bind|bins|binsof|break)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(chandle|clocking|const|constraint|context|continue|cover|covergroup|coverpoint|cross|dist|do)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='\b(endclocking|endgroup|endproperty|endsequence|enum)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='\b(expect|export|extends|extern|final|first_match|foreach|forkjoin|ignore_bins|illegal_bins|import)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='\b(inside|intersect|join_any|join_none|local|longint|matches|modport|new)\b'
+
+# Pattern 18: statement (root).
+rule.18.parent=-1
+rule.18.group='statement'
+rule.18.match='\b(packed|priority|property|protected|pure|rand|randc|randcase|randsequence|ref|return)\b'
+
+# Pattern 19: statement (root).
+rule.19.parent=-1
+rule.19.group='statement'
+rule.19.match='\b(sequence|solve|static|struct|super|tagged|this|throughout|timeprecision)\b'
+
+# Pattern 20: statement (root).
+rule.20.parent=-1
+rule.20.group='statement'
+rule.20.match='\b(timeunit|type|typedef|union|unique|virtual|wait_order|wildcard|with|within)\b'
+
+# Pattern 21: type.keyword (root).
+rule.21.parent=-1
+rule.21.group='type.keyword'
+rule.21.match='\b(int|integer|logic|wire|tri|unsigned|signed|inout|var|shortint|shortreal|real|void|string|bit|byte)\b'
+
+# Pattern 22: constant.number (root).
+rule.22.parent=-1
+rule.22.group='constant.number'
+rule.22.match='\b[0-9]+\b'
+
+# Pattern 23: constant.number (root).
+rule.23.parent=-1
+rule.23.group='constant.number'
+rule.23.match='\b''[su]?[dboh][0-9xzXZa-fA-F]+\b'
+
+# Pattern 24: special (root).
+rule.24.parent=-1
+rule.24.group='special'
+rule.24.match='\.((\*)|([A-Za-z][A-Za-z0-9_]*))'
+
+# Region 25: constant.string (root).
+rule.25.parent=-1
+rule.25.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.25.start='"'
+rule.25.end='"'
+# Mask escaped text before matching delimiters.
+rule.25.skip='\\.'
+
+# Pattern 26: constant.specialChar (inside region 25).
+rule.26.parent=25
+rule.26.group='constant.specialChar'
+rule.26.match='\\.'
+
+# Region 27: comment (root).
+rule.27.parent=-1
+rule.27.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.27.start='//'
+rule.27.end='$'
+
+# Pattern 28: todo (inside region 27).
+rule.28.parent=27
+rule.28.group='todo'
+rule.28.match='(TODO|XXX|FIXME):?'
+
+# Region 29: comment (root).
+rule.29.parent=-1
+rule.29.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.29.start='/\*'
+rule.29.end='\*/'
+
+# Pattern 30: todo (inside region 29).
+rule.30.parent=29
+rule.30.group='todo'
+rule.30.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=31

@@ -1,0 +1,49 @@
+# Syntax: patch
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='patch'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(patch|diff)$'
+detect.header='^diff'
+
+# Pattern 0: brightgreen (root).
+rule.0.parent=-1
+rule.0.group='brightgreen'
+rule.0.match='^\+.*'
+
+# Pattern 1: green (root).
+rule.1.parent=-1
+rule.1.group='green'
+rule.1.match='^\+\+\+.*'
+
+# Pattern 2: brightblue (root).
+rule.2.parent=-1
+rule.2.group='brightblue'
+rule.2.match='^ .*'
+
+# Pattern 3: brightred (root).
+rule.3.parent=-1
+rule.3.group='brightred'
+rule.3.match='^-.*'
+
+# Pattern 4: red (root).
+rule.4.parent=-1
+rule.4.group='red'
+rule.4.match='^---.*'
+
+# Pattern 5: brightyellow (root).
+rule.5.parent=-1
+rule.5.group='brightyellow'
+rule.5.match='^@@.*'
+
+# Pattern 6: magenta (root).
+rule.6.parent=-1
+rule.6.group='magenta'
+rule.6.match='^diff.*'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=7

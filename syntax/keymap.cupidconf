@@ -1,0 +1,68 @@
+# Syntax: keymap
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='keymap'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(k|key)?map$|Xmodmap$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(add|clear|compose|keycode|keymaps|keysym|remove|string)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(control|alt|shift)\b'
+
+# Pattern 2: constant.number (root).
+rule.2.parent=-1
+rule.2.group='constant.number'
+rule.2.match='\b[0-9]+\b'
+
+# Pattern 3: special (root).
+rule.3.parent=-1
+rule.3.group='special'
+rule.3.match='='
+
+# Region 4: constant.string (root).
+rule.4.parent=-1
+rule.4.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='"'
+rule.4.end='"'
+# Mask escaped text before matching delimiters.
+rule.4.skip='\\.'
+
+# Pattern 5: constant.specialChar (inside region 4).
+rule.5.parent=4
+rule.5.group='constant.specialChar'
+rule.5.match='\\.'
+
+# Region 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.6.start=''''
+rule.6.end=''''
+# Mask escaped text before matching delimiters.
+rule.6.skip='\\.'
+
+# Pattern 7: constant.specialChar (inside region 6).
+rule.7.parent=6
+rule.7.group='constant.specialChar'
+rule.7.match='\\.'
+
+# Region 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.8.start='^!'
+rule.8.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

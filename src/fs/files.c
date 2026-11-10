@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 // File: files.c
 // -----------------------
 #ifndef _XOPEN_SOURCE
@@ -20,12 +21,13 @@
 #include <stddef.h>       // for NULL
 #include <stdio.h>        // for snprintf
 #include <stdlib.h>       // for malloc, free
-#include <string.h>       // for strdup
-#include <string.h>       // for strcmp
-#include <sys/ioctl.h>    // For ioctl, TIOCGWINSZ, struct winsize
-#include <sys/stat.h>     // for struct stat, lstat, S_ISDIR
-#include <sys/types.h>    // for ino_t
-#include <time.h>         // for strftime
+#include <string.h>
+#include <string.h>    // for strcmp
+#include <strings.h>   // for strdup
+#include <sys/ioctl.h> // For ioctl, TIOCGWINSZ, struct winsize
+#include <sys/stat.h>  // for struct stat, lstat, S_ISDIR
+#include <sys/types.h> // for ino_t
+#include <time.h>      // for strftime
 #include <time.h>
 #include <unistd.h> // for lstat
 
@@ -57,6 +59,7 @@
 #endif
 
 // Local includes
+#include "browser_ui.h"
 #include "config.h"
 #include "console.h"
 #include "files.h" // for FileAttributes, FileAttr, MAX_PATH_LENGTH
@@ -351,6 +354,10 @@ struct FileAttributes {
     char *name;  //
     ino_t inode; // Change from int inode;
     bool is_dir;
+    bool selected;
+    bool visual_base;
+    struct stat metadata;
+    struct timespec btime;
     GitStatus git_status; // Git status for this file
 };
 
@@ -1623,6 +1630,139 @@ void init_text_buffer(TextBuffer *buffer) {
  *
  * @param buffer the TextBuffer to free
  */
+static FileListingOptions listing = {.show_hidden = true, .dir_first = true};
+
+FileListingOptions file_listing_options(void) {
+    return listing;
+}
+
+void file_listing_configure(FileListingOptions options) {
+    listing = options;
+}
+
+bool FileAttr_selected(FileAttr fa) {
+    return fa && fa->selected;
+}
+
+void FileAttr_select(FileAttr fa, bool selected) {
+    if (fa)
+        fa->selected = selected;
+}
+
+void FileAttr_visual_begin(FileAttr fa) {
+    fa->visual_base = fa->selected;
+}
+
+void FileAttr_visual_apply(FileAttr fa, bool in_range, bool unset) {
+    fa->selected = in_range ? !unset : fa->visual_base;
+}
+
+static bool listing_includes(const char *name) {
+    return strcmp(name, ".") && strcmp(name, "..") && (listing.show_hidden || name[0] != '.');
+}
+
+static int listing_text_compare(const char *a, const char *b) {
+    return listing.sensitive ? strcmp(a, b) : strcasecmp(a, b);
+}
+
+static int natural_compare(const char *a, const char *b) {
+    while (*a && *b) {
+        if (isdigit((unsigned char)*a) && isdigit((unsigned char)*b)) {
+            const char *ae, *be;
+            while (*a == '0')
+                a++;
+            while (*b == '0')
+                b++;
+            ae = a;
+            be = b;
+            while (isdigit((unsigned char)*ae))
+                ae++;
+            while (isdigit((unsigned char)*be))
+                be++;
+            if (ae - a != be - b)
+                return ae - a < be - b ? -1 : 1;
+            int result = memcmp(a, b, (size_t)(ae - a));
+            if (result)
+                return result;
+            a = ae;
+            b = be;
+        } else {
+            unsigned char ac = (unsigned char)*a++, bc = (unsigned char)*b++;
+            if (!listing.sensitive) {
+                ac = (unsigned char)tolower(ac);
+                bc = (unsigned char)tolower(bc);
+            }
+            if (ac != bc)
+                return ac < bc ? -1 : 1;
+        }
+    }
+    return (*a != 0) - (*b != 0);
+}
+
+static unsigned listing_hash(const char *name) {
+    unsigned value = 2166136261u ^ listing.random_seed;
+    for (; *name; name++)
+        value = (value ^ (unsigned char)*name) * 16777619u;
+    return value;
+}
+
+static int listing_compare(const void *left, const void *right) {
+    FileAttr a = *(FileAttr const *)left, b = *(FileAttr const *)right;
+    if (listing.dir_first && a->is_dir != b->is_dir)
+        return a->is_dir ? -1 : 1;
+    int result = 0;
+    if (listing.sort == FILE_SORT_NATURAL) {
+        result = natural_compare(a->name, b->name);
+    } else if (listing.sort == FILE_SORT_EXTENSION) {
+        const char *ae = a->is_dir ? NULL : strrchr(a->name + (a->name[0] == '.'), '.');
+        const char *be = b->is_dir ? NULL : strrchr(b->name + (b->name[0] == '.'), '.');
+        result = listing_text_compare(ae ? ae + 1 : "", be ? be + 1 : "");
+    } else if (listing.sort == FILE_SORT_SIZE) {
+        result = (a->metadata.st_size > b->metadata.st_size) -
+                 (a->metadata.st_size < b->metadata.st_size);
+    } else if (listing.sort == FILE_SORT_MTIME || listing.sort == FILE_SORT_BTIME) {
+        struct timespec at = listing.sort == FILE_SORT_BTIME ? a->btime : a->metadata.st_mtim;
+        struct timespec bt = listing.sort == FILE_SORT_BTIME ? b->btime : b->metadata.st_mtim;
+        result = (at.tv_sec > bt.tv_sec) - (at.tv_sec < bt.tv_sec);
+        if (!result)
+            result = (at.tv_nsec > bt.tv_nsec) - (at.tv_nsec < bt.tv_nsec);
+    } else if (listing.sort == FILE_SORT_RANDOM) {
+        unsigned ah = listing_hash(a->name), bh = listing_hash(b->name);
+        result = (ah > bh) - (ah < bh);
+    }
+    if (!result && listing.sort == FILE_SORT_ALPHABETICAL)
+        result = listing_text_compare(a->name, b->name);
+    if (!result)
+        result = strcmp(a->name, b->name);
+    return listing.reverse ? (result > 0 ? -1 : result < 0) : result;
+}
+
+void file_listing_sort(Vector *files, const char *directory) {
+    if (listing.sort == FILE_SORT_NONE || !files)
+        return;
+    if (listing.sort == FILE_SORT_SIZE || listing.sort == FILE_SORT_MTIME ||
+        listing.sort == FILE_SORT_BTIME) {
+        for (size_t i = 0; i < Vector_len(*files); i++) {
+            FileAttr fa = files->el[i];
+            char path[MAX_PATH_LENGTH];
+            path_join(path, directory, fa->name);
+            memset(&fa->metadata, 0, sizeof(fa->metadata));
+            (void)lstat(path, &fa->metadata);
+            fa->btime = (struct timespec){0};
+#if defined(__linux__) && defined(STATX_BTIME)
+            if (listing.sort == FILE_SORT_BTIME) {
+                struct statx info;
+                if (statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BTIME, &info) == 0 &&
+                    (info.stx_mask & STATX_BTIME))
+                    fa->btime = (struct timespec){info.stx_btime.tv_sec, info.stx_btime.tv_nsec};
+            }
+#endif
+        }
+    }
+    if (Vector_len(*files) > 1)
+        qsort(files->el, Vector_len(*files), sizeof(*files->el), listing_compare);
+}
+
 const char *FileAttr_get_name(FileAttr fa) {
     if (fa != NULL) {
         return fa->name;
@@ -1693,6 +1833,10 @@ FileAttr mk_attr(const char *name, bool is_dir, ino_t inode) {
 
         fa->inode = inode;
         fa->is_dir = is_dir;
+        fa->selected = false;
+        fa->visual_base = false;
+        memset(&fa->metadata, 0, sizeof(fa->metadata));
+        fa->btime = (struct timespec){0};
         fa->git_status = GIT_STATUS_ERROR; // Default to no status
         return fa;
     } else {
@@ -1721,7 +1865,7 @@ size_t count_directory_files(const char *name) {
     if (dir != NULL) {
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            if (listing_includes(entry->d_name)) {
                 count++;
             }
         }
@@ -1748,7 +1892,7 @@ void append_files_to_vec_lazy(Vector *v, const char *name, size_t max_files, siz
     if (dir != NULL) {
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL && loaded_this_batch < max_files) {
-            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            if (listing_includes(entry->d_name)) {
                 // Skip files we've already loaded
                 if (skipped < *files_loaded) {
                     skipped++;
@@ -1806,7 +1950,7 @@ void append_files_to_vec(Vector *v, const char *name) {
     if (dir != NULL) {
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            if (listing_includes(entry->d_name)) {
                 // Optimize: Use d_type to avoid expensive stat calls when possible
                 bool is_dir = false;
 #ifdef DT_DIR
@@ -1843,6 +1987,7 @@ void append_files_to_vec(Vector *v, const char *name) {
         }
         closedir(dir);
     }
+    file_listing_sort(v, name);
 }
 
 static long dir_size_get_result(const char *dir_path, bool allow_enqueue) {
@@ -2194,7 +2339,7 @@ void display_file_info(WINDOW *window, const char *file_path, int max_x) {
     }
     char mime_buffer[512];
     const char *mime_type =
-        mime_file_cached(magic_cookie, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+        mime_type_cached(magic_cookie, file_path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                          mime_buffer, sizeof(mime_buffer));
     const char *emoji = get_file_emoji(mime_type, file_path);
     if (mime_type == NULL) {
@@ -3719,7 +3864,7 @@ bool is_supported_file_type(const char *filename) {
     // Get the MIME type of the file
     char mime_buffer[512];
     const char *mime_type =
-        mime_file_cached(magic_cookie, filename, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+        mime_type_cached(magic_cookie, filename, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                          mime_buffer, sizeof(mime_buffer));
     if (mime_type == NULL) {
         fprintf(stderr, "Could not determine file type: %s\n", magic_error(magic_cookie));
@@ -3732,13 +3877,7 @@ bool is_supported_file_type(const char *filename) {
     if (ext && strcmp(ext, ".js") == 0) {
         supported = true;
     } else {
-        // Check if MIME type is in supported types
-        for (size_t i = 0; i < num_supported_mime_types; i++) {
-            if (strncmp(mime_type, supported_mime_types[i], strlen(supported_mime_types[i])) == 0) {
-                supported = true;
-                break;
-            }
-        }
+        supported = is_supported_mime_type(mime_type);
     }
 
     magic_close(magic_cookie);
@@ -3756,29 +3895,37 @@ bool is_supported_file_type(const char *filename) {
  */
 void display_archive_preview(WINDOW *window, const char *file_path, int start_line, int max_y,
                              int max_x) {
+    display_archive_preview_at(window, file_path, start_line, max_y, max_x, 8);
+}
+
+void display_archive_preview_at(WINDOW *window, const char *file_path, int start_line, int max_y,
+                                int max_x, int top) {
+    if (!window)
+        return;
+    max_y = MIN(max_y, getmaxy(window));
+    max_x = MIN(max_x, getmaxx(window));
+    if (max_x <= 4 || top < 0 || top >= max_y)
+        return;
     ArcReader *reader = arc_open_path(file_path);
     if (!reader) {
-        // Show more detailed error message
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), "Unable to open archive: %s (errno: %s)", file_path,
                  strerror(errno));
-        mvwprintw(window, 7, 2, "%.*s", max_x - 4, error_msg);
+        wmove(window, top == 8 ? 7 : top, 2);
+        browser_draw_name(window, error_msg, max_x - 4);
         return;
     }
 
     bool is_single_compressed = arc_format(reader) == ARC_FORMAT_COMPRESSED;
 
-    // Display archive header (start after MIME type which is on line 5)
-    // For single compressed files, show a different header
-    if (is_single_compressed) {
-        mvwprintw(window, 6, 2, "📦 Compressed File Contents:");
-    } else {
-        mvwprintw(window, 6, 2, "📦 Archive Contents:");
+    if (top == 8) {
+        mvwprintw(window, 6, 2, "%.*s", MAX(0, max_x - 4),
+                  is_single_compressed ? "Compressed File Contents:" : "Archive Contents:");
+        mvwprintw(window, 7, 2, "%.*s", MAX(0, max_x - 4), "-------------------------------------");
     }
-    mvwprintw(window, 7, 2, "─────────────────────────────────────");
 
     ArcEntry entry;
-    int line_num = 8;
+    int line_num = top;
     int current_line = 0;
     int entry_count = 0;
     const int max_entries = 1000; // Limit entries to prevent UI overload
@@ -3802,10 +3949,14 @@ void display_archive_preview(WINDOW *window, const char *file_path, int start_li
         int ret = arc_next(reader, &entry);
         if (ret != 0) {
             if (ret < 0) {
-                mvwprintw(window, line_num++, 2, "Unable to read archive: %s", strerror(errno));
+                char message[160];
+                snprintf(message, sizeof(message), "Unable to read archive: %s", strerror(errno));
+                wmove(window, line_num++, 2);
+                browser_draw_name(window, message, max_x - 4);
             } else if (!found_any) {
-                mvwprintw(window, line_num++, 2, "%s",
-                          current_line ? "End of archive" : "Archive is empty");
+                wmove(window, line_num++, 2);
+                browser_draw_name(window, current_line ? "End of archive" : "Archive is empty",
+                                  max_x - 4);
             }
             break; // Done
         }
@@ -3821,7 +3972,6 @@ void display_archive_preview(WINDOW *window, const char *file_path, int start_li
         }
 
         // Format entry display
-        char entry_line[256];
         const char *type_icon = "📄";
         if (entry.type == ARC_ENTRY_DIR) {
             type_icon = "📁";
@@ -3842,29 +3992,37 @@ void display_archive_preview(WINDOW *window, const char *file_path, int start_li
             format_file_size(size_str, entry.size);
         }
 
-        // Build display line
-        if (entry.type == ARC_ENTRY_SYMLINK && entry.link_target) {
-            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s -> %s", type_icon,
-                     entry.path ? entry.path : "(null)", size_str, entry.link_target);
-        } else {
-            snprintf(entry_line, sizeof(entry_line), "%s %-40s %10s", type_icon,
-                     entry.path ? entry.path : "(null)", size_str);
+        int right = max_x - 2;
+        wmove(window, line_num, 2);
+        browser_draw_name(window, type_icon, MAX(0, right - 2));
+        if (getcurx(window) < right)
+            waddch(window, ' ');
+        int name_column = getcurx(window);
+        int size_width = max_x >= 16 ? MIN((int)strlen(size_str), (max_x - 4) / 3) : 0;
+        int size_column = right - size_width;
+        int available = MAX(0, size_column - name_column - (size_width ? 1 : 0));
+        int used = browser_draw_name(window, entry.path, available);
+        if (entry.link_target &&
+            (entry.type == ARC_ENTRY_SYMLINK || entry.type == ARC_ENTRY_HARDLINK) &&
+            used + 4 < available) {
+            waddstr(window, " -> ");
+            browser_draw_name(window, entry.link_target, available - used - 4);
         }
-
-        // Truncate if too long
-        int max_display_width = max_x - 4;
-        if ((int)strlen(entry_line) > max_display_width) {
-            entry_line[max_display_width] = '\0';
+        if (size_width) {
+            wmove(window, line_num, size_column);
+            browser_draw_name(window, size_str, size_width);
         }
-
-        mvwprintw(window, line_num++, 2, "%.*s", max_display_width, entry_line);
+        line_num++;
 
         arc_entry_free(&entry);
         entry_count++;
     }
 
-    if (entry_count >= max_entries) {
-        mvwprintw(window, line_num++, 2, "... (showing first %d entries)", max_entries);
+    if (entry_count >= max_entries && line_num < max_y - 1) {
+        char message[64];
+        snprintf(message, sizeof(message), "... (showing first %d entries)", max_entries);
+        wmove(window, line_num, 2);
+        browser_draw_name(window, message, max_x - 4);
     }
 
     arc_close(reader);

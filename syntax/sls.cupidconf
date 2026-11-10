@@ -1,0 +1,58 @@
+# Syntax: salt
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='salt'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.sls$'
+
+# Pattern 0: identifier.var (root).
+rule.0.parent=-1
+rule.0.group='identifier.var'
+rule.0.match='^[^ -].*:$'
+
+# Pattern 1: identifier.var (root).
+rule.1.parent=-1
+rule.1.group='identifier.var'
+rule.1.match='.*:'
+
+# Pattern 2: default (root).
+rule.2.parent=-1
+rule.2.group='default'
+rule.2.match='salt:'
+
+# Pattern 3: constant.number (root).
+rule.3.parent=-1
+rule.3.group='constant.number'
+rule.3.match='/*[0-9]/*'
+
+# Pattern 4: constant.bool (root).
+rule.4.parent=-1
+rule.4.group='constant.bool'
+rule.4.match='\b(True|False)\b'
+
+# Pattern 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+rule.5.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='\b(grain|grains|compound|pcre|grain_pcre|list|pillar)\b'
+
+# Pattern 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+rule.7.match='^#.*'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(if|elif|else|or|not|and|endif|end)\b'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

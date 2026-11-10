@@ -89,6 +89,13 @@ static bool list_push_local(cs_list_obj *l, cs_value v) {
     return true;
 }
 
+static bool list_push_string(cs_vm *vm, cs_list_obj *list, const char *text) {
+    cs_value value = cs_str(vm, text);
+    bool ok = value.type == CS_T_STR && list_push_local(list, value);
+    cs_value_release(value);
+    return ok;
+}
+
 static bool menu_items_from_value(cs_value v, char ***out_items, size_t *out_count) {
     if (!out_items || !out_count)
         return false;
@@ -1312,6 +1319,17 @@ static int nf_fm_redo(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_va
     return 0;
 }
 
+static bool view_has_selected(PluginManager *pm) {
+    if (!pm->view)
+        return false;
+    if (pm->select_all_active)
+        return true;
+    for (size_t i = 0; i < Vector_len(*pm->view); i++)
+        if (FileAttr_selected(pm->view->el[i]))
+            return true;
+    return false;
+}
+
 static int nf_fm_selected_paths(cs_vm *vm, void *ud, int argc, const cs_value *argv,
                                 cs_value *out) {
     (void)ud;
@@ -1331,24 +1349,33 @@ static int nf_fm_selected_paths(cs_vm *vm, void *ud, int argc, const cs_value *a
         if (pm->selected_paths && pm->selected_path_count > 0) {
             for (size_t i = 0; i < pm->selected_path_count; i++) {
                 if (pm->selected_paths[i] && pm->selected_paths[i][0]) {
-                    (void)list_push_local(l, cs_str(vm, pm->selected_paths[i]));
+                    (void)list_push_string(vm, l, pm->selected_paths[i]);
                 }
             }
-        } else if (pm->select_all_active && pm->view && pm->view->el) {
+        } else if (selection_count(pm->selection_model)) {
+            Vector paths;
+            if (selection_export(pm->selection_model, &paths)) {
+                for (size_t i = 0; i < Vector_len(paths); i++)
+                    (void)list_push_string(vm, l, paths.el[i]);
+                Vector_bye(&paths);
+            }
+        } else if (view_has_selected(pm) && pm->view && pm->view->el) {
             size_t n = Vector_len(*pm->view);
             for (size_t i = 0; i < n; i++) {
                 FileAttr fa = (FileAttr)pm->view->el[i];
+                if (!pm->select_all_active && !FileAttr_selected(fa))
+                    continue;
                 const char *name = FileAttr_get_name(fa);
                 if (!name || !*name)
                     continue;
                 char full[MAX_PATH_LENGTH];
                 path_join(full, pm->cwd, name);
-                (void)list_push_local(l, cs_str(vm, full));
+                (void)list_push_string(vm, l, full);
             }
         } else if (pm->cwd[0] && pm->selected[0]) {
             char full[MAX_PATH_LENGTH];
             path_join(full, pm->cwd, pm->selected);
-            (void)list_push_local(l, cs_str(vm, full));
+            (void)list_push_string(vm, l, full);
         }
     }
 
@@ -1392,66 +1419,26 @@ static int nf_fm_clear_selected_paths(cs_vm *vm, void *ud, int argc, const cs_va
 }
 
 static int nf_fm_each_selected(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_value *out) {
-    (void)out;
-    PluginManager *pm = (PluginManager *)ud;
-    if (!pm || argc != 1)
+    if (out)
+        *out = cs_nil();
+    if (!ud || argc != 1)
         return 0;
-
-    if (pm->selected_paths && pm->selected_path_count > 0) {
-        for (size_t i = 0; i < pm->selected_path_count; i++) {
-            const char *p = pm->selected_paths[i];
-            if (!p || !*p)
-                continue;
-            cs_value arg = cs_str(vm, p);
-            cs_value rv = cs_nil();
-            if (argv[0].type == CS_T_STR) {
-                (void)cs_call(vm, cs_to_cstr(argv[0]), 1, &arg, &rv);
-            } else if (argv[0].type == CS_T_FUNC || argv[0].type == CS_T_NATIVE) {
-                (void)cs_call_value(vm, argv[0], 1, &arg, &rv);
-            }
+    cs_value paths = cs_nil();
+    nf_fm_selected_paths(vm, ud, 0, NULL, &paths);
+    cs_list_obj *list = paths.type == CS_T_LIST ? paths.as.p : NULL;
+    if (list) {
+        for (size_t i = 0; i < cs_list_len(paths); i++) {
+            cs_value arg = cs_list_get(paths, i);
+            cs_value result = cs_nil();
+            if (argv[0].type == CS_T_STR)
+                (void)cs_call(vm, cs_to_cstr(argv[0]), 1, &arg, &result);
+            else if (argv[0].type == CS_T_FUNC || argv[0].type == CS_T_NATIVE)
+                (void)cs_call_value(vm, argv[0], 1, &arg, &result);
             cs_value_release(arg);
-            cs_value_release(rv);
+            cs_value_release(result);
         }
-        return 0;
     }
-
-    if (pm->select_all_active && pm->view && pm->view->el) {
-        size_t n = Vector_len(*pm->view);
-        for (size_t i = 0; i < n; i++) {
-            FileAttr fa = (FileAttr)pm->view->el[i];
-            const char *name = FileAttr_get_name(fa);
-            if (!name || !*name)
-                continue;
-            char full[MAX_PATH_LENGTH];
-            path_join(full, pm->cwd, name);
-            cs_value arg = cs_str(vm, full);
-            cs_value rv = cs_nil();
-            if (argv[0].type == CS_T_STR) {
-                (void)cs_call(vm, cs_to_cstr(argv[0]), 1, &arg, &rv);
-            } else if (argv[0].type == CS_T_FUNC || argv[0].type == CS_T_NATIVE) {
-                (void)cs_call_value(vm, argv[0], 1, &arg, &rv);
-            }
-            cs_value_release(arg);
-            cs_value_release(rv);
-        }
-        return 0;
-    }
-
-    if (!pm->cwd[0] || !pm->selected[0])
-        return 0;
-
-    char full[MAX_PATH_LENGTH];
-    path_join(full, pm->cwd, pm->selected);
-
-    cs_value arg = cs_str(vm, full);
-    cs_value rv = cs_nil();
-    if (argv[0].type == CS_T_STR) {
-        (void)cs_call(vm, cs_to_cstr(argv[0]), 1, &arg, &rv);
-    } else if (argv[0].type == CS_T_FUNC || argv[0].type == CS_T_NATIVE) {
-        (void)cs_call_value(vm, argv[0], 1, &arg, &rv);
-    }
-    cs_value_release(arg);
-    cs_value_release(rv);
+    cs_value_release(paths);
     return 0;
 }
 
@@ -1767,7 +1754,7 @@ static int nf_fm_info(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs_va
     magic_t mc = magic_open(MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK);
     if (mc && magic_load(mc, NULL) == 0) {
         char mime_buffer[512];
-        const char *mt = mime_file_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+        const char *mt = mime_type_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                                           mime_buffer, sizeof(mime_buffer));
         if (mt && *mt) {
             cs_value_release(v_mime);
@@ -2408,7 +2395,7 @@ static int nf_fm_entries(cs_vm *vm, void *ud, int argc, const cs_value *argv, cs
             mime = "inode/directory";
         } else if (mc && full[0]) {
             const char *m =
-                mime_file_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+                mime_type_cached(mc, full, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                                  mime_buffer, sizeof(mime_buffer));
             if (m && *m)
                 mime = m;

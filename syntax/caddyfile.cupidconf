@@ -1,0 +1,59 @@
+# Syntax: caddyfile
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='caddyfile'
+
+# Detection: filename first, then header and content signature.
+detect.filename='Caddyfile'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='^\s*\S+(\s|$)'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='^([\w.:/-]+,? ?)+[,{]$'
+
+# Pattern 2: constant.specialChar (root).
+rule.2.parent=-1
+rule.2.group='constant.specialChar'
+rule.2.match='\s{$'
+
+# Pattern 3: constant.specialChar (root).
+rule.3.parent=-1
+rule.3.group='constant.specialChar'
+rule.3.match='^\s*}$'
+
+# Region 4: constant.string (root).
+rule.4.parent=-1
+rule.4.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.4.start='"'
+rule.4.end='"'
+# Mask escaped text before matching delimiters.
+rule.4.skip='\\.'
+
+# Pattern 5: constant.specialChar (inside region 4).
+rule.5.parent=4
+rule.5.group='constant.specialChar'
+rule.5.match='\\.'
+
+# Pattern 6: preproc (root).
+rule.6.parent=-1
+rule.6.group='preproc'
+rule.6.match='\{(\w+|\$\w+|%\w+%)\}'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='#'
+rule.7.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=8

@@ -1,0 +1,78 @@
+# Syntax: colortest
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='colortest'
+
+# Detection: filename first, then header and content signature.
+detect.filename='ColorTest$'
+
+# Pattern 0: black (root).
+rule.0.parent=-1
+rule.0.group='black'
+rule.0.match='\bPLAIN\b'
+
+# Pattern 1: red (root).
+rule.1.parent=-1
+rule.1.group='red'
+rule.1.match='\bred\b'
+
+# Pattern 2: green (root).
+rule.2.parent=-1
+rule.2.group='green'
+rule.2.match='\bgreen\b'
+
+# Pattern 3: yellow (root).
+rule.3.parent=-1
+rule.3.group='yellow'
+rule.3.match='\byellow\b'
+
+# Pattern 4: blue (root).
+rule.4.parent=-1
+rule.4.group='blue'
+rule.4.match='\bblue\b'
+
+# Pattern 5: magenta (root).
+rule.5.parent=-1
+rule.5.group='magenta'
+rule.5.match='\bmagenta\b'
+
+# Pattern 6: cyan (root).
+rule.6.parent=-1
+rule.6.group='cyan'
+rule.6.match='\bcyan\b'
+
+# Pattern 7: brightred (root).
+rule.7.parent=-1
+rule.7.group='brightred'
+rule.7.match='\bbrightred\b'
+
+# Pattern 8: brightgreen (root).
+rule.8.parent=-1
+rule.8.group='brightgreen'
+rule.8.match='\bbrightgreen\b'
+
+# Pattern 9: brightyellow (root).
+rule.9.parent=-1
+rule.9.group='brightyellow'
+rule.9.match='\bbrightyellow\b'
+
+# Pattern 10: brightblue (root).
+rule.10.parent=-1
+rule.10.group='brightblue'
+rule.10.match='\bbrightblue\b'
+
+# Pattern 11: brightmagenta (root).
+rule.11.parent=-1
+rule.11.group='brightmagenta'
+rule.11.match='\bbrightmagenta\b'
+
+# Pattern 12: brightcyan (root).
+rule.12.parent=-1
+rule.12.group='brightcyan'
+rule.12.match='\bbrightcyan\b'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=13

@@ -33,3 +33,26 @@ The UI-thread image cache retains four thumbnails with a shared 16 MiB pixel bud
 Thumbnails use premultiplied-alpha interpolation and a maximum dimension of 2,048 pixels. Kitty uses the preview's pixel dimensions and a dedicated image ID. Sixel/Kitty payloads can be replayed when revisiting an unchanged image. ANSI maps the image to character cells with the cell aspect ratio applied. Resize, window movement, input-driven redraws, editor transitions, and plugin modal UI invalidate the display placement without discarding reusable pixels/output. Failed decodes and allocation errors are retried.
 
 The application Makefile watches nested library C files and headers. `python3 tests/test_library_dependencies.py` checks that edits to a nested CupidImage source or header invalidate the archive. New source pins include CupidImage's reorganized codec tree; keep its upstream formatter version from `.clang-format-version` when editing it. First-party CupidFM sources use clang-format 18.
+
+## Browser state and background tasks
+
+The [browser guide](browser-guide.md) records the current behavior and remaining work.
+app_session.c owns tab snapshots, history, selection changes, and directory replacement.
+Only inactive tabs have heap snapshots. The active AppState owns its vectors and paths directly.
+Search vectors borrow file attributes and must never free those entries. PathSelection owns the
+selected paths independently of directory attributes. The list's revision counter invalidates the
+selection projection when a reload replaces those attributes.
+
+app_layout.c computes terminal bounds without ncurses. app_windows.c creates windows from that
+layout and composes the header, lists, previews, and status. app_panes.c owns cached side-pane
+listings. These caches use directory timestamps, listing preferences, and debounced Linux file watches; directory scanning and
+metadata lookup still run on the UI thread.
+
+tasks.c runs file work through GIO on one worker. Submitted paths and commands are copied before
+queuing. The worker publishes task snapshots under a mutex and never touches ncurses or AppState.
+The UI reloads after completion and asks before cancelling unfinished tasks on quit.
+Directory traversal does not follow symlinks. Shell tasks have their own process group.
+
+Build dependencies include pkg-config and GLib/GIO development headers. The Makefiles select
+Clang by default and pass it to library tests. New browser, task, and MIME tests also run under
+AddressSanitizer and UndefinedBehaviorSanitizer in CI.

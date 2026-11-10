@@ -6,6 +6,7 @@
 #include "search.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <pthread.h>
 #include <regex.h>
 #include <stdlib.h>
@@ -174,9 +175,12 @@ size_t search_rebuild(AppState *state, const char *query) {
         return count;
     }
 
-    if (state->search_mode == SEARCH_MODE_REGEX) {
+    if (state->search_mode == SEARCH_MODE_REGEX || state->search_mode == SEARCH_MODE_SMART) {
         regex_t re;
-        if (regcomp(&re, query, REG_EXTENDED | REG_NOSUB) != 0) {
+        bool sensitive = state->search_mode != SEARCH_MODE_SMART;
+        for (const unsigned char *p = (const unsigned char *)query; *p; p++)
+            sensitive |= isupper(*p) != 0;
+        if (regcomp(&re, query, REG_EXTENDED | REG_NOSUB | (sensitive ? 0 : REG_ICASE)) != 0) {
             return 0;
         }
         size_t count = 0;
@@ -333,7 +337,8 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
     bool aborted = false;
 
     keypad(win, TRUE);
-    wtimeout(win, 10);
+    int original_delay = wgetdelay(win);
+    wtimeout(win, 100);
     struct timespec last_banner_update;
     clock_gettime(CLOCK_MONOTONIC, &last_banner_update);
     int total_scroll_length = (COLS - 2) + (BANNER_TEXT ? (int)strlen(BANNER_TEXT) : 0) +
@@ -353,6 +358,7 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
     cas->start = 0;
     sync_selection_from_active(state, cas);
 
+    bool view_dirty = true;
     while (true) {
         size_t shown = Vector_len(*active_files(state));
         werase(win);
@@ -373,9 +379,13 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
                 last_banner_update = current_time;
             }
 
+            size_t revision = Vector_revision(state->files);
             maybe_load_more_for_search(state, cas);
-            if (state->search_active && state->search_query[0]) {
-                search_rebuild(state, state->search_query);
+            bool changed = revision != Vector_revision(state->files);
+            if (state->search_active && state->search_query[0] && (view_dirty || changed)) {
+                if (changed)
+                    search_rebuild(state, state->search_query);
+                view_dirty = false;
                 sync_selection_from_active(state, cas);
                 draw_directory_window(dir_window, state->current_directory, active_files(state),
                                       cas);
@@ -390,7 +400,6 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
                 wrefresh(preview_window);
             }
 
-            napms(10);
             continue;
         }
 
@@ -398,9 +407,21 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
             aborted = true;
             break;
         }
-        if (ch == '\n') {
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
             break;
         }
+
+        // Cancellation takes priority over another potentially slow preview.
+        wtimeout(win, 0);
+        int next_key = wgetch(win);
+        wtimeout(win, 100);
+        if (next_key == 27) {
+            aborted = true;
+            break;
+        }
+        bool queued = next_key != ERR;
+        if (queued)
+            ungetch(next_key);
 
         if (ch == KEY_UP || ch == KEY_PPAGE) {
             if (state->search_active && Vector_len(state->search_files) > 0) {
@@ -437,7 +458,7 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
                     query[index] = '\0';
                     query_changed = true;
                 }
-            } else if (isprint(ch) && index < MAX_PATH_LENGTH - 1) {
+            } else if (ch >= 0 && ch <= UCHAR_MAX && isprint(ch) && index < MAX_PATH_LENGTH - 1) {
                 query[index++] = (char)ch;
                 query[index] = '\0';
                 query_changed = true;
@@ -462,6 +483,9 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
             }
         }
 
+        if (queued)
+            continue;
+        view_dirty = false;
         draw_directory_window(dir_window, state->current_directory, active_files(state), cas);
         if (state->preview_override_active) {
             draw_preview_window_path(preview_window, state->preview_override_path, NULL,
@@ -474,7 +498,7 @@ bool prompt_fuzzy_search(AppState *state, CursorAndSlice *cas, WINDOW *win, WIND
         wrefresh(preview_window);
     }
 
-    wtimeout(win, -1);
+    wtimeout(win, original_delay);
     werase(win);
     wrefresh(win);
 

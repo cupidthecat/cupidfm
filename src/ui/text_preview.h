@@ -12,4 +12,6 @@ int text_preview_count_lines(FILE *stream, int limit);
 /* Reads only the prefix needed for this viewport; the caller owns stream. */
 void draw_text_preview(WINDOW *window, FILE *stream, SyntaxDef *syntax, int start_line, int max_y,
                        int max_x);
+void draw_text_preview_at(WINDOW *window, FILE *stream, SyntaxDef *syntax, int start_line,
+                          int max_y, int max_x, int top);
 #endif

@@ -1,130 +1,169 @@
 #define _GNU_SOURCE
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200809L
-#endif
-
 #include "app_windows.h"
 
 #include <pthread.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
-#include <termios.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-#include "browser_ui.h"
+#include "app_layout.h"
+#include "app_panes.h"
+#include "app_session.h"
+#include "file_search.h"
 #include "globals.h"
 #include "main.h"
 #include "search.h"
+#include "tasks.h"
+
+WINDOW *parentwin;
+WINDOW *statuswin;
+static AppLayout layout;
+
+static WINDOW *make_window(AppRect rect) {
+    if (rect.rows <= 0 || rect.columns <= 0)
+        return NULL;
+    return newwin(rect.rows, rect.columns, rect.y, rect.x);
+}
+
+static void delete_window(WINDOW **window) {
+    if (*window)
+        delwin(*window);
+    *window = NULL;
+}
+
+void app_windows_destroy(void) {
+    delete_window(&dirwin);
+    delete_window(&previewwin);
+    delete_window(&parentwin);
+    delete_window(&statuswin);
+    delete_window(&mainwin);
+    delete_window(&bannerwin);
+    delete_window(&notifwin);
+}
+
+void app_windows_create(void) {
+    app_windows_destroy();
+    layout = app_layout_compute(LINES, COLS, &g_kb);
+    bannerwin = make_window(layout.header);
+    mainwin = make_window(layout.body);
+    dirwin = make_window(layout.current);
+    parentwin = make_window(layout.parent);
+    previewwin = make_window(layout.preview);
+    statuswin = make_window(layout.status);
+    notifwin = make_window(layout.notice);
+    /* Hidden previews retain a valid handle for older editor/plugin entrypoints.
+     * The frame renderer never draws the placeholder. */
+    if (!previewwin)
+        previewwin = newwin(1, 1, 0, 0);
+    if (!bannerwin || !mainwin || !dirwin || !previewwin || !notifwin) {
+        endwin();
+        fputs("CupidFM: unable to allocate terminal windows\n", stderr);
+        exit(1);
+    }
+    wtimeout(mainwin, INPUT_CHECK_INTERVAL);
+    werase(mainwin);
+    if (!g_kb.vim_keymap && !layout.compact)
+        box(mainwin, 0, 0);
+    wrefresh(mainwin);
+}
+
+static void draw_status(AppState *state) {
+    if (!statuswin)
+        return;
+    size_t running = tasks_pending_count();
+    Vector *view = active_files(state);
+    size_t count = Vector_len(*view), index = count ? (size_t)state->dir_window_cas.cursor + 1 : 0;
+    size_t selected = app_selection_count(state);
+    char text[256];
+    snprintf(text, sizeof(text), " %s  %zu selected  %zu/%zu  %zu%%  tasks %zu",
+             state->visual_active ? (state->visual_unset ? "UNSET" : "SELECT") : "NORMAL", selected,
+             index, count, count ? index * 100 / count : 0, running);
+    if (state->file_search) {
+        size_t used = strlen(text);
+        snprintf(text + used, sizeof(text) - used, "  %s %s: %.80s",
+                 file_search_error(state->file_search)  ? "Search failed"
+                 : file_search_done(state->file_search) ? "Found"
+                                                        : "Searching",
+                 file_search_content(state->file_search) ? "content" : "names",
+                 file_search_query(state->file_search));
+    }
+    werase(statuswin);
+    wattron(statuswin, A_REVERSE);
+    whline(statuswin, ' ', getmaxx(statuswin));
+    mvwaddnstr(statuswin, 0, 0, text, getmaxx(statuswin));
+    wattroff(statuswin, A_REVERSE);
+    wrefresh(statuswin);
+}
+
+void app_draw_browser(AppState *state) {
+    if (layout.compact) {
+        werase(mainwin);
+        mvwaddnstr(mainwin, 0, 0, "Resize terminal", getmaxx(mainwin));
+        wrefresh(mainwin);
+        return;
+    }
+    if (g_kb.vim_keymap) {
+        werase(bannerwin);
+        wmove(bannerwin, 0, 0);
+        browser_draw_name(bannerwin, state->current_directory, getmaxx(bannerwin));
+        wrefresh(bannerwin);
+    }
+    if (parentwin)
+        app_parent_draw(state, parentwin);
+    draw_directory_window(dirwin, state->current_directory, active_files(state),
+                          &state->dir_window_cas);
+    if (layout.preview.columns > 0) {
+        if (g_kb.vim_keymap && app_child_draw(state, previewwin)) {
+            /* Directory previews share sorting and selection with the browser. */
+        } else if (state->preview_override_active)
+            draw_preview_window_path(previewwin, state->preview_override_path, NULL,
+                                     state->preview_start_line);
+        else
+            draw_preview_window(previewwin, state->current_directory, state->selected_entry,
+                                state->preview_start_line);
+    }
+    draw_status(state);
+}
 
 void redraw_all_windows(AppState *state) {
     invalidate_image_preview_overlay();
-    struct winsize w;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-    resize_term(w.ws_row, w.ws_col);
-
+    struct winsize size = {0};
+    if (!ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) && size.ws_row && size.ws_col)
+        resize_term(size.ws_row, size.ws_col);
     endwin();
     refresh();
     clear();
-
-    int new_cols = MAX(COLS, 40);
-    int new_lines = MAX(LINES, 10);
-    int banner_height = 3;
-    int notif_height = 1;
-    int main_height = new_lines - banner_height - notif_height;
-
-    SIZE dir_win_width = MAX(new_cols / 3, 20);
-    SIZE preview_win_width = new_cols - dir_win_width - 2;
-
-    if (dirwin)
-        delwin(dirwin);
-    if (previewwin)
-        delwin(previewwin);
-    if (mainwin)
-        delwin(mainwin);
-    if (bannerwin)
-        delwin(bannerwin);
-    if (notifwin)
-        delwin(notifwin);
-
-    bannerwin = newwin(banner_height, new_cols, 0, 0);
-    box(bannerwin, 0, 0);
-    if (BANNER_TEXT && BUILD_INFO) {
+    app_windows_create();
+    state->mouse_drag = false;
+    state->dir_window_cas.num_lines = getmaxy(dirwin) + (g_kb.vim_keymap ? 2 : 0);
+    sync_selection_from_active(state, &state->dir_window_cas);
+    if (!g_kb.vim_keymap && BANNER_TEXT && BUILD_INFO && !layout.compact) {
         pthread_mutex_lock(&banner_mutex);
         draw_scrolling_banner(bannerwin, BANNER_TEXT, BUILD_INFO, banner_offset);
         pthread_mutex_unlock(&banner_mutex);
     }
-
-    mainwin = newwin(main_height, new_cols, banner_height, 0);
-    box(mainwin, 0, 0);
-
-    int inner_height = main_height - 2;
-    int inner_start_y = 1;
-    int dir_start_x = 1;
-    int preview_start_x = dir_win_width + 1;
-
-    dirwin = derwin(mainwin, inner_height, dir_win_width - 1, inner_start_y, dir_start_x);
-    previewwin = derwin(mainwin, inner_height, preview_win_width, inner_start_y, preview_start_x);
-
-    notifwin = newwin(notif_height, new_cols, new_lines - notif_height, 0);
-    box(notifwin, 0, 0);
-
-    state->dir_window_cas.num_lines = inner_height;
-    sync_selection_from_active(state, &state->dir_window_cas);
-
-    box(dirwin, 0, 0);
-    box(previewwin, 0, 0);
-
-    draw_directory_window(dirwin, state->current_directory, active_files(state),
-                          &state->dir_window_cas);
-
-    if (state->preview_override_active) {
-        draw_preview_window_path(previewwin, state->preview_override_path, NULL,
-                                 state->preview_start_line);
-    } else {
-        draw_preview_window(previewwin, state->current_directory, state->selected_entry,
-                            state->preview_start_line);
-    }
-
-    refresh();
-    wrefresh(bannerwin);
-    wrefresh(mainwin);
-    wrefresh(dirwin);
-    wrefresh(previewwin);
+    app_draw_browser(state);
     wrefresh(notifwin);
 }
 
-void redraw_frame_after_edit(AppState *state, WINDOW *dirwin_local, WINDOW *previewwin_local,
-                             WINDOW *mainwin_local, WINDOW *notifwin_local) {
+void redraw_frame_after_edit(AppState *state, WINDOW *directory, WINDOW *preview,
+                             WINDOW *main_window, WINDOW *notice) {
+    (void)directory;
+    (void)preview;
+    (void)main_window;
+    (void)notice;
     invalidate_image_preview_overlay();
-    if (!state)
-        return;
-    if (bannerwin) {
-        box(bannerwin, 0, 0);
-        wrefresh(bannerwin);
-    }
-    if (mainwin_local) {
-        box(mainwin_local, 0, 0);
-        wrefresh(mainwin_local);
-    }
-    if (dirwin_local) {
-        draw_directory_window(dirwin_local, state->current_directory, active_files(state),
-                              &state->dir_window_cas);
-    }
-    if (previewwin_local) {
-        if (state->preview_override_active) {
-            draw_preview_window_path(previewwin_local, state->preview_override_path, NULL,
-                                     state->preview_start_line);
-        } else {
-            draw_preview_window(previewwin_local, state->current_directory, state->selected_entry,
-                                state->preview_start_line);
-        }
-    }
-    if (notifwin_local) {
-        box(notifwin_local, 0, 0);
-        wrefresh(notifwin_local);
+    if (state) {
+        touchwin(mainwin);
+        wrefresh(mainwin);
+        app_draw_browser(state);
+        wrefresh(notifwin);
     }
 }
 
-void handle_winch(int sig) {
-    (void)sig;
+void handle_winch(int signal_number) {
+    (void)signal_number;
     resized = 1;
 }

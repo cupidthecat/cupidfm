@@ -1,0 +1,26 @@
+{
+  "reference_commit": "c9ba51d68e073c55b1c8c1e892a8c8abf025f38f",
+  "definitions": 158,
+  "color_basis": "default foreground palette with terminal background",
+  "files": {
+    "README.md": "a90915a8922de889cc42bbf662f9652ad05ec1683771df1eea3224e3755dd8ed",
+    "c.c": "f04201320e5605988621f6cd6fa77c2bbb200081cb2e8c1428b4606fd9db7db8",
+    "c.c.expected.json": "29e94cf3f45d50c3c71c208908dd832aaac38ceff593fcb03141ae46db8fae19",
+    "corpus.expected.json": "d50e87500e9899b903cad0341928aa5401b94a8d24b27caf392c63be62325d2b",
+    "corpus.txt": "3270f44790a84ac5d4494c3324771b39554bb1afa3e573690d1ec6030161fdc1",
+    "html.html": "fd2096d40adfd9f6469a56811bda55de33838a7940d6a4ad51eb8c1255cadb1a",
+    "html.html.expected.json": "8497b32fe7d3a3e1f345081200bfef0a223346d5dd300ca9e5b268eb7e4e8135",
+    "javascript.js": "01c0f776cc755ff3d79dbf8d3283be68a2f99abe35d956fd9a266719190dae9d",
+    "javascript.js.expected.json": "05ce548ba09e02882821243465700bbb4a030e204d89a361c95be534581b13dd",
+    "json.json": "d85060609072128f19dbef9910bdaac5eac39948e5b846e9f9c5b0210d30c0cd",
+    "json.json.expected.json": "49a491f7960dffde6e5b1c0cbc53cf194374bde68e83573eba81993aceabf86a",
+    "markdown.md": "37d2f91e6be580e4b70b5fef5ca1d60a29c98caab212a618b208d0dfe1e8c0a6",
+    "markdown.md.expected.json": "2218f9d5e9880660b26b06f73dbd26d045eddee84c818599e9dbc078f287e777",
+    "python.py": "38c657bc80ca6afc435cdca90aaae306a6000e86bfc953aa65572a13087bfb7c",
+    "python.py.expected.json": "c0a1f037cadd820fde3e35799f11b275d1b19dd4b7383cd4f6a05daf672ba4c0",
+    "shell.sh": "8d41b57618aaed717b794eb8e6753fc95238cd290fba10c402761e1461fa221f",
+    "shell.sh.expected.json": "27a8105113b706743e32654ddb578db00161c3856292eb826f8e5896f4c04052",
+    "yaml.yaml": "b5be411f50a4ee9bf6ff6102d1caa2b65eec1fe765332b74167182a73c3f9bd0",
+    "yaml.yaml.expected.json": "3c03dec8bc84f930bf9c866672b8935138d37feaee8b64a45dc6da86f54d5c6f"
+  }
+}

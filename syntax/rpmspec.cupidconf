@@ -1,0 +1,144 @@
+# Syntax: rpmspec
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='rpmspec'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.spec$|\.rpmspec$'
+
+# Pattern 0: preproc (root).
+rule.0.parent=-1
+rule.0.group='preproc'
+rule.0.match='\b(Icon|ExclusiveOs|ExcludeOs):'
+
+# Pattern 1: preproc (root).
+rule.1.parent=-1
+rule.1.group='preproc'
+rule.1.match='\b(BuildArch|BuildArchitectures|ExclusiveArch|ExcludeArch):'
+
+# Pattern 2: preproc (root).
+rule.2.parent=-1
+rule.2.group='preproc'
+rule.2.match='\b(Conflicts|Obsoletes|Provides|Requires|Requires\(.*\)|Enhances|Suggests|BuildConflicts|BuildRequires|Recommends|PreReq|Supplements):'
+
+# Pattern 3: preproc (root).
+rule.3.parent=-1
+rule.3.group='preproc'
+rule.3.match='\b(Epoch|Serial|Nosource|Nopatch):'
+
+# Pattern 4: preproc (root).
+rule.4.parent=-1
+rule.4.group='preproc'
+rule.4.match='\b(AutoReq|AutoProv|AutoReqProv):'
+
+# Pattern 5: preproc (root).
+rule.5.parent=-1
+rule.5.group='preproc'
+rule.5.match='\b(Copyright|License|Summary|Summary\(.*\)|Distribution|Vendor|Packager|Group|Source[0-9]*|Patch[0-9]*|BuildRoot|Prefix):'
+
+# Pattern 6: preproc (root).
+rule.6.parent=-1
+rule.6.group='preproc'
+rule.6.match='\b(Name|Version|Release|Url|URL):'
+
+# Region 7: preproc (root).
+rule.7.parent=-1
+rule.7.group='preproc'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='^(Source|Patch)'
+rule.7.end=':'
+
+# Pattern 8: preproc (root).
+rule.8.parent=-1
+rule.8.group='preproc'
+rule.8.match='(i386|i486|i586|i686|athlon|ia64|alpha|alphaev5|alphaev56|alphapca56|alphaev6|alphaev67|sparc|sparcv9|sparc64armv3l|armv4b|armv4lm|ips|mipsel|ppc|ppc|iseries|ppcpseries|ppc64|m68k|m68kmint|Sgi|rs6000|i370|s390x|s390|noarch)'
+
+# Pattern 9: preproc (root).
+rule.9.parent=-1
+rule.9.group='preproc'
+rule.9.match='(ifarch|ifnarch|ifos|ifnos)'
+
+# Pattern 10: constant.string (root).
+rule.10.parent=-1
+rule.10.group='constant.string'
+rule.10.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='%(if|else|endif|define|global|undefine)'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='%_?([A-Z_a-z_0-9_]*)'
+
+# Region 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='%\{'
+rule.13.end='\}'
+
+# Region 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+# Start/end delimiters carry state between physical lines.
+rule.14.start='%\{__'
+rule.14.end='\}'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='\$(RPM_BUILD_ROOT)\>'
+
+# Pattern 16: special (root).
+rule.16.parent=-1
+rule.16.group='special'
+rule.16.match='^%(build$|changelog|check$|clean$|description)'
+
+# Pattern 17: special (root).
+rule.17.parent=-1
+rule.17.group='special'
+rule.17.match='^%(files|install$|package|prep$)'
+
+# Pattern 18: special (root).
+rule.18.parent=-1
+rule.18.group='special'
+rule.18.match='^%(pre|preun|pretrans|post|postun|posttrans)'
+
+# Pattern 19: special (root).
+rule.19.parent=-1
+rule.19.group='special'
+rule.19.match='^%(trigger|triggerin|triggerpostun|triggerun|verifyscript)'
+
+# Pattern 20: comment (root).
+rule.20.parent=-1
+rule.20.group='comment'
+rule.20.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 21: constant (root).
+rule.21.parent=-1
+rule.21.group='constant'
+rule.21.match='^\*.*$'
+
+# Pattern 22: indent-char.whitespace (root).
+rule.22.parent=-1
+rule.22.group='indent-char.whitespace'
+rule.22.match='[[:space:]]+$'
+
+# Pattern 23: indent-char (root).
+rule.23.parent=-1
+rule.23.group='indent-char'
+rule.23.match='	+ +| +	+'
+
+# Pattern 24: todo (root).
+rule.24.parent=-1
+rule.24.group='todo'
+rule.24.match='TODO:?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=25

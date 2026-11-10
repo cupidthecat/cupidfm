@@ -46,6 +46,13 @@ with tempfile.TemporaryDirectory(prefix="cupidfm-archive-preview-") as name:
     with zipfile.ZipFile(scrolling, "w") as z:
         for index in range(30): z.writestr(f"member-{index:02d}", b"contents")
     cases.append((scrolling, "Archive Contents:", "member-01", "1", "member-00"))
+    literal = base / "literal.zip"
+    with zipfile.ZipFile(literal, "w") as z:
+        z.writestr("line\nbreak.txt", b"one")
+        z.writestr("column\tname.txt", b"two")
+        z.writestr("猫😀.txt", b"three")
+    cases.append((literal, r"line\nbreak.txt", r"column\tname.txt", "0"))
+    cases.append((literal, "猫😀.txt", "5.00 B", "0"))
     for case in cases:
         subprocess.run([str(DRIVER), *(str(value) for value in case)], check=True, timeout=10)
 print("Archive preview format, error, empty-entry, and scrolling checks passed")

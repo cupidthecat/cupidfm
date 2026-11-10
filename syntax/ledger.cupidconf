@@ -1,0 +1,53 @@
+# Syntax: ledger
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='ledger'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(^|\.|/)(ledger|ldgr|beancount|bnct)$'
+
+# Pattern 0: special (root).
+rule.0.parent=-1
+rule.0.group='special'
+rule.0.match='^([0-9]{4}(/|-)[0-9]{2}(/|-)[0-9]{2}|[=~]) .*'
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='^[0-9]{4}(/|-)[0-9]{2}(/|-)[0-9]{2}'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='^~ .*'
+
+# Pattern 3: identifier.var (root).
+rule.3.parent=-1
+rule.3.group='identifier.var'
+rule.3.match='^= .*'
+
+# Pattern 4: identifier (root).
+rule.4.parent=-1
+rule.4.group='identifier'
+rule.4.match='^[[:space:]]+(![[:space:]]+)?\(?[A-Za-z ]+(:[A-Za-z ]+)*\)?'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='^[[:space:]]+(![[:space:]]+)?\(?[A-Za-z_\-]+(:[A-Za-z_\-]+)*\)?'
+
+# Pattern 6: symbol (root).
+rule.6.parent=-1
+rule.6.group='symbol'
+rule.6.match='[*!]'
+
+# Pattern 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+rule.7.match='^[[:space:]]*;.*'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=8

@@ -1,0 +1,135 @@
+# Syntax: hc
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='hc'
+
+# Detection: filename first, then header and content signature.
+detect.filename='(\.(hc|HC)$|\.(hh|HH)$|\.ii?$|\.(def)$)'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b[A-Z_][0-9A-Z_]+\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b(F64|I8|U8|I16|U16|I32|U32|I64|U64|sizeof|enum|U0|static|extern|struct|union|class|intern|public|argc|argv|asm)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(for|if|while|do|else|case|default|switch)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(try|catch|throw|goto|continue|break|return)\b'
+
+# Pattern 4: preproc (root).
+rule.4.parent=-1
+rule.4.group='preproc'
+rule.4.match='^[[:space:]]*#[[:space:]]*(define|pragma|include|(un|ifn?)def|endif|el(if|se)|if|help_index|ifjit|ifaot|exe)'
+
+# Pattern 5: symbol.operator (root).
+rule.5.parent=-1
+rule.5.group='symbol.operator'
+rule.5.match='([.:;,+*|=!\%]|<|>|/|-|&)'
+
+# Pattern 6: symbol.brackets (root).
+rule.6.parent=-1
+rule.6.group='symbol.brackets'
+rule.6.match='[(){}]|\[|\]'
+
+# Pattern 7: constant.number (root).
+rule.7.parent=-1
+rule.7.group='constant.number'
+rule.7.match='(\b([1-9][0-9]*|0[0-7]*|0[Xx][0-9A-Fa-f]+|0[Bb][01]+)([Uu]?[Ll][Ll]?|[Ll][Ll]?[Uu]?)?\b)'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='(\b(([0-9]*[.][0-9]+|[0-9]+[.][0-9]*)([Ee][+-]?[0-9]+)?|[0-9]+[Ee][+-]?[0-9]+)[FfLl]?\b)'
+
+# Pattern 9: constant.number (root).
+rule.9.parent=-1
+rule.9.group='constant.number'
+rule.9.match='(\b0[Xx]([0-9A-Za-z]*[.][0-9A-Za-z]+|[0-9A-Za-z]+[.][0-9A-Za-z]*)[Pp][+-]?[0-9]+[FfLl]?\b)'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='NULL'
+
+# Pattern 11: constant.number (root).
+rule.11.parent=-1
+rule.11.group='constant.number'
+rule.11.match='TRUE'
+
+# Pattern 12: constant.number (root).
+rule.12.parent=-1
+rule.12.group='constant.number'
+rule.12.match='FALSE'
+
+# Region 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='"'
+rule.13.end='"'
+# Mask escaped text before matching delimiters.
+rule.13.skip='\\.'
+
+# Pattern 14: constant.specialChar (inside region 13).
+rule.14.parent=13
+rule.14.group='constant.specialChar'
+rule.14.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start=''''
+rule.15.end=''''
+# Mask escaped text before matching delimiters.
+rule.15.skip='\\.'
+
+# Pattern 16: error (inside region 15).
+rule.16.parent=15
+rule.16.group='error'
+rule.16.match='..+'
+
+# Pattern 17: constant.specialChar (inside region 15).
+rule.17.parent=15
+rule.17.group='constant.specialChar'
+rule.17.match='\\(["''abfnrtv\\]|[0-3]?[0-7]{1,2}|x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})'
+
+# Region 18: comment (root).
+rule.18.parent=-1
+rule.18.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.18.start='//'
+rule.18.end='$'
+
+# Pattern 19: todo (inside region 18).
+rule.19.parent=18
+rule.19.group='todo'
+rule.19.match='(TODO|XXX|FIXME):?'
+
+# Region 20: comment (root).
+rule.20.parent=-1
+rule.20.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.20.start='/\*'
+rule.20.end='\*/'
+
+# Pattern 21: todo (inside region 20).
+rule.21.parent=20
+rule.21.group='todo'
+rule.21.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=22

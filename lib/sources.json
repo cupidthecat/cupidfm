@@ -1,13 +1,13 @@
 {
   "cupidarchive": {
     "repository": "https://github.com/cupidthecat/cupidarchive",
-    "commit": "c93c8914eb0b0d8c5c583d69fe9cbddadc364ed8",
-    "tree": "4627fff95ce5932dae034db57ae25b1791997b09"
+    "commit": "899751f0dcc5f9b1005eff1eaacb4402fc023aa7",
+    "tree": "1d131cdcc52c46bd229ea6ced3304f889aeef8ac"
   },
   "cupidconf": {
     "repository": "https://github.com/cupidthecat/cupidconf",
-    "commit": "dfb709e074e1272f26bc92c1cb9b15eccf0ddef5",
-    "tree": "cf7ff77089c027d97fac1378292e5a721e6233d0"
+    "commit": "0c810a41f9218cee5cd8d1cfde2fec40f0c948f8",
+    "tree": "97182f441a8f108f64a1a67f70a1d0974f199a18"
   },
   "cupidgit": {
     "repository": "https://github.com/cupidthecat/cupidgit",
@@ -18,6 +18,11 @@
     "repository": "https://github.com/cupidthecat/cupidimage",
     "commit": "b0232efb7e95fe970ecb54775878b454ca389c49",
     "tree": "e4feb20dbc25572c5e2d78a5690c6956f52566d3"
+  },
+  "cupidmime": {
+    "repository": "https://github.com/cupidthecat/cupidMIME",
+    "commit": "8dfde2bb9e59647314e47547380cc99df0e47fbf",
+    "tree": "4b01633e9d89369121d0f3ba938aa65d25641f7c"
   },
   "cupidscript": {
     "repository": "https://github.com/cupidthecat/cupidscript",

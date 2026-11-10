@@ -1,0 +1,98 @@
+# Syntax: elixir
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='elixir'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ex$|\.exs$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(abs|trunc|rem|div|round|max|min|and|or|not|throw|raise|reraise|hd|tl|in|length|elem|put_elem|destructure|to_(string|charlist)|is_(atom|binary|bitstring|boolean|float|function|integer|list|map|nil|number|pid|port|reference|tuple)|(bit|byte|map|tuple)_size|binary_part|def(delegate|exception|guard|guardp|impl|macro|macrop|module|overridable|p|protocol|struct)?|sigil_[crswCRSWDNT]|if|else|unless|cond|binding|node|self|spawn|spawn_link|spawn_monitor|send|exit|struct|get_and_update_in|get_in|put_in|pop_in|update_in|apply|inspect|make_ref|use|do|end)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(alias|import|require|case|fn|receive|after|try|catch|rescue|super|quote|unquote|unquote_splicing|for|with)\b'
+
+# Pattern 2: constant (root).
+rule.2.parent=-1
+rule.2.group='constant'
+rule.2.match='\b\[A-Z]+\b'
+
+# Pattern 3: constant.number (root).
+rule.3.parent=-1
+rule.3.group='constant.number'
+rule.3.match='\b[0-9]+\b'
+
+# Pattern 4: constant.string (root).
+rule.4.parent=-1
+rule.4.group='constant.string'
+rule.4.match='`[^`]*`|%x\{[^}]*\}'
+
+# Pattern 5: constant.string (root).
+rule.5.parent=-1
+rule.5.group='constant.string'
+rule.5.match='"([^"]|(\\"))*"|%[QW]?\{[^}]*\}|%[QW]?\([^)]*\)|%[QW]?<[^>]*>|%[QW]?\[[^]]*\]|%[QW]?\$[^$]*\$|%[QW]?\^[^^]*\^|%[QW]?![^!]*!'
+
+# Pattern 6: constant.string (root).
+rule.6.parent=-1
+rule.6.group='constant.string'
+rule.6.match='''([^'']|(\\''))*''|%[qw]\{[^}]*\}|%[qw]\([^)]*\)|%[qw]<[^>]*>|%[qw]\[[^]]*\]|%[qw]\$[^$]*\$|%[qw]\^[^^]*\^|%[qw]![^!]*!'
+
+# Pattern 7: symbol.brackets (root).
+rule.7.parent=-1
+rule.7.group='symbol.brackets'
+rule.7.match='\{|\}|\[|\]|\(|\)'
+
+# Pattern 8: comment (root).
+rule.8.parent=-1
+rule.8.group='comment'
+rule.8.match='#[^{].*$|#$'
+
+# Pattern 9: comment.bright (root).
+rule.9.parent=-1
+rule.9.group='comment.bright'
+rule.9.match='##[^{].*$|##$'
+
+# Pattern 10: type.keyword (root).
+rule.10.parent=-1
+rule.10.group='type.keyword'
+rule.10.match='\:[a-zA-Z][a-zA-Z0-9_]*'
+
+# Pattern 11: type.keyword (root).
+rule.11.parent=-1
+rule.11.group='type.keyword'
+rule.11.match='\b(describe|test)'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(expected|assert|assert_raise|assert_in_delta|assert_received|catch_error|catch_throw|flunk|refute|refute_in_delta|refute_received)\b'
+
+# Pattern 13: symbol.tag (root).
+rule.13.parent=-1
+rule.13.group='symbol.tag'
+rule.13.match='^\s*\@[a-zA-Z][a-zA-Z0-9_]*\b'
+
+# Pattern 14: identifier.macro (root).
+rule.14.parent=-1
+rule.14.group='identifier.macro'
+rule.14.match='\b(__CALLER__|__DIR__|__ENV__|__MODULE__|__aliases__|__block__|defmacro)\b'
+
+# Pattern 15: todo (root).
+rule.15.parent=-1
+rule.15.group='todo'
+rule.15.match='(XXX|TODO|FIXME|\?\?\?)'
+
+# Pattern 16: preproc.shebang (root).
+rule.16.parent=-1
+rule.16.group='preproc.shebang'
+rule.16.match='\W*#!.+?( |$)'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=17

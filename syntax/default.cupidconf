@@ -1,0 +1,23 @@
+# Syntax: unknown
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='unknown'
+
+# Detection: filename first, then header and content signature.
+detect.filename=''
+
+# Pattern 0: special (root).
+rule.0.parent=-1
+rule.0.group='special'
+rule.0.match='[[:alnum:].%_+-]+@[[:alnum:].-]+'
+
+# Pattern 1: identifier (root).
+rule.1.parent=-1
+rule.1.group='identifier'
+rule.1.match='(https?|ftp|ssh)://\S*[^])>\s,.]'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=2

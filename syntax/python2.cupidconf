@@ -1,0 +1,118 @@
+# Syntax: python2
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='python2'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.py2$'
+detect.header='^#!.*/(env +)?python2$'
+
+# Pattern 0: constant (root).
+rule.0.parent=-1
+rule.0.group='constant'
+rule.0.match='\b(None|self|True|False)\b'
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='\b(__bases__|__builtin__|__class__|__debug__|__dict__|__doc__|__file__|__members__|__methods__|__name__|__self__)\b'
+
+# Pattern 2: identifier (root).
+rule.2.parent=-1
+rule.2.group='identifier'
+rule.2.match='\b(abs|apply|callable|chr|cmp|compile|delattr|dir|divmod|eval|exec|execfile|filter|format|getattr|globals|hasattr|hash|help|hex|id|input|intern|isinstance|issubclass|len|locals|max|min|next|oct|open|ord|pow|range|raw_input|reduce|reload|repr|round|setattr|unichr|vars|zip|__import__)\b'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='\b(__abs__|__add__|__and__|__call__|__cmp__|__coerce__|__complex__|__concat__|__contains__|__del__|__delattr__|__delitem__|__dict__|__delslice__|__div__|__divmod__|__float__|__getattr__|__getitem__|__getslice__|__hash__|__hex__|__init__|__int__|__inv__|__invert__|__len__|__long__|__lshift__|__mod__|__mul__|__neg__|__nonzero__|__oct__|__or__|__pos__|__pow__|__radd__|__rand__|__rcmp__|__rdiv__|__rdivmod__|__repeat__|__repr__|__rlshift__|__rmod__|__rmul__|__ror__|__rpow__|__rrshift__|__rshift__|__rsub__|__rxor__|__setattr__|__setitem__|__setslice__|__str__|__sub__|__xor__)\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\b(basestring|bool|buffer|bytearray|bytes|classmethod|complex|dict|enumerate|file|float|frozenset|int|list|long|map|memoryview|object|property|reversed|set|slice|staticmethod|str|super|tuple|type|unicode|xrange)\b'
+
+# Pattern 5: identifier (root).
+rule.5.parent=-1
+rule.5.group='identifier'
+rule.5.match='def [a-zA-Z_0-9]+'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(and|as|assert|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|not|or|pass|print|raise|return|try|while|with|yield)\b'
+
+# Pattern 7: preproc (root).
+rule.7.parent=-1
+rule.7.group='preproc'
+rule.7.match='^\s*@[^(]*'
+
+# Pattern 8: symbol.operator (root).
+rule.8.parent=-1
+rule.8.group='symbol.operator'
+rule.8.match='([.:;,+*|=!\%@]|<|>|/|-|&)'
+
+# Pattern 9: symbol.brackets (root).
+rule.9.parent=-1
+rule.9.group='symbol.brackets'
+rule.9.match='([(){}]|\[|\])'
+
+# Pattern 10: constant.number (root).
+rule.10.parent=-1
+rule.10.group='constant.number'
+rule.10.match='\b[0-9]+\b'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"""'
+rule.11.end='"""'
+
+# Region 12: constant.string (root).
+rule.12.parent=-1
+rule.12.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.12.start=''''''''
+rule.12.end=''''''''
+
+# Region 13: constant.string (root).
+rule.13.parent=-1
+rule.13.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='"'
+rule.13.end='"'
+# Mask escaped text before matching delimiters.
+rule.13.skip='\\.'
+
+# Pattern 14: constant.specialChar (inside region 13).
+rule.14.parent=13
+rule.14.group='constant.specialChar'
+rule.14.match='\\.'
+
+# Region 15: constant.string (root).
+rule.15.parent=-1
+rule.15.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.15.start=''''
+rule.15.end=''''
+# Mask escaped text before matching delimiters.
+rule.15.skip='\\.'
+
+# Pattern 16: constant.specialChar (inside region 15).
+rule.16.parent=15
+rule.16.group='constant.specialChar'
+rule.16.match='\\.'
+
+# Region 17: comment (root).
+rule.17.parent=-1
+rule.17.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.17.start='#'
+rule.17.end='$'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=18

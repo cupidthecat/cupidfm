@@ -86,6 +86,7 @@ void Vector_set_len_no_free(Vector *v, size_t len) {
     if (!v || !v->el || len > v->IMPL.cap)
         return;
     v->IMPL.len = len;
+    v->IMPL.revision++;
     v->el[len] = NULL;
 }
 
@@ -150,4 +151,8 @@ void Vector_sane_cap(Vector *v) {
     }
     v->el = new_el;
     v->IMPL.cap = new_cap;
+}
+
+size_t Vector_revision(Vector v) {
+    return v.IMPL.revision;
 }

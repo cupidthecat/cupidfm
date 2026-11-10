@@ -1,0 +1,48 @@
+# Syntax: mpd
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='mpd'
+
+# Detection: filename first, then header and content signature.
+detect.filename='mpd\.conf$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(user|group|bind_to_address|host|port|plugin|name|type)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b((music|playlist)_directory|(db|log|state|pid|sticker)_file)\b'
+
+# Pattern 2: special (root).
+rule.2.parent=-1
+rule.2.group='special'
+rule.2.match='^(input|audio_output|decoder)[[:space:]]*\{|\}'
+
+# Pattern 3: constant.string (root).
+rule.3.parent=-1
+rule.3.group='constant.string'
+rule.3.match='"(\\.|[^"])*"|''(\\.|[^''])*'''
+
+# Pattern 4: comment (root).
+rule.4.parent=-1
+rule.4.group='comment'
+rule.4.match='(^|[[:space:]])#([^{].*)?$'
+
+# Pattern 5: indent-char.whitespace (root).
+rule.5.parent=-1
+rule.5.group='indent-char.whitespace'
+rule.5.match='[[:space:]]+$'
+
+# Pattern 6: indent-char (root).
+rule.6.parent=-1
+rule.6.group='indent-char'
+rule.6.match='	+ +| +	+'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=7

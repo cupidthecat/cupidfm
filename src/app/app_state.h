@@ -5,11 +5,14 @@
 #include <time.h>
 
 #include "browser_ui.h" // CursorAndSlice
-#include "globals.h"    // MAX_PATH_LENGTH
-#include "undo.h"       // UndoState
+#include "files.h"
+#include "globals.h" // MAX_PATH_LENGTH
+#include "selection.h"
+#include "undo.h" // UndoState
 #include "vector.h"
 
 typedef struct PluginManager PluginManager;
+typedef struct FileSearch FileSearch;
 
 typedef struct {
     char *directory_path;
@@ -20,8 +23,26 @@ typedef struct {
 } LazyLoadState;
 
 typedef struct {
+    Vector files;
+    char directory[MAX_PATH_LENGTH];
+    CursorAndSlice cas;
+    struct timespec mtime;
+    FileListingOptions listing;
+    bool loaded;
+} AppDirectoryPane;
+
+typedef struct {
     char *current_directory;
     Vector files;
+    FileSearch *file_search;
+    size_t search_revision;
+    bool search_reported;
+    char search_origin_hover[MAX_PATH_LENGTH];
+    PathSelection *selection;
+    size_t selection_revision;
+    char selection_directory[MAX_PATH_LENGTH];
+    AppDirectoryPane parent;
+    AppDirectoryPane child;
     CursorAndSlice dir_window_cas;
     char selected_name[MAX_PATH_LENGTH];
     const char *selected_entry;
@@ -36,6 +57,22 @@ typedef struct {
     Vector search_files;
     UndoState undo_state;
     PluginManager *plugins;
+    FileListingOptions listing;
+    const char *chooser_file;
+    bool quit_requested;
+    bool no_cwd_file;
+    char *history[128];
+    char *history_hover[128];
+    size_t history_length;
+    size_t history_position;
+    char tab_name[80];
+    int prefix_key;
+    bool mouse_drag;
+    bool visual_active;
+    bool visual_unset;
+    int visual_wraps;
+    SIZE visual_anchor;
+    char find_query[MAX_PATH_LENGTH];
 } AppState;
 
 #endif // APP_STATE_H

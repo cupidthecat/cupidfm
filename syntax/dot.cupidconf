@@ -1,0 +1,66 @@
+# Syntax: dot
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='dot'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(dot|gv)$'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(digraph|edge|graph|node|subgraph)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(arrow(head|size|tail)|(bg|fill|font)?color|center|constraint|decorateP|dir|distortion|font(name|size)|head(clip|label)|height|label(angle|distance|font(color|name|size))?|layer(s)?|margin|mclimit|minlen|name|nodesep|nslimit|ordering|orientation|page(dir)?|peripheries|port_label_distance|rank(dir|sep)?|ratio|regular|rotate|same(head|tail)|shape(file)?|sides|size|skew|style|tail(clip|label)|URL|weight|width)\b'
+
+# Pattern 2: symbol (root).
+rule.2.parent=-1
+rule.2.group='symbol'
+rule.2.match='=|->|--'
+
+# Region 3: constant.string (root).
+rule.3.parent=-1
+rule.3.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.3.start='"'
+rule.3.end='"'
+# Mask escaped text before matching delimiters.
+rule.3.skip='\\.'
+
+# Pattern 4: constant.specialChar (inside region 3).
+rule.4.parent=3
+rule.4.group='constant.specialChar'
+rule.4.match='\\.'
+
+# Region 5: comment (root).
+rule.5.parent=-1
+rule.5.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.5.start='//'
+rule.5.end='$'
+
+# Pattern 6: todo (inside region 5).
+rule.6.parent=5
+rule.6.group='todo'
+rule.6.match='(TODO|XXX|FIXME):?'
+
+# Region 7: comment (root).
+rule.7.parent=-1
+rule.7.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='/\*'
+rule.7.end='\*/'
+
+# Pattern 8: todo (inside region 7).
+rule.8.parent=7
+rule.8.group='todo'
+rule.8.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=9

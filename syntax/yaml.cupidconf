@@ -1,0 +1,89 @@
+# Syntax: yaml
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='yaml'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.ya?ml$'
+detect.header='%YAML'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='(^| )!!(binary|bool|float|int|map|null|omap|seq|set|str) '
+
+# Pattern 1: constant (root).
+rule.1.parent=-1
+rule.1.group='constant'
+rule.1.match='\b(YES|yes|Y|y|ON|on|TRUE|True|true|NO|no|N|n|OFF|off|FALSE|False|false)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='(:[[:space:]]|\[|\]|:[[:space:]]+[|>]|^[[:space:]]*- )'
+
+# Pattern 3: identifier (root).
+rule.3.parent=-1
+rule.3.group='identifier'
+rule.3.match='[[:space:]][\*&][A-Za-z0-9]+'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='[-.\w]+:'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match=':'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='(^---|^\.\.\.|^%YAML|^%TAG)'
+
+# Region 7: constant.string (root).
+rule.7.parent=-1
+rule.7.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='(^| )"'
+rule.7.end='"'
+# Mask escaped text before matching delimiters.
+rule.7.skip='\\.'
+
+# Pattern 8: constant.specialChar (inside region 7).
+rule.8.parent=7
+rule.8.group='constant.specialChar'
+rule.8.match='\\.'
+
+# Region 9: constant.string (root).
+rule.9.parent=-1
+rule.9.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.9.start='(^| )'''
+rule.9.end=''''
+# Mask escaped text before matching delimiters.
+rule.9.skip='(\\.)|('''')'
+
+# Pattern 10: constant.specialChar (inside region 9).
+rule.10.parent=9
+rule.10.group='constant.specialChar'
+rule.10.match='\\.'
+
+# Region 11: comment (root).
+rule.11.parent=-1
+rule.11.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='#'
+rule.11.end='$'
+
+# Pattern 12: todo (inside region 11).
+rule.12.parent=11
+rule.12.group='todo'
+rule.12.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=13

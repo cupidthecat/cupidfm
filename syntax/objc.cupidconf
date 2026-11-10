@@ -1,0 +1,176 @@
+# Syntax: objective-c
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='objective-c'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(m|mm|h)$'
+detect.signature='(obj|objective)-c|#import|@(encode|end|interface|implementation|selector|protocol|synchronized|try|catch|finally|property|optional|required|import|autoreleasepool)'
+
+# Pattern 0: type (root).
+rule.0.parent=-1
+rule.0.group='type'
+rule.0.match='\b(float|double|CGFloat|id|bool|BOOL|Boolean|char|int|short|long|sizeof|enum|void|static|const|struct|union|typedef|extern|(un)?signed|inline|Class|SEL|IMP|NS(U)?Integer)\b'
+
+# Pattern 1: type (root).
+rule.1.parent=-1
+rule.1.group='type'
+rule.1.match='\b((s?size)|((u_?)?int(8|16|32|64|ptr)))_t\b'
+
+# Pattern 2: type (root).
+rule.2.parent=-1
+rule.2.group='type'
+rule.2.match='\b[A-Z][A-Z][[:alnum:]]*\b'
+
+# Pattern 3: type (root).
+rule.3.parent=-1
+rule.3.group='type'
+rule.3.match='\b[A-Za-z0-9_]*_t\b'
+
+# Pattern 4: type (root).
+rule.4.parent=-1
+rule.4.group='type'
+rule.4.match='\bdispatch_[a-zA-Z0-9_]*_t\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='(__attribute__[[:space:]]*\(\([^)]*\)\)|__(aligned|asm|builtin|hidden|inline|packed|restrict|section|typeof|weak)__|__unused|_Nonnull|_Nullable|__block|__builtin.*)'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(class|namespace|template|public|protected|private|typename|this|friend|virtual|using|mutable|volatile|register|explicit)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(for|if|while|do|else|case|default|switch)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(try|throw|catch|operator|new|delete)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(goto|continue|break|return)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(nonatomic|atomic|readonly|readwrite|strong|weak|assign)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='@(encode|end|interface|implementation|class|selector|protocol|synchronized|try|catch|finally|property|optional|required|import|autoreleasepool)'
+
+# Pattern 12: preproc (root).
+rule.12.parent=-1
+rule.12.group='preproc'
+rule.12.match='^[[:space:]]*#[[:space:]]*(define|include|import|(un|ifn?)def|endif|el(if|se)|if|warning|error|pragma).*$'
+
+# Pattern 13: preproc (root).
+rule.13.parent=-1
+rule.13.group='preproc'
+rule.13.match='__[A-Z0-9_]*__'
+
+# Pattern 14: special (root).
+rule.14.parent=-1
+rule.14.group='special'
+rule.14.match='^[[:space:]]*[#|@][[:space:]]*(import|include)[[:space:]]*["|<].*\/?[>|"][[:space:]]*$'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='([.:;,+*|=!\%\[\]]|<|>|/|-|&)'
+
+# Pattern 16: constant.number (root).
+rule.16.parent=-1
+rule.16.group='constant.number'
+rule.16.match='(\b(-?)?[0-9]+\b|\b\[0-9]+\.[0-9]+\b|\b0x[0-9a-fA-F]+\b)'
+
+# Pattern 17: constant (root).
+rule.17.parent=-1
+rule.17.group='constant'
+rule.17.match='(@\[(\\.|[^\]])*\]|@\{(\\.|[^\}])*\}|@\((\\.|[^\)])*\))'
+
+# Pattern 18: constant (root).
+rule.18.parent=-1
+rule.18.group='constant'
+rule.18.match='\b<(\\.[^\>])*\>\b'
+
+# Pattern 19: constant (root).
+rule.19.parent=-1
+rule.19.group='constant'
+rule.19.match='\b(nil|NULL|YES|NO|TRUE|true|FALSE|false|self)\b'
+
+# Pattern 20: constant (root).
+rule.20.parent=-1
+rule.20.group='constant'
+rule.20.match='\bk[[:alnum]]*\b'
+
+# Pattern 21: constant.string (root).
+rule.21.parent=-1
+rule.21.group='constant.string'
+rule.21.match='''.'''
+
+# Region 22: constant.string (root).
+rule.22.parent=-1
+rule.22.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.22.start='@"'
+rule.22.end='"'
+# Mask escaped text before matching delimiters.
+rule.22.skip='\\.'
+
+# Pattern 23: constant.specialChar (inside region 22).
+rule.23.parent=22
+rule.23.group='constant.specialChar'
+rule.23.match='\\.'
+
+# Region 24: constant.string (root).
+rule.24.parent=-1
+rule.24.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.24.start='"'
+rule.24.end='"'
+# Mask escaped text before matching delimiters.
+rule.24.skip='\\.'
+
+# Pattern 25: constant.specialChar (inside region 24).
+rule.25.parent=24
+rule.25.group='constant.specialChar'
+rule.25.match='\\.'
+
+# Region 26: comment (root).
+rule.26.parent=-1
+rule.26.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.26.start='//'
+rule.26.end='$'
+
+# Pattern 27: todo (inside region 26).
+rule.27.parent=26
+rule.27.group='todo'
+rule.27.match='(TODO|XXX|FIXME):?'
+
+# Region 28: comment (root).
+rule.28.parent=-1
+rule.28.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.28.start='/\*'
+rule.28.end='\*/'
+
+# Pattern 29: todo (inside region 28).
+rule.29.parent=28
+rule.29.group='todo'
+rule.29.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=30

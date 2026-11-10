@@ -9,8 +9,10 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <magic.h>
+#include <pwd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <wchar.h>
+#include <wctype.h>
 
 #include "cupidarchive.h"
 #include "cupidimage.h"
@@ -33,6 +37,10 @@
 
 #define DIRECTORY_TREE_MAX_DEPTH 4
 #define DIRECTORY_TREE_MAX_TOTAL 1500
+
+static int preview_top(void) {
+    return g_kb.vim_keymap ? 1 : 7;
+}
 
 static bool tree_limit_hit = false;
 
@@ -135,7 +143,7 @@ static const cupidimage_image *get_preview_image(const char *path, int columns, 
     return image_preview_get(path, width, height, generation, error, error_size);
 }
 
-static const int image_palette_reserved_start = 32;
+static const int image_palette_reserved_start = 48;
 
 static bool supports_truecolor(void) {
     if (!isatty(fileno(stdout)))
@@ -152,7 +160,7 @@ static bool supports_truecolor(void) {
 }
 
 static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -175,7 +183,7 @@ static void clear_truecolor_overlay(WINDOW *window, int max_y, int max_x) {
 
 /* Clear Sixel graphics from the content area by overwriting with a black Sixel image */
 static void clear_sixel_overlay(WINDOW *window, int max_y, int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -264,7 +272,7 @@ static bool is_image_file(const char *path) {
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
         const char *mime_type =
-            mime_file_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
+            mime_type_cached(magic_cookie, path, MAGIC_MIME_TYPE | MAGIC_SYMLINK | MAGIC_CHECK,
                              mime_buffer, sizeof(mime_buffer));
         bool is_image = (mime_type != NULL && strncmp(mime_type, "image/", 6) == 0);
         magic_close(magic_cookie);
@@ -370,8 +378,8 @@ static void ensure_image_palette(void) {
         return;
 
     int base = image_palette_reserved_start;
-    if (base <= COLOR_SYNTAX_ESCAPE) {
-        base = COLOR_SYNTAX_ESCAPE + 1;
+    if (base <= COLOR_SYNTAX_LAST) {
+        base = COLOR_SYNTAX_LAST + 1;
     }
     if (base + desired > max_pairs) {
         while (desired > 0 && base + desired > max_pairs) {
@@ -440,7 +448,7 @@ static void scale_image_to_fit(uint32_t src_w, uint32_t src_h, int max_width, in
 
 static void draw_image_preview(WINDOW *window, const char *full_path, int start_line, int max_y,
                                int max_x) {
-    int content_top = 7;
+    int content_top = preview_top();
     int content_left = 2;
     int content_width = max_x - 4;
     int content_height = max_y - content_top - 1;
@@ -567,7 +575,7 @@ static void draw_image_preview(WINDOW *window, const char *full_path, int start_
 
 static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, int start_line,
                                          int max_y, int max_x) {
-    int content_top = 7, content_left = 2;
+    int content_top = preview_top(), content_left = 2;
     int content_width = max_x - 4, content_height = max_y - content_top - 1;
     char error[256] = {0};
     const cupidimage_image *image =
@@ -617,14 +625,14 @@ static void draw_image_preview_truecolor(WINDOW *window, const char *full_path, 
 
 static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y, int max_x,
                                 enum ImagePreviewEncoding encoding) {
-    int content_width = max_x - 4, content_height = max_y - 8;
+    int content_width = max_x - 4, content_height = max_y - preview_top() - 1;
     char error[256] = {0};
     uint64_t generation;
     const cupidimage_image *image = get_preview_image(full_path, content_width, content_height,
                                                       &generation, error, sizeof(error));
     if (!image) {
         clear_preview_graphics(window, max_y, max_x);
-        mvwprintw(window, 7, 2, "Image preview failed: %s", error);
+        mvwprintw(window, preview_top(), 2, "Image preview failed: %s", error);
         wrefresh(window);
         return;
     }
@@ -647,7 +655,7 @@ static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y
         image_preview_encode(image, encoding, columns, rows, &length, error, sizeof(error));
     if (!payload) {
         clear_preview_graphics(window, max_y, max_x);
-        mvwprintw(window, 7, 2, "Image preview failed: %s", error);
+        mvwprintw(window, preview_top(), 2, "Image preview failed: %s", error);
         wrefresh(window);
         return;
     }
@@ -663,7 +671,7 @@ static void draw_image_graphics(WINDOW *window, const char *full_path, int max_y
     }
     clear_truecolor_overlay(window, max_y, max_x);
     curs_set(0);
-    printf("\x1b[?25l\x1b[%d;%dH", win_y + 8, win_x + 3);
+    printf("\x1b[?25l\x1b[%d;%dH", win_y + preview_top() + 1, win_x + 3);
     size_t written = fwrite(payload, 1, length, stdout);
     int flushed = fflush(stdout);
     printf("\x1b[%d;%dH", win_y + 1, win_x + 1);
@@ -697,7 +705,7 @@ static void show_directory_tree(WINDOW *window, const char *dir_path, int level,
     if (level == 0) {
         tree_limit_hit = false;
     }
-    if (level == 0) {
+    if (level == 0 && !g_kb.vim_keymap) {
         mvwprintw(window, 6, 2, "Directory Tree Preview:");
         (*line_num)++;
     }
@@ -814,7 +822,7 @@ static void show_directory_tree(WINDOW *window, const char *dir_path, int level,
         } else if (magic_cookie) {
             if (dir_path_len + name_len + 2 <= MAX_PATH_LENGTH) {
                 char mime_buffer[512];
-                const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+                const char *mime_type = mime_type_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
                                                          mime_buffer, sizeof(mime_buffer));
                 emoji = get_file_emoji(mime_type, entries[i].name);
             } else {
@@ -954,182 +962,231 @@ bool preview_can_scroll_down(const char *path, int start, int width, int rows) {
     return count > start + rows;
 }
 
+/* Render filesystem bytes without allowing controls or partial UTF-8 to move
+ * outside the row. Invalid byte sequences remain visible as question marks. */
+int browser_draw_name(WINDOW *window, const char *text, int columns) {
+    mbstate_t conversion = {0};
+    size_t left = strlen(text);
+    int used = 0;
+    while (left && used < columns) {
+        wchar_t character;
+        size_t bytes = mbrtowc(&character, text, left, &conversion);
+        if (bytes == (size_t)-1 || bytes == (size_t)-2 || !bytes) {
+            memset(&conversion, 0, sizeof(conversion));
+            waddch(window, '?');
+            text++;
+            left--;
+            used++;
+            continue;
+        }
+        int width = wcwidth(character);
+        if (width < 0 || iswcntrl(character)) {
+            const char *replacement = character == '\n' ? "\\n" : character == '\t' ? "\\t" : "?";
+            int size = (int)strlen(replacement);
+            if (used + size > columns)
+                break;
+            waddstr(window, replacement);
+            used += size;
+        } else {
+            if (used + width > columns)
+                break;
+            waddnstr(window, text, (int)bytes);
+            used += width;
+        }
+        text += bytes;
+        left -= bytes;
+    }
+    return used;
+}
+
+static void listing_details(const char *path, const struct stat *info, FileLineMode mode,
+                            char *text, size_t capacity) {
+    text[0] = '\0';
+    if (mode == FILE_LINE_SIZE) {
+        if (S_ISDIR(info->st_mode)) {
+            long size = get_directory_size_peek(path);
+            if (size >= 0)
+                format_file_size(text, (size_t)size);
+            else
+                snprintf(text, capacity, "-");
+        } else {
+            format_file_size(text, (size_t)info->st_size);
+        }
+    } else if (mode == FILE_LINE_OWNER) {
+        struct passwd *owner = getpwuid(info->st_uid);
+        if (owner)
+            snprintf(text, capacity, "%s", owner->pw_name);
+        else
+            snprintf(text, capacity, "%lu", (unsigned long)info->st_uid);
+    } else if (mode == FILE_LINE_PERMISSIONS) {
+        const char *bits = "rwxrwxrwx";
+        snprintf(text, capacity, "----------");
+        text[0] = S_ISDIR(info->st_mode) ? 'd' : S_ISLNK(info->st_mode) ? 'l' : '-';
+        for (int i = 0; i < 9; i++)
+            if (info->st_mode & (0400 >> i))
+                text[i + 1] = bits[i];
+        if (info->st_mode & S_ISUID)
+            text[3] = info->st_mode & S_IXUSR ? 's' : 'S';
+        if (info->st_mode & S_ISGID)
+            text[6] = info->st_mode & S_IXGRP ? 's' : 'S';
+        if (info->st_mode & S_ISVTX)
+            text[9] = info->st_mode & S_IXOTH ? 't' : 'T';
+    } else if (mode == FILE_LINE_MTIME || mode == FILE_LINE_BTIME) {
+        time_t timestamp = info->st_mtime;
+        bool available = mode == FILE_LINE_MTIME;
+#if defined(__linux__) && defined(STATX_BTIME)
+        if (mode == FILE_LINE_BTIME) {
+            struct statx extended;
+            if (!statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BTIME, &extended) &&
+                (extended.stx_mask & STATX_BTIME)) {
+                timestamp = extended.stx_btime.tv_sec;
+                available = true;
+            }
+        }
+#endif
+        struct tm local;
+        if (available && localtime_r(&timestamp, &local))
+            strftime(text, capacity, "%Y-%m-%d %H:%M", &local);
+        else
+            snprintf(text, capacity, "-");
+    }
+}
+
+static void draw_file_icon(WINDOW *window, const char *icon, int width) {
+    if (!icon || !*icon || width <= 0)
+        return;
+    mbstate_t state = {0};
+    wchar_t codepoint;
+    size_t length = mbrtowc(&codepoint, icon, strlen(icon), &state);
+    if (length != (size_t)-1 && length != (size_t)-2 && codepoint > 127 &&
+        wcwidth(codepoint) == 1) {
+        // Keep one-cell symbols in text presentation. Some fonts otherwise expand
+        // them to emoji width, which disagrees with ncurses' cursor accounting.
+        char text[MB_LEN_MAX + 4];
+        memcpy(text, icon, length);
+        memcpy(text + length, "\xef\xb8\x8e", 4);
+        browser_draw_name(window, text, width);
+    } else
+        browser_draw_name(window, icon, width);
+}
+
+void browser_draw_entry_prefix(WINDOW *window, int row, bool selected, const char *icon,
+                               const char *status) {
+    int left = g_kb.vim_keymap ? 0 : 1;
+    int width = getmaxx(window);
+    if (left >= width)
+        return;
+    // Paint the padding too: cursor highlighting must span the whole interior,
+    // including the fixed icon columns and the gap before right-aligned details.
+    mvwhline(window, row, left, ' ', MAX(0, width - left - (g_kb.vim_keymap ? 0 : 1)));
+    mvwaddch(window, row, left, selected ? '*' : ' ');
+    int icon_column = left + (g_kb.vim_keymap ? 1 : 2);
+    if (icon_column < width) {
+        wmove(window, row, icon_column);
+        draw_file_icon(window, icon, MIN(2, width - icon_column));
+    }
+    int name_column = icon_column + 3;
+    if (!g_kb.vim_keymap) {
+        if (name_column < width) {
+            wmove(window, row, name_column);
+            browser_draw_name(window, status, MIN(2, width - name_column));
+        }
+        name_column += 3;
+    }
+    wmove(window, row, MIN(name_column, getmaxx(window) - 1));
+}
+
+static void draw_directory_list(WINDOW *window, const char *directory, Vector *files_vector,
+                                CursorAndSlice *cas, bool hover);
+
 void draw_directory_window(WINDOW *window, const char *directory, Vector *files_vector,
                            CursorAndSlice *cas) {
-    int cols;
-    int rows;
+    draw_directory_list(window, directory, files_vector, cas, true);
+}
+
+void draw_directory_preview(WINDOW *window, const char *directory, Vector *files_vector,
+                            CursorAndSlice *cas) {
+    draw_directory_list(window, directory, files_vector, cas, false);
+}
+
+static void draw_directory_list(WINDOW *window, const char *directory, Vector *files_vector,
+                                CursorAndSlice *cas, bool hover) {
+    if (!window || !cas)
+        return;
+    int rows, cols;
     getmaxyx(window, rows, cols);
-
-    size_t vec_len = files_vector ? Vector_len(*files_vector) : 0;
-    cas->num_files = (SIZE)vec_len;
-    if (cas->num_files < 0)
-        cas->num_files = 0;
-    if (cas->start < 0)
-        cas->start = 0;
-    if (cas->cursor < 0)
-        cas->cursor = 0;
-    if (cas->num_files == 0) {
-        cas->start = 0;
-        cas->cursor = 0;
-    } else {
-        if (cas->start >= cas->num_files)
-            cas->start = 0;
-        if (cas->cursor >= cas->num_files)
-            cas->cursor = cas->num_files - 1;
-    }
-
+    cas->num_files = files_vector ? (SIZE)Vector_len(*files_vector) : 0;
+    int padding = g_kb.vim_keymap ? 0 : 1;
+    cas->num_lines = rows + (padding ? 0 : 2);
+    if (hover)
+        fix_cursor(cas);
+    else
+        cas->start = MAX(0, MIN(cas->start, cas->num_files - MAX(1, rows - padding * 2)));
     werase(window);
-    box(window, 0, 0);
-
-    if (cas->num_files == 0) {
-        mvwprintw(window, 1, 1, "This directory is empty");
+    if (padding)
+        box(window, 0, 0);
+    if (padding && cols > 6) {
+        wmove(window, 0, 2);
+        browser_draw_name(window, directory, cols - 4);
+    }
+    if (!cas->num_files) {
+        mvwaddnstr(window, padding, padding, "This directory is empty", MAX(0, cols - padding * 2));
         wrefresh(window);
         return;
     }
-
-    int max_visible_items = rows - 2;
-
-    magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
-    if (magic_cookie == NULL || magic_load(magic_cookie, NULL) != 0) {
-        for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
-            FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-            const char *name = FileAttr_get_name(fa);
-
-            char full_path[MAX_PATH_LENGTH];
-            path_join(full_path, directory, name);
-
-            struct stat statbuf;
-            bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
-            char symlink_target[MAX_PATH_LENGTH] = {0};
-
-            if (is_symlink) {
-                ssize_t target_len =
-                    readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
-                if (target_len > 0) {
-                    symlink_target[target_len] = '\0';
-                }
-            }
-
-            const char *emoji = FileAttr_is_dir(fa) ? "📁" : "📄";
-            const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
-
-            wmove(window, i + 1, 1);
-            for (int j = 1; j < cols - 1; j++) {
-                waddch(window, ' ');
-            }
-
-            bool is_cursor = ((cas->start + i) == cas->cursor);
-            bool is_selected = g_select_all_highlight || is_cursor;
-            if (is_selected)
-                wattron(window, A_REVERSE);
-            if (g_select_all_highlight && is_cursor)
-                wattron(window, A_BOLD);
-
-            int name_len = (int)strlen(name);
-            int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
-            int total_len = name_len + (is_symlink ? (4 + target_len) : 0);
-            int available_width = cols - 8;
-
-            if (total_len > available_width) {
-                if (is_symlink && target_len > 0) {
-                    int name_part = available_width / 2;
-                    int target_part = available_width - name_part - 4;
-                    mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji,
-                              name_part, name, target_part, symlink_target);
-                } else {
-                    mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width,
-                              name);
-                }
-            } else {
-                if (is_symlink && target_len > 0) {
-                    mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
-                              symlink_target);
-                } else {
-                    mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
-                }
-            }
-
-            if (g_select_all_highlight && is_cursor)
-                wattroff(window, A_BOLD);
-            if (is_selected)
-                wattroff(window, A_REVERSE);
-        }
-
-        wrefresh(window);
-        return;
+    magic_t cookie = magic_open(MAGIC_MIME_TYPE);
+    if (cookie && magic_load(cookie, NULL)) {
+        magic_close(cookie);
+        cookie = NULL;
     }
-
-    for (int i = 0; i < max_visible_items && (cas->start + i) < cas->num_files; i++) {
-        FileAttr fa = (FileAttr)files_vector->el[cas->start + i];
-        const char *name = FileAttr_get_name(fa);
-
-        char full_path[MAX_PATH_LENGTH];
-        path_join(full_path, directory, name);
-
-        struct stat statbuf;
-        bool is_symlink = (lstat(full_path, &statbuf) == 0 && S_ISLNK(statbuf.st_mode));
-        char symlink_target[MAX_PATH_LENGTH] = {0};
-
-        if (is_symlink) {
-            ssize_t target_len = readlink(full_path, symlink_target, sizeof(symlink_target) - 1);
-            if (target_len > 0) {
-                symlink_target[target_len] = '\0';
-            }
-        }
-
-        const char *emoji;
-        if (FileAttr_is_dir(fa)) {
-            emoji = "📁";
-        } else {
-            char mime_buffer[512];
-            const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
-                                                     mime_buffer, sizeof(mime_buffer));
-            emoji = get_file_emoji(mime_type, name);
-        }
-        const char *git_emoji = git_status_to_emoji(FileAttr_get_git_status(fa));
-
-        wmove(window, i + 1, 1);
-        for (int j = 1; j < cols - 1; j++) {
-            waddch(window, ' ');
-        }
-
-        bool is_cursor = ((cas->start + i) == cas->cursor);
-        bool is_selected = g_select_all_highlight || is_cursor;
-        if (is_selected)
+    FileListingOptions options = file_listing_options();
+    for (int row = padding; row < rows - padding && cas->start + row - padding < cas->num_files;
+         row++) {
+        SIZE index = cas->start + row - padding;
+        FileAttr file = files_vector->el[index];
+        const char *name = FileAttr_get_name(file);
+        char path[MAX_PATH_LENGTH], mime[512], details[80] = {0};
+        path_join(path, directory, name);
+        struct stat info;
+        bool metadata = !lstat(path, &info);
+        const char *type = FileAttr_is_dir(file) ? NULL
+                                                 : mime_type_cached(cookie, path, MAGIC_MIME_TYPE,
+                                                                    mime, sizeof(mime));
+        const char *icon = FileAttr_is_dir(file) ? "📁" : get_file_emoji(type, name);
+        bool cursor = hover && index == cas->cursor;
+        bool selected = g_select_all_highlight || FileAttr_selected(file);
+        if (cursor)
             wattron(window, A_REVERSE);
-        if (g_select_all_highlight && is_cursor)
+        if (selected)
             wattron(window, A_BOLD);
-
-        int name_len = (int)strlen(name);
-        int target_len = is_symlink ? (int)strlen(symlink_target) : 0;
-        int total_len = name_len + (is_symlink ? (4 + target_len) : 0);
-        int available_width = cols - 8;
-
-        if (total_len > available_width) {
-            if (is_symlink && target_len > 0) {
-                int name_part = available_width / 2;
-                int target_part = available_width - name_part - 4;
-                mvwprintw(window, i + 1, 1, "%s %s %.*s -> %.*s...", emoji, git_emoji, name_part,
-                          name, target_part, symlink_target);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s %.*s", emoji, git_emoji, available_width, name);
-            }
-        } else {
-            if (is_symlink && target_len > 0) {
-                mvwprintw(window, i + 1, 1, "%s %s %s -> %s", emoji, git_emoji, name,
-                          symlink_target);
-            } else {
-                mvwprintw(window, i + 1, 1, "%s %s %s", emoji, git_emoji, name);
+        browser_draw_entry_prefix(window, row, selected, icon,
+                                  git_status_to_emoji(FileAttr_get_git_status(file)));
+        int x = getcurx(window);
+        if (metadata && cols >= 40)
+            listing_details(path, &info, options.linemode, details, sizeof(details));
+        int detail_width = MIN((int)strlen(details), MAX(0, cols / 2 - 2));
+        int available = MAX(0, cols - padding - x - (detail_width ? detail_width + 1 : 0));
+        int used = browser_draw_name(window, name, available);
+        if (metadata && S_ISLNK(info.st_mode) && used + 5 < available) {
+            char target[MAX_PATH_LENGTH];
+            ssize_t length = readlink(path, target, sizeof(target) - 1);
+            if (length >= 0) {
+                target[length] = '\0';
+                waddstr(window, " -> ");
+                browser_draw_name(window, target, available - used - 4);
             }
         }
-
-        if (g_select_all_highlight && is_cursor)
+        if (detail_width) {
+            wmove(window, row, cols - detail_width - padding);
+            browser_draw_name(window, details, detail_width);
+        }
+        if (selected)
             wattroff(window, A_BOLD);
-        if (is_selected)
+        if (cursor)
             wattroff(window, A_REVERSE);
     }
-
-    magic_close(magic_cookie);
+    if (cookie)
+        magic_close(cookie);
     wrefresh(window);
 }
 
@@ -1168,6 +1225,11 @@ static void clear_preview_graphics(WINDOW *window, int max_y, int max_x) {
     last_image_backend = -1;
 }
 
+void browser_clear_preview(WINDOW *window) {
+    if (window)
+        clear_preview_graphics(window, getmaxy(window), getmaxx(window));
+}
+
 void draw_preview_window_path(WINDOW *window, const char *full_path, const char *display_name,
                               int start_line) {
     // Clear the window and draw border
@@ -1186,7 +1248,10 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
 
     const char *name =
         (display_name && *display_name) ? display_name : basename_ptr_local(full_path);
-    mvwprintw(window, 1, 2, "Preview: %s", name);
+    wmove(window, g_kb.vim_keymap ? 0 : 1, 2);
+    if (!g_kb.vim_keymap)
+        waddstr(window, "Preview: ");
+    browser_draw_name(window, name, MAX(0, max_x - getcurx(window) - 2));
 
     struct stat file_stat;
     if (stat(full_path, &file_stat) == -1) {
@@ -1196,82 +1261,94 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
         return;
     }
 
-    char fileSizeStr[64];
-    if (S_ISDIR(file_stat.st_mode)) {
-        static char last_preview_size_path[MAX_PATH_LENGTH] = "";
-        static struct timespec last_preview_size_change = {0};
-        static bool last_preview_size_initialized = false;
-
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-
-        bool path_changed = !last_preview_size_initialized ||
-                            strncmp(last_preview_size_path, full_path, MAX_PATH_LENGTH) != 0;
-        if (path_changed) {
-            strncpy(last_preview_size_path, full_path, MAX_PATH_LENGTH - 1);
-            last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
-            last_preview_size_change = now;
-            last_preview_size_initialized = true;
-        }
-
-        long elapsed_ns = (now.tv_sec - last_preview_size_change.tv_sec) * 1000000000L +
-                          (now.tv_nsec - last_preview_size_change.tv_nsec);
-        bool allow_enqueue = (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
-
-        long dir_size =
-            allow_enqueue ? get_directory_size(full_path) : get_directory_size_peek(full_path);
-        if (dir_size == -1) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
-        } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
-        } else if (dir_size == DIR_SIZE_TOO_LARGE) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
-        } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
-            snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
-        } else if (dir_size == DIR_SIZE_PENDING) {
-            long p = dir_size_get_progress(full_path);
-            if (p > 0) {
-                char tmp[32];
-                format_file_size(tmp, (size_t)p);
-                snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
-            } else {
-                snprintf(fileSizeStr, sizeof(fileSizeStr),
-                         allow_enqueue ? "Calculating..." : "Waiting...");
-            }
-        } else {
-            format_file_size(fileSizeStr, (size_t)dir_size);
-        }
-        mvwprintw(window, 2, 2, "📁 Directory Size: %s", fileSizeStr);
-    } else {
-        format_file_size(fileSizeStr, (size_t)file_stat.st_size);
-        mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
+    if (!S_ISREG(file_stat.st_mode) && !S_ISDIR(file_stat.st_mode)) {
+        clear_preview_graphics(window, max_y, max_x);
+        mvwaddnstr(window, preview_top(), 2, "No preview for special files", MAX(0, max_x - 4));
+        wrefresh(window);
+        return;
     }
 
-    char permissions[10];
-    snprintf(permissions, sizeof(permissions), "%o", file_stat.st_mode & 0777);
-    mvwprintw(window, 3, 2, "🔒 Permissions: %s", permissions);
+    if (!g_kb.vim_keymap) {
+        char fileSizeStr[64];
+        if (S_ISDIR(file_stat.st_mode)) {
+            static char last_preview_size_path[MAX_PATH_LENGTH] = "";
+            static struct timespec last_preview_size_change = {0};
+            static bool last_preview_size_initialized = false;
 
-    char modTime[50];
-    strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
-    mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
 
+            bool path_changed = !last_preview_size_initialized ||
+                                strncmp(last_preview_size_path, full_path, MAX_PATH_LENGTH) != 0;
+            if (path_changed) {
+                strncpy(last_preview_size_path, full_path, MAX_PATH_LENGTH - 1);
+                last_preview_size_path[MAX_PATH_LENGTH - 1] = '\0';
+                last_preview_size_change = now;
+                last_preview_size_initialized = true;
+            }
+
+            long elapsed_ns = (now.tv_sec - last_preview_size_change.tv_sec) * 1000000000L +
+                              (now.tv_nsec - last_preview_size_change.tv_nsec);
+            bool allow_enqueue =
+                (elapsed_ns >= DIR_SIZE_REQUEST_DELAY_NS) && dir_size_can_enqueue();
+
+            long dir_size =
+                allow_enqueue ? get_directory_size(full_path) : get_directory_size_peek(full_path);
+            if (dir_size == -1) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Error");
+            } else if (dir_size == DIR_SIZE_VIRTUAL_FS) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Virtual FS");
+            } else if (dir_size == DIR_SIZE_TOO_LARGE) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Too large");
+            } else if (dir_size == DIR_SIZE_PERMISSION_DENIED) {
+                snprintf(fileSizeStr, sizeof(fileSizeStr), "Permission denied");
+            } else if (dir_size == DIR_SIZE_PENDING) {
+                long p = dir_size_get_progress(full_path);
+                if (p > 0) {
+                    char tmp[32];
+                    format_file_size(tmp, (size_t)p);
+                    snprintf(fileSizeStr, sizeof(fileSizeStr), "Calculating... %s", tmp);
+                } else {
+                    snprintf(fileSizeStr, sizeof(fileSizeStr),
+                             allow_enqueue ? "Calculating..." : "Waiting...");
+                }
+            } else {
+                format_file_size(fileSizeStr, (size_t)dir_size);
+            }
+            mvwprintw(window, 2, 2, "📁 Directory Size: %s", fileSizeStr);
+        } else {
+            format_file_size(fileSizeStr, (size_t)file_stat.st_size);
+            mvwprintw(window, 2, 2, "📏 File Size: %s", fileSizeStr);
+        }
+
+        char permissions[10];
+        snprintf(permissions, sizeof(permissions), "%o", file_stat.st_mode & 0777);
+        mvwprintw(window, 3, 2, "🔒 Permissions: %s", permissions);
+
+        char modTime[50];
+        strftime(modTime, sizeof(modTime), "%c", localtime(&file_stat.st_mtime));
+        mvwprintw(window, 4, 2, "🕒 Last Modified: %s", modTime);
+    }
     bool is_image = false;
     bool used_truecolor = false;
     magic_t magic_cookie = magic_open(MAGIC_MIME_TYPE);
     if (magic_cookie != NULL && magic_load(magic_cookie, NULL) == 0) {
         char mime_buffer[512];
-        const char *mime_type = mime_file_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
+        const char *mime_type = mime_type_cached(magic_cookie, full_path, MAGIC_MIME_TYPE,
                                                  mime_buffer, sizeof(mime_buffer));
         if (mime_type && strncmp(mime_type, "image/", 6) == 0) {
             is_image = true;
         }
-        mvwprintw(window, 5, 2, "MIME Type: %s", mime_type ? mime_type : "Unknown");
+        if (!g_kb.vim_keymap)
+            mvwprintw(window, 5, 2, "MIME Type: %.*s", MAX(0, max_x - 15),
+                      mime_type ? mime_type : "Unknown");
         magic_close(magic_cookie);
     } else {
         if (magic_cookie) {
             magic_close(magic_cookie);
         }
-        mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
+        if (!g_kb.vim_keymap)
+            mvwprintw(window, 5, 2, "MIME Type: Unable to detect");
     }
     if (!is_image) {
         is_image = is_image_extension(full_path);
@@ -1287,12 +1364,13 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     last_image_backend = backend;
 
     if (S_ISDIR(file_stat.st_mode)) {
-        int line_num = 7;
+        int line_num = preview_top();
         int current_count = 0;
         show_directory_tree(window, full_path, 0, &line_num, max_y, max_x, start_line,
                             &current_count);
     } else if (is_archive_file(full_path)) {
-        display_archive_preview(window, full_path, start_line, max_y, max_x);
+        display_archive_preview_at(window, full_path, start_line, max_y, max_x,
+                                   g_kb.vim_keymap ? 1 : 8);
     } else if (is_image) {
         if (cupidimage_is_kitty_terminal()) {
             draw_image_preview_kitty(window, full_path, start_line, max_y, max_x);
@@ -1309,14 +1387,14 @@ void draw_preview_window_path(WINDOW *window, const char *full_path, const char 
     } else if (is_supported_file_type(full_path)) {
         FILE *file = fopen(full_path, "r");
         if (file) {
-            draw_text_preview(window, file, syntax_get_for_file(full_path), start_line, max_y,
-                              max_x);
+            draw_text_preview_at(window, file, syntax_get_for_file(full_path), start_line, max_y,
+                                 max_x, preview_top());
             fclose(file);
         } else {
-            mvwprintw(window, 7, 2, "Unable to open file for preview");
+            mvwprintw(window, preview_top(), 2, "Unable to open file for preview");
         }
     } else {
-        mvwprintw(window, 7, 2, "No preview available");
+        mvwprintw(window, preview_top(), 2, "No preview available");
     }
 
     if (!used_truecolor) {
@@ -1340,12 +1418,18 @@ void fix_cursor(CursorAndSlice *cas) {
     cas->cursor = MIN(cas->cursor, cas->num_files - 1);
     cas->cursor = MAX(0, cas->cursor);
 
-    int visible_lines = cas->num_lines - 2;
+    int visible_lines = MAX(1, cas->num_lines - 2);
 
     if (cas->num_files <= visible_lines) {
         cas->start = 0;
         return;
     }
+
+    int margin = g_kb.vim_keymap ? MIN(MAX(0, g_kb.scrolloff), (visible_lines - 1) / 2) : 0;
+    if (cas->cursor < cas->start + margin)
+        cas->start = MAX(0, cas->cursor - margin);
+    else if (cas->cursor >= cas->start + visible_lines - margin)
+        cas->start = cas->cursor - visible_lines + margin + 1;
 
     if (cas->cursor < cas->start) {
         cas->start = cas->cursor;

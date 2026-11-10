@@ -1,0 +1,387 @@
+# Syntax: asm
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='asm'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.(S|s|asm)$'
+
+# Pattern 0: statement (root).
+rule.0.parent=-1
+rule.0.group='statement'
+rule.0.match='\b(?i)(mov|aaa|aad|aam|aas|adc|add|and|call|cbw|clc|cld|cli|cmc|cmp|cmpsb|cmpsw|cwd|daa|das|dec|div|esc|hlt|idiv|imul|in|inc|int|into|iret|ja|jae|jb|jbe|jc|je|jg|jge|jl|jle|jna|jnae|jnb|jnbe|jnc|jne|jng|jnge|jnl|jnle|jno|jnp|jns|jnz|jo|jp|jpe|jpo|js|jz|jcxz|jmp|lahf|lds|lea|les|lock|lodsb|lodsw|loop|loope|loopne|loopnz|loopz|movsb|movsw|mul|neg|nop|or|pop|popf|push|pushf|rcl|rcr|rep|repe|repne|repnz|repz|ret|retn|retf|rol|ror|sahf|sal|sar|sbb|scasb|scasw|shl|shr|stc|std|sti|stosb|stosw|sub|test|wait|xchg|xlat|xor)(?-i)\b'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(?i)(bound|enter|ins|leave|outs|popa|pusha)(?-i)\b'
+
+# Pattern 2: statement (root).
+rule.2.parent=-1
+rule.2.group='statement'
+rule.2.match='\b(?i)(arpl|clts|lar|lgdt|lidt|lldt|lmsw|loadall|lsl|ltr|sgdt|sidt|sldt|smsw|str|verr|verw)(?-i)\b'
+
+# Pattern 3: statement (root).
+rule.3.parent=-1
+rule.3.group='statement'
+rule.3.match='\b(?i)(bsf|bsr|bt|btc|btr|bts|cdq|cmpsd|cwde|insd|iret|iretd|iretf|jecxz|lfs|lgs|lss|lodsd|loopw|loopew|loopnew|loopnzw|loopzw|loopd|looped|loopned|loopnzd|loopzd|cr|tr|dr|movsd|movsx|movzx|outsd|popad|popfd|pushad|pushfd|scasd|seta|setae|setb|setbe|setc|sete|setg|setge|setl|setle|setna|setnae|setnb|setnbe|setnc|setne|setng|setnge|setnl|setnle|setno|setnp|setns|setnz|seto|setp|setpe|setpo|sets|setz|shdl|shrd|stosd)(?-i)\b'
+
+# Pattern 4: statement (root).
+rule.4.parent=-1
+rule.4.group='statement'
+rule.4.match='\b(?i)(bswap|cmpxcgh|invd|invlpg|wbinvd|xadd)(?-i)\b'
+
+# Pattern 5: statement (root).
+rule.5.parent=-1
+rule.5.group='statement'
+rule.5.match='\b(?i)(cpuid|cmpxchg8b|rdmsr|rdtsc|wrmsr|rsm)(?-i)\b'
+
+# Pattern 6: statement (root).
+rule.6.parent=-1
+rule.6.group='statement'
+rule.6.match='\b(?i)(rdpmc)(?-i)\b'
+
+# Pattern 7: statement (root).
+rule.7.parent=-1
+rule.7.group='statement'
+rule.7.match='\b(?i)(syscall|sysret)(?-i)\b'
+
+# Pattern 8: statement (root).
+rule.8.parent=-1
+rule.8.group='statement'
+rule.8.match='\b(?i)(cmova|cmovae|cmovb|cmovbe|cmovc|cmove|cmovg|cmovge|cmovl|cmovle|cmovna|cmovnae|cmovnb|cmovnbe|cmovnc|cmovne|cmovng|cmovnge|cmovnle|cmovno|cmovpn|cmovns|cmovnz|cmovo|cmovp|cmovpe|cmovpo|cmovs|cmovz|sysenter|sysexit|ud2)(?-i)\b'
+
+# Pattern 9: statement (root).
+rule.9.parent=-1
+rule.9.group='statement'
+rule.9.match='\b(?i)(maskmovq|movntps|movntq|prefetch0|prefetch1|prefetch2|prefetchnta|sfence)(?-i)\b'
+
+# Pattern 10: statement (root).
+rule.10.parent=-1
+rule.10.group='statement'
+rule.10.match='\b(?i)(clflush|lfence|maskmovdqu|mfence|movntdq|movnti|movntpd|pause)(?-i)\b'
+
+# Pattern 11: statement (root).
+rule.11.parent=-1
+rule.11.group='statement'
+rule.11.match='\b(?i)(monitor|mwait)(?-i)\b'
+
+# Pattern 12: statement (root).
+rule.12.parent=-1
+rule.12.group='statement'
+rule.12.match='\b(?i)(cdqe|cqo|cmpsq|cmpxchg16b|iretq|jrcxz|lodsq|movsdx|popfq|pushfq|rdtscp|scasq|stosq|swapgs)(?-i)\b'
+
+# Pattern 13: statement (root).
+rule.13.parent=-1
+rule.13.group='statement'
+rule.13.match='\b(?i)(clgi|invlpga|skinit|stgi|vmload|vmmcall|vmrun|vmsave)(?-i)\b'
+
+# Pattern 14: statement (root).
+rule.14.parent=-1
+rule.14.group='statement'
+rule.14.match='\b(?i)(vmptrdl|vmptrst|vmclear|vmread|vmwrite|vmcall|vmlaunch|vmresume|vmxoff|vmxon)(?-i)\b'
+
+# Pattern 15: statement (root).
+rule.15.parent=-1
+rule.15.group='statement'
+rule.15.match='\b(?i)(lzcnt|popcnt)(?-i)\b'
+
+# Pattern 16: statement (root).
+rule.16.parent=-1
+rule.16.group='statement'
+rule.16.match='\b(?i)(bextr|blcfill|blci|blcic|blcmask|blcs|blsfill|blsic|t1mskc|tzmsk)(?-i)\b'
+
+# Pattern 17: statement (root).
+rule.17.parent=-1
+rule.17.group='statement'
+rule.17.match='\b(?i)(f2xm1|fabs|fadd|faddp|fbld|fbstp|fchs|fclex|fcom|fcomp|fcompp|fdecstp|fdisi|fdiv|fvidp|fdivr|fdivrp|feni|ffree|fiadd|ficom|ficomp|fidiv|fidivr|fild|fimul|fincstp|finit|fist|fistp|fisub|fisubr|fld|fld1|fldcw|fldenv|fldenvw|fldl2e|fldl2t|fldlg2|fldln2|fldpi|fldz|fmul|fmulp|fnclex|fndisi|fneni|fninit|fnop|fnsave|fnsavenew|fnstcw|fnstenv|fnstenvw|fnstsw|fpatan|fprem|fptan|frndint|frstor|frstorw|fsave|fsavew|fscale|fsqrt|fst|fstcw|fstenv|fstenvw|fstp|fstpsw|fsub|fsubp|fsubr|fsubrp|ftst|fwait|fxam|fxch|fxtract|fyl2x|fyl2xp1)(?-i)\b'
+
+# Pattern 18: statement (root).
+rule.18.parent=-1
+rule.18.group='statement'
+rule.18.match='\b(?i)(fsetpm)(?-i)\b'
+
+# Pattern 19: statement (root).
+rule.19.parent=-1
+rule.19.group='statement'
+rule.19.match='\b(?i)(fcos|fldenvd|fsaved|fstenvd|fprem1|frstord|fsin|fsincos|fstenvd|fucom|fucomp|fucompp)(?-i)\b'
+
+# Pattern 20: statement (root).
+rule.20.parent=-1
+rule.20.group='statement'
+rule.20.match='\b(?i)(fcmovb|fcmovbe|fcmove|fcmove|fcmovnb|fcmovnbe|fcmovne|fcmovnu|fcmovu)(?-i)\b'
+
+# Pattern 21: statement (root).
+rule.21.parent=-1
+rule.21.group='statement'
+rule.21.match='\b(?i)(fcomi|fcomip|fucomi|fucomip)(?-i)\b'
+
+# Pattern 22: statement (root).
+rule.22.parent=-1
+rule.22.group='statement'
+rule.22.match='\b(?i)(fxrstor|fxsave)(?-i)\b'
+
+# Pattern 23: statement (root).
+rule.23.parent=-1
+rule.23.group='statement'
+rule.23.match='\b(?i)(fisttp)(?-i)\b'
+
+# Pattern 24: statement (root).
+rule.24.parent=-1
+rule.24.group='statement'
+rule.24.match='\b(?i)(ffreep)(?-i)\b'
+
+# Pattern 25: statement (root).
+rule.25.parent=-1
+rule.25.group='statement'
+rule.25.match='\b(?i)(emms|movd|movq|packssdw|packsswb|packuswb|paddb|paddw|paddd|paddsb|paddsw|paddusb|paddusw|pand|pandn|por|pxor|pcmpeqb|pcmpeqw|pcmpeqd|pcmpgtb|pcmpgtw|pcmpgtd|pmaddwd|pmulhw|pmullw|psllw|pslld|psllq|psrad|psraw|psrlw|psrld|psrlq|psubb|psubw|psubd|psubsb|psubsw|psubusb|punpckhbw|punpckhwd|punpckhdq|punkcklbw|punpckldq|punpcklwd)(?-i)\b'
+
+# Pattern 26: statement (root).
+rule.26.parent=-1
+rule.26.group='statement'
+rule.26.match='\b(?i)(paveb|paddsiw|pmagw|pdistib|psubsiw|pmwzb|pmulhrw|pmvnzb|pmvlzb|pmvgezb|pmulhriw|pmachriw)(?-i)\b'
+
+# Pattern 27: statement (root).
+rule.27.parent=-1
+rule.27.group='statement'
+rule.27.match='\b(?i)(femms|pavgusb|pf2id|pfacc|pfadd|pfcmpeq|pfcmpge|pfcmpgt|pfmax|pfmin|pfmul|pfrcp|pfrcpit1|pfrcpit2|pfrsqit1|pfrsqrt|pfsub|pfsubr|pi2fd|pmulhrw|prefetch|prefetchw)(?-i)\b'
+
+# Pattern 28: statement (root).
+rule.28.parent=-1
+rule.28.group='statement'
+rule.28.match='\b(?i)(pf2iw|pfnacc|pfpnacc|pi2fw|pswapd)(?-i)\b'
+
+# Pattern 29: statement (root).
+rule.29.parent=-1
+rule.29.group='statement'
+rule.29.match='\b(?i)(pfrsqrtv|pfrcpv)(?-i)\b'
+
+# Pattern 30: statement (root).
+rule.30.parent=-1
+rule.30.group='statement'
+rule.30.match='\b(?i)(addps|addss|cmpps|cmpss|comiss|cvtpi2ps|cvtps2pi|cvtsi2ss|cvtss2si|cvttps2pi|cvttss2si|divps|divss|ldmxcsr|maxps|maxss|minps|minss|movaps|movhlps|movhps|movlhps|movlps|movmskps|movntps|movss|movups|mulps|mulss|rcpps|rcpss|rsqrtps|rsqrtss|shufps|sqrtps|sqrtss|stmxcsr|subps|subss|ucomiss|unpckhps|unpcklps)(?-i)\b'
+
+# Pattern 31: statement (root).
+rule.31.parent=-1
+rule.31.group='statement'
+rule.31.match='\b(?i)(andnps|andps|orps|pavgb|pavgw|pextrw|pinsrw|pmaxsw|pmaxub|pminsw|pminub|pmovmskb|pmulhuw|psadbw|pshufw|xorps)(?-i)\b'
+
+# Pattern 32: statement (root).
+rule.32.parent=-1
+rule.32.group='statement'
+rule.32.match='\b(?i)(movups|movss|movlps|movhlps|movlps|unpcklps|unpckhps|movhps|movlhps|prefetchnta|prefetch0|prefetch1|prefetch2|nop|movaps|cvtpi2ps|cvtsi2ss|cvtps2pi|cvttss2si|cvtps2pi|cvtss2si|ucomiss|comiss|sqrtps|sqrtss|rsqrtps|rsqrtss|rcpps|andps|orps|xorps|addps|addss|mulps|mulss|subps|subss|minps|minss|divps|divss|maxps|maxss|pshufw|ldmxcsr|stmxcsr|sfence|cmpps|cmpss|pinsrw|pextrw|shufps|pmovmskb|pminub|pmaxub|pavgb|pavgw|pmulhuw|movntq|pminsw|pmaxsw|psadbw|maskmovq)(?-i)\b'
+
+# Pattern 33: statement (root).
+rule.33.parent=-1
+rule.33.group='statement'
+rule.33.match='\b(?i)(addpd|addsd|addnpd|cmppd|cmpsd)(?-i)\b'
+
+# Pattern 34: statement (root).
+rule.34.parent=-1
+rule.34.group='statement'
+rule.34.match='\b(?i)(addpd|addsd|andnpd|andpd|cmppd|cmpsd|comisd|cvtdq2pd|cvtdq2ps|cvtpd2dq|cvtpd2pi|cvtpd2ps|cvtpi2pd|cvtps2dq|cvtps2pd|cvtsd2si|cvtsd2ss|cvtsi2sd|cvtss2sd|cvttpd2dq|cvttpd2pi|cvttps2dq|cvttsd2si|divpd|divsd|maxpd|maxsd|minpd|minsd|movapd|movhpd|movlpd|movmskpd|movsd|movupd|mulpd|mulsd|orpd|shufpd|sqrtpd|sqrtsd|subpd|subsd|ucomisd|unpckhpd|unpcklpd|xorpd)(?-i)\b'
+
+# Pattern 35: statement (root).
+rule.35.parent=-1
+rule.35.group='statement'
+rule.35.match='\b(?i)(movdq2q|movdqa|movdqu|movq2dq|paddq|psubq|pmuludq|pshufhw|pshuflw|pshufd|pslldq|psrldq|punpckhqdq|punpcklqdq)(?-i)\b'
+
+# Pattern 36: statement (root).
+rule.36.parent=-1
+rule.36.group='statement'
+rule.36.match='\b(?i)(addsubpd|addsubps|haddpd|haddps|hsubpd|hsubps|movddup|movshdup|movsldu)(?-i)\b'
+
+# Pattern 37: statement (root).
+rule.37.parent=-1
+rule.37.group='statement'
+rule.37.match='\b(?i)(lddqu)(?-i)\b'
+
+# Pattern 38: statement (root).
+rule.38.parent=-1
+rule.38.group='statement'
+rule.38.match='\b(?i)(psignw|psignd|psignb|pshufb|pmulhrsw|pmaddubsw|phsubw|phsubsw|phsubd|phaddw|phaddsw|phaddd|palignr|pabsw|pabsd|pabsb)(?-i)\b'
+
+# Pattern 39: statement (root).
+rule.39.parent=-1
+rule.39.group='statement'
+rule.39.match='\b(?i)(dpps|dppd|blendps|blendpd|blendvps|blendvpd|roundps|roundss|roundpd|roundsd|insertps|extractps)(?-i)\b'
+
+# Pattern 40: statement (root).
+rule.40.parent=-1
+rule.40.group='statement'
+rule.40.match='\b(?i)(mpsadbw|phminposuw|pmulld|pmuldq|pblendvb|pblendw|pminsb|pmaxsb|pminuw|pmaxuw|pminud|pmaxud|pminsd|pmaxsd|pinsrb|pinsrd/pinsrq|pextrb|pextrw|pextrd/pextrq|pmovsxbw|pmovzxbw|pmovsxbd|pmovzxbd|pmovsxbq|pmovzxbq|pmovsxwd|pmovzxwd|pmovsxwq|pmovzxwq|pmovsxdq|pmovzxdq|ptest|pcmpeqq|packusdw|movntdqa)(?-i)\b'
+
+# Pattern 41: statement (root).
+rule.41.parent=-1
+rule.41.group='statement'
+rule.41.match='\b(?i)(extrq|insertq|movntsd|movntss)(?-i)\b'
+
+# Pattern 42: statement (root).
+rule.42.parent=-1
+rule.42.group='statement'
+rule.42.match='\b(?i)(crc32|pcmpestri|pcmpestrm|pcmpistri|pcmpistrm|pcmpgtq)(?-i)\b'
+
+# Pattern 43: statement (root).
+rule.43.parent=-1
+rule.43.group='statement'
+rule.43.match='\b(?i)(vfmaddpd|vfmaddps|vfmaddsd|vfmaddss|vfmaddsubpd|vfmaddsubps|vfmsubaddpd|vfmsubaddps|vfmsubpd|vfmsubps|vfmsubsd|vfmsubss|vfnmaddpd|vfnmaddps|vfnmaddsd|vfnmaddss|vfnmsubps|vfnmsubsd|vfnmsubss)(?-i)\b'
+
+# Pattern 44: statement (root).
+rule.44.parent=-1
+rule.44.group='statement'
+rule.44.match='\b(?i)(aesenc|aesenclast|aesdec|aesdeclast|aeskeygenassist|aesimc)(?-i)\b'
+
+# Pattern 45: statement (root).
+rule.45.parent=-1
+rule.45.group='statement'
+rule.45.match='\b(?i)(sha1rnds4|sha1nexte|sha1msg1|sha1msg2|sha256rnds2|sha256msg1|sha256msg2)(?-i)\b'
+
+# Pattern 46: statement (root).
+rule.46.parent=-1
+rule.46.group='statement'
+rule.46.match='\b(?i)(aam|aad|salc|icebp|loadall|loadalld|ud1)(?-i)\b'
+
+# Pattern 47: identifier (root).
+rule.47.parent=-1
+rule.47.group='identifier'
+rule.47.match='\b(?i)(al|ah|bl|bh|cl|ch|dl|dh|bpl|sil|r8b|r9b|r10b|r11b|dil|spl|r12b|r13b|r14b|r15)(?-i)\b'
+
+# Pattern 48: identifier (root).
+rule.48.parent=-1
+rule.48.group='identifier'
+rule.48.match='\b(?i)(cw|sw|tw|fp_ds|fp_opc|fp_ip|fp_dp|fp_cs|cs|ss|ds|es|fs|gs|gdtr|idtr|tr|ldtr|ax|bx|cx|dx|bp|si|r8w|r9w|r10w|r11w|di|sp|r12w|r13w|r14w|r15w|ip)(?-i)\b'
+
+# Pattern 49: identifier (root).
+rule.49.parent=-1
+rule.49.group='identifier'
+rule.49.match='\b(?i)(fp_dp|fp_ip|eax|ebx|ecx|edx|ebp|esi|r8d|r9d|r10d|r11d|edi|esp|r12d|r13d|r14d|r15d|eip|eflags|mxcsr)(?-i)\b'
+
+# Pattern 50: identifier (root).
+rule.50.parent=-1
+rule.50.group='identifier'
+rule.50.match='\b(?i)(mm0|mm1|mm2|mm3|mm4|mm5|mm6|mm7|rax|rbx|rcx|rdx|rbp|rsi|r8|r9|r10|r11|rdi|rsp|r12|r13|r14|r15|rip|rflags|cr0|cr1|cr2|cr3|cr4|cr5|cr6|cr7|cr8|cr9|cr10|cr11|cr12|cr13|cr14|cr15|msw|dr0|dr1|dr2|dr3|r4|dr5|dr6|dr7|dr8|dr9|dr10|dr11|dr12|dr13|dr14|dr15)(?-i)\b'
+
+# Pattern 51: identifier (root).
+rule.51.parent=-1
+rule.51.group='identifier'
+rule.51.match='\b(?i)(st0|st1|st2|st3|st4|st5|st6|st7)(?-i)\b'
+
+# Pattern 52: identifier (root).
+rule.52.parent=-1
+rule.52.group='identifier'
+rule.52.match='\b(?i)(xmm0|xmm1|xmm2|xmm3|xmm4|xmm5|xmm6|xmm7|xmm8|xmm9|xmm10|xmm11|xmm12|xmm13|xmm14|xmm15)(?-i)\b'
+
+# Pattern 53: identifier (root).
+rule.53.parent=-1
+rule.53.group='identifier'
+rule.53.match='\b(?i)(ymm0|ymm1|ymm2|ymm3|ymm4|ymm5|ymm6|ymm7|ymm8|ymm9|ymm10|ymm11|ymm12|ymm13|ymm14|ymm15)(?-i)\b'
+
+# Pattern 54: identifier (root).
+rule.54.parent=-1
+rule.54.group='identifier'
+rule.54.match='\b(?i)(zmm0|zmm1|zmm2|zmm3|zmm4|zmm5|zmm6|zmm7|zmm8|zmm9|zmm10|zmm11|zmm12|zmm13|zmm14|zmm15|zmm16|zmm17|zmm18|zmm19|zmm20|zmm21|zmm22|zmm23|zmm24|zmm25|zmm26|zmm27|zmm28|zmm29|zmm30|zmm31)(?-i)\b'
+
+# Pattern 55: constant.number (root).
+rule.55.parent=-1
+rule.55.group='constant.number'
+rule.55.match='\b(|h|A|0x)+[0-9]+(|h|A)+\b'
+
+# Pattern 56: constant.number (root).
+rule.56.parent=-1
+rule.56.group='constant.number'
+rule.56.match='\b0x[0-9 a-f A-F]+\b'
+
+# Pattern 57: preproc (root).
+rule.57.parent=-1
+rule.57.group='preproc'
+rule.57.match='%+(\+|\?|\?\?|)[a-z A-Z 0-9]+'
+
+# Pattern 58: preproc (root).
+rule.58.parent=-1
+rule.58.group='preproc'
+rule.58.match='%\[[. a-z A-Z 0-9]*\]'
+
+# Pattern 59: statement (root).
+rule.59.parent=-1
+rule.59.group='statement'
+rule.59.match='\b(?i)(extern|global|section|segment|_start|\.text|\.data|\.bss)(?-i)\b'
+
+# Pattern 60: statement (root).
+rule.60.parent=-1
+rule.60.group='statement'
+rule.60.match='\b(?i)(db|dw|dd|dq|dt|ddq|do)(?-i)\b'
+
+# Pattern 61: identifier (root).
+rule.61.parent=-1
+rule.61.group='identifier'
+rule.61.match='[a-z A-Z 0-9 _]+:'
+
+# Region 62: constant.string (root).
+rule.62.parent=-1
+rule.62.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.62.start='"'
+rule.62.end='"'
+# Mask escaped text before matching delimiters.
+rule.62.skip='\\.'
+
+# Pattern 63: constant.specialChar (inside region 62).
+rule.63.parent=62
+rule.63.group='constant.specialChar'
+rule.63.match='\\.'
+
+# Region 64: constant.string (root).
+rule.64.parent=-1
+rule.64.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.64.start=''''
+rule.64.end=''''
+# Mask escaped text before matching delimiters.
+rule.64.skip='\\.'
+
+# Pattern 65: constant.specialChar (inside region 64).
+rule.65.parent=64
+rule.65.group='constant.specialChar'
+rule.65.match='\\.'
+
+# Region 66: comment (root).
+rule.66.parent=-1
+rule.66.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.66.start=';'
+rule.66.end='$'
+
+# Pattern 67: todo (inside region 66).
+rule.67.parent=66
+rule.67.group='todo'
+rule.67.match='(TODO|XXX|FIXME):?'
+
+# Region 68: comment (root).
+rule.68.parent=-1
+rule.68.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.68.start='//'
+rule.68.end='$'
+
+# Pattern 69: todo (inside region 68).
+rule.69.parent=68
+rule.69.group='todo'
+rule.69.match='(TODO|XXX|FIXME):?'
+
+# Region 70: comment (root).
+rule.70.parent=-1
+rule.70.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.70.start='/\*'
+rule.70.end='\*/'
+
+# Pattern 71: todo (inside region 70).
+rule.71.parent=70
+rule.71.group='todo'
+rule.71.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=72

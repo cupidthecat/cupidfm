@@ -1,0 +1,108 @@
+# Syntax: OpenSCAD
+# Regex values are literal: backslashes, #, and ; are preserved.
+# Double a single quote inside a quoted value to write one quote.
+# Rule numbers preserve precedence; later patterns override earlier ones.
+
+format=2
+name='OpenSCAD'
+
+# Detection: filename first, then header and content signature.
+detect.filename='\.scad$'
+
+# Pattern 0: identifier (root).
+rule.0.parent=-1
+rule.0.group='identifier'
+rule.0.match='\b(function|module) +[a-z0-9_]+'
+
+# Pattern 1: statement (root).
+rule.1.parent=-1
+rule.1.group='statement'
+rule.1.match='\b(abs|acos|asin|assert|atan|atan2|ceil|child|children|chr|circle|color|concat|cos|cross|cube|cylinder|difference|dxf_cross|dxf_dim|each|echo|else|exp|floor|for|function|hull|if|import|import_dxf|intersection|intersection_for|is_bool|is_function|is_list|is_num|is_string|is_undef|len|let|linear_extrude|ln|log|lookup|max|min|minkowski|mirror|module|multmatrix|norm|offset|ord|parent_module|polygon|polyhedron|pow|projection|rands|render|resize|rotate|rotate_extrude|round|scale|search|sign|sin|sphere|sqrt|square|str|surface|tan|text|translate|union|version|version_num)\b'
+
+# Pattern 2: symbol (root).
+rule.2.parent=-1
+rule.2.group='symbol'
+rule.2.match='[,\.;:?]'
+
+# Pattern 3: symbol.operator (root).
+rule.3.parent=-1
+rule.3.group='symbol.operator'
+rule.3.match='[-+*/%^<>!=]|[<=>!]=|&&|\|\|'
+
+# Pattern 4: symbol.brackets (root).
+rule.4.parent=-1
+rule.4.group='symbol.brackets'
+rule.4.match='[{(<>)}]|\[|\]'
+
+# Pattern 5: special (root).
+rule.5.parent=-1
+rule.5.group='special'
+rule.5.match='[#%!*]'
+
+# Pattern 6: special (root).
+rule.6.parent=-1
+rule.6.group='special'
+rule.6.match='\B\$[a-z]+\b'
+
+# Region 7: preproc (root).
+rule.7.parent=-1
+rule.7.group='preproc'
+# Start/end delimiters carry state between physical lines.
+rule.7.start='^ *(use|include) <'
+rule.7.end='>;?'
+
+# Pattern 8: constant.number (root).
+rule.8.parent=-1
+rule.8.group='constant.number'
+rule.8.match='\b[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?|PI|inf|nan\b'
+
+# Pattern 9: constant.bool (root).
+rule.9.parent=-1
+rule.9.group='constant.bool'
+rule.9.match='\b(true|false)\b'
+
+# Pattern 10: constant (root).
+rule.10.parent=-1
+rule.10.group='constant'
+rule.10.match='\b(undef)\b'
+
+# Region 11: constant.string (root).
+rule.11.parent=-1
+rule.11.group='constant.string'
+# Start/end delimiters carry state between physical lines.
+rule.11.start='"'
+rule.11.end='"'
+# Mask escaped text before matching delimiters.
+rule.11.skip='\\.'
+
+# Pattern 12: constant.specialChar (inside region 11).
+rule.12.parent=11
+rule.12.group='constant.specialChar'
+rule.12.match='\\.'
+
+# Region 13: comment (root).
+rule.13.parent=-1
+rule.13.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.13.start='//'
+rule.13.end='$'
+
+# Pattern 14: todo (inside region 13).
+rule.14.parent=13
+rule.14.group='todo'
+rule.14.match='(TODO|XXX|FIXME):?'
+
+# Region 15: comment (root).
+rule.15.parent=-1
+rule.15.group='comment'
+# Start/end delimiters carry state between physical lines.
+rule.15.start='/\*'
+rule.15.end='\*/'
+
+# Pattern 16: todo (inside region 15).
+rule.16.parent=15
+rule.16.group='todo'
+rule.16.match='(TODO|XXX|FIXME):?'
+
+# Total flattened rules; update this when adding or removing rules.
+rules=17
